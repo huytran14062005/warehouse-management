@@ -68,25 +68,37 @@
   position: relative;
   display: flex;
   align-items: center;
+  width: 100%;
 }
 
 .password-input {
+  box-sizing: border-box;
   padding-right: 45px !important;
 }
 
 .password-toggle-btn {
   position: absolute;
   right: 10px;
+  top: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 4px;
+  width: 30px;
+  height: 30px;
+  padding: 5px;
   border: 0;
   border-radius: 4px;
   color: #718096;
   background: transparent;
   cursor: pointer;
+  transform: translateY(-50%);
   transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.password-toggle-icon {
+  display: block;
+  flex: 0 0 20px;
+  overflow: visible;
 }
 
 .password-toggle-btn:hover {
