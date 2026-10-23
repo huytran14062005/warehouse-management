@@ -4,7 +4,7 @@ import Apis, { endpoints } from "../configs/Apis";
 import ConfirmDialog from "./ConfirmDialog";
 import "../css/Sidebar.css";
 
-function Sidebar({ user, pendingRequests }) {
+function Sidebar({ user, pendingRequests, isMobileOpen = false, onMobileClose = () => {} }) {
   const navigate = useNavigate();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -36,6 +36,7 @@ function Sidebar({ user, pendingRequests }) {
 
   const handleConfirmLogout = async () => {
     setShowLogoutConfirm(false);
+    onMobileClose();
     await Apis.post(endpoints.logout).catch(() => null);
     localStorage.removeItem("token");
     localStorage.removeItem("user");
@@ -46,7 +47,8 @@ function Sidebar({ user, pendingRequests }) {
   return (
     <>
       <aside
-        className={`internal-sidebar${isCollapsed ? " is-collapsed" : ""}`}
+        id="internal-sidebar-navigation"
+        className={`internal-sidebar${isCollapsed ? " is-collapsed" : ""}${isMobileOpen ? " is-mobile-open" : ""}`}
       >
         <div>
           <div className="internal-sidebar-heading">
@@ -77,11 +79,22 @@ function Sidebar({ user, pendingRequests }) {
                 />
               </svg>
             </button>
+            <button
+              type="button"
+              className="internal-sidebar-mobile-close"
+              aria-label="Đóng danh mục chức năng"
+              onClick={onMobileClose}
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                <path d="M6 6l12 12M18 6 6 18" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </button>
           </div>
           <nav className="internal-sidebar-nav" aria-label="Chức năng quản lý">
             {canManageEmployeeAccounts && (
               <NavLink
                 to="/manager-pending-requests"
+                onClick={onMobileClose}
                 className={({ isActive }) =>
                   `internal-sidebar-link${isActive ? " is-active" : ""}`
                 }
@@ -93,6 +106,7 @@ function Sidebar({ user, pendingRequests }) {
             {canViewCustomers && (
               <NavLink
                 to="/customers"
+                onClick={onMobileClose}
                 className={({ isActive }) =>
                   `internal-sidebar-link${isActive ? " is-active" : ""}`
                 }
@@ -103,6 +117,7 @@ function Sidebar({ user, pendingRequests }) {
             {canViewProducts && (
               <NavLink
                 to="/products"
+                onClick={onMobileClose}
                 className={({ isActive }) =>
                   `internal-sidebar-link${isActive ? " is-active" : ""}`
                 }
@@ -113,6 +128,7 @@ function Sidebar({ user, pendingRequests }) {
             {canViewSalesInvoices && (
               <NavLink
                 to="/sales-invoices"
+                onClick={onMobileClose}
                 className={({ isActive }) =>
                   `internal-sidebar-link${isActive ? " is-active" : ""}`
                 }
@@ -124,6 +140,7 @@ function Sidebar({ user, pendingRequests }) {
             {canManageStockTransfers && (
               <NavLink
                 to="/stock-transfers"
+                onClick={onMobileClose}
                 className={({ isActive }) =>
                   `internal-sidebar-link${isActive ? " is-active" : ""}`
                 }
@@ -134,6 +151,7 @@ function Sidebar({ user, pendingRequests }) {
             {canManageStockTransfers && (
               <NavLink
                 to="/employee-stock"
+                onClick={onMobileClose}
                 className={({ isActive }) =>
                   `internal-sidebar-link${isActive ? " is-active" : ""}`
                 }
@@ -144,6 +162,7 @@ function Sidebar({ user, pendingRequests }) {
             {canViewImportInvoices && (
               <NavLink
                 to="/import-invoices"
+                onClick={onMobileClose}
                 className={({ isActive }) =>
                   `internal-sidebar-link${isActive ? " is-active" : ""}`
                 }
@@ -154,6 +173,7 @@ function Sidebar({ user, pendingRequests }) {
             {canViewDamageReports && (
               <NavLink
                 to="/damage-reports"
+                onClick={onMobileClose}
                 className={({ isActive }) =>
                   `internal-sidebar-link${isActive ? " is-active" : ""}`
                 }
@@ -165,6 +185,7 @@ function Sidebar({ user, pendingRequests }) {
             {canViewSuppliers && (
               <NavLink
                 to="/suppliers"
+                onClick={onMobileClose}
                 className={({ isActive }) =>
                   `internal-sidebar-link${isActive ? " is-active" : ""}`
                 }
@@ -175,6 +196,7 @@ function Sidebar({ user, pendingRequests }) {
             {canViewWarehouseReports && (
               <NavLink
                 to="/warehouse-reports"
+                onClick={onMobileClose}
                 className={({ isActive }) =>
                   `internal-sidebar-link${isActive ? " is-active" : ""}`
                 }
@@ -185,6 +207,7 @@ function Sidebar({ user, pendingRequests }) {
             {canViewManagerSalesAnalytics && (
               <NavLink
                 to="/manager-sales-analytics"
+                onClick={onMobileClose}
                 className={({ isActive }) =>
                   `internal-sidebar-link${isActive ? " is-active" : ""}`
                 }
@@ -195,6 +218,7 @@ function Sidebar({ user, pendingRequests }) {
             {canManageEmployeeAccounts && (
               <NavLink
                 to="/employee-accounts"
+                onClick={onMobileClose}
                 className={({ isActive }) =>
                   `internal-sidebar-link${isActive ? " is-active" : ""}`
                 }

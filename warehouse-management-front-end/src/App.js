@@ -22,6 +22,7 @@ import Register from "./screens/User/Register";
 import EmployeeAccounts from "./screens/EmployeeAccounts";
 import PendingRequests from "./screens/PendingRequests";
 import { authApis, endpoints, scheduleTokenRefresh, stopTokenRefresh } from "./configs/Apis";
+import "./css/Responsive.css";
 
 function App() {
   const [currentUser, setCurrentUser] = useState(() => {
@@ -35,6 +36,7 @@ function App() {
     total: 0,
     counts: { accounts: 0, damage_reports: 0, discount_invoices: 0, cancel_requests: 0 },
   });
+  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
 
   useEffect(() => {
     scheduleTokenRefresh();
@@ -49,6 +51,7 @@ function App() {
 
     const handleLogout = () => {
       stopTokenRefresh();
+      setMobileNavigationOpen(false);
       syncAuthentication();
     };
 
@@ -111,6 +114,23 @@ function App() {
     };
   }, [currentUser?.role]);
 
+  useEffect(() => {
+    if (!mobileNavigationOpen) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") setMobileNavigationOpen(false);
+    };
+
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [mobileNavigationOpen]);
+
   const canViewSidebar = [
     "kế toán",
     "nhân viên bán hàng",
@@ -123,8 +143,46 @@ function App() {
       <div className="app-shell">
         {!currentUser && <Header />}
         <main className="app-main">
+          {canViewSidebar && (
+            <div className="mobile-navigation-bar">
+              <button
+                type="button"
+                className="mobile-navigation-toggle"
+                aria-label="Mở danh mục chức năng"
+                aria-controls="internal-sidebar-navigation"
+                aria-expanded={mobileNavigationOpen}
+                onClick={() => setMobileNavigationOpen(true)}
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                  <path d="M4 6h16M4 12h16M4 18h16" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </button>
+              <div className="mobile-navigation-brand">
+                <img src={`${process.env.PUBLIC_URL}/official_logo.jpg`} alt="" aria-hidden="true" />
+                <div>
+                  <strong>HIỆP PHÁT</strong>
+                  <span>{currentUser?.role || "Quản lý kho"}</span>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="app-main-layout">
-            {canViewSidebar && <Sidebar user={currentUser} pendingRequests={pendingRequests} />}
+            {canViewSidebar && (
+              <>
+                <button
+                  type="button"
+                  className={`mobile-navigation-overlay${mobileNavigationOpen ? " is-visible" : ""}`}
+                  aria-label="Đóng danh mục chức năng"
+                  onClick={() => setMobileNavigationOpen(false)}
+                />
+                <Sidebar
+                  user={currentUser}
+                  pendingRequests={pendingRequests}
+                  isMobileOpen={mobileNavigationOpen}
+                  onMobileClose={() => setMobileNavigationOpen(false)}
+                />
+              </>
+            )}
             <div className="app-route-content">
               <PageTransition>
                 <Routes>

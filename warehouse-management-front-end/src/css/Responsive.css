@@ -1,0 +1,522 @@
+/* Mobile overrides are loaded after every screen stylesheet. */
+@media (max-width: 768px) {
+  html { scroll-padding-top: 76px; }
+
+  body {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  .app-route-content,
+  .page-transition,
+  .customers-card,
+  .products-card,
+  .sales-card,
+  .suppliers-card,
+  .warehouse-card,
+  .employee-accounts-card,
+  .employee-stock-card,
+  .stock-transfers-card,
+  .stock-transfers-history,
+  .manager-analytics-card { min-width: 0; }
+
+  .customers-page,
+  .products-page,
+  .sales-page,
+  .suppliers-page,
+  .warehouse-page,
+  .employee-accounts-page,
+  .employee-stock-page,
+  .stock-transfers-page,
+  .pending-requests-page,
+  .manager-analytics-page {
+    width: min(calc(100% - 24px), 720px);
+    margin-right: auto;
+    margin-left: auto;
+    padding: 24px 0 40px;
+  }
+
+  .customers-header,
+  .products-header,
+  .sales-header,
+  .suppliers-header,
+  .warehouse-page-header,
+  .employee-accounts-header,
+  .stock-transfers-header,
+  .pending-requests-header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+
+  .customers-header h1,
+  .products-header h1,
+  .sales-header h1,
+  .suppliers-header h1,
+  .warehouse-page-header h1,
+  .employee-accounts-header h1,
+  .employee-stock-header h1,
+  .stock-transfers-header h1,
+  .pending-requests-header h1,
+  .manager-analytics-header h1 {
+    font-size: clamp(24px, 7vw, 30px);
+    line-height: 1.18;
+    overflow-wrap: anywhere;
+  }
+
+  .customers-description,
+  .products-header p,
+  .sales-header p,
+  .suppliers-header p,
+  .warehouse-page-header p,
+  .employee-accounts-header p,
+  .employee-stock-header p,
+  .stock-transfers-header p,
+  .pending-requests-header p,
+  .manager-analytics-header p {
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  .customers-toolbar,
+  .products-toolbar,
+  .sales-toolbar,
+  .suppliers-toolbar,
+  .employee-accounts-toolbar,
+  .damage-reports-toolbar,
+  .warehouse-report-filter,
+  .manager-analytics-filter {
+    align-items: stretch;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: 12px;
+  }
+
+  .customers-toolbar > *,
+  .products-toolbar > *,
+  .sales-toolbar > *,
+  .suppliers-toolbar > *,
+  .employee-accounts-toolbar > *,
+  .damage-reports-toolbar > *,
+  .warehouse-report-filter > *,
+  .manager-analytics-filter > * {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+  }
+
+  .customers-debt-range,
+  .sales-date-range { flex-basis: auto; min-width: 0; }
+
+  .customers-toolbar input[type="search"],
+  .customers-debt-range,
+  .products-toolbar > input,
+  .products-price-field,
+  .products-status-dropdown,
+  .sales-toolbar > input,
+  .sales-status-dropdown,
+  .sales-cancel-dropdown,
+  .sales-date-range,
+  .suppliers-toolbar input,
+  .employee-accounts-toolbar input,
+  .employee-accounts-toolbar select {
+    flex: 0 0 auto;
+  }
+
+  .manager-analytics-filter { padding: 14px; }
+  .manager-analytics-filter label { width: 100%; }
+  .manager-analytics-filter input { box-sizing: border-box; width: 100%; min-width: 0; }
+  .manager-analytics-filter button { min-height: 44px; }
+  .manager-analytics-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .manager-analytics-card-heading { align-items: flex-start; gap: 8px; padding: 15px; }
+  .manager-analytics-card-heading h2 { font-size: 17px; }
+
+  .customers-table-wrapper,
+  .products-table-wrapper,
+  .sales-table-wrap,
+  .suppliers-table-wrapper,
+  .warehouse-table-wrap,
+  .employee-accounts-table-wrap,
+  .employee-stock-table-wrap,
+  .stock-transfers-history-table-wrap,
+  .manager-analytics-table-wrap,
+  .customer-history-table-wrap {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .customers-table,
+  .products-table,
+  .sales-table,
+  .suppliers-table,
+  .warehouse-table,
+  .employee-accounts-table,
+  .employee-stock-table,
+  .stock-transfers-history-table,
+  .manager-analytics-table { min-width: 680px; }
+
+  .customer-history-table,
+  .sales-detail-items { min-width: 560px; }
+
+  .customers-table th,
+  .customers-table td,
+  .products-table th,
+  .products-table td,
+  .sales-table th,
+  .sales-table td,
+  .suppliers-table th,
+  .suppliers-table td,
+  .warehouse-table th,
+  .warehouse-table td,
+  .employee-accounts-table th,
+  .employee-accounts-table td,
+  .employee-stock-table th,
+  .employee-stock-table td,
+  .stock-transfers-history-table th,
+  .stock-transfers-history-table td,
+  .manager-analytics-table th,
+  .manager-analytics-table td { padding: 12px 11px; }
+
+  .auth-field input,
+  .auth-field select,
+  .customers-toolbar input,
+  .customers-debt-range input,
+  .products-toolbar input,
+  .products-price-field input,
+  .sales-toolbar input,
+  .sales-date-field input,
+  .suppliers-toolbar input,
+  .employee-accounts-toolbar input,
+  .employee-accounts-toolbar select,
+  .warehouse-field input,
+  .warehouse-field textarea,
+  .stock-transfers-field input,
+  .stock-transfers-field textarea,
+  .customer-edit-field input,
+  .customer-edit-field select,
+  .customer-edit-field textarea,
+  .sales-editor-field input,
+  .sales-editor-field select,
+  .sales-editor-field textarea,
+  .searchable-dropdown-input,
+  .role-dropdown-search {
+    font-size: 16px;
+  }
+
+  .auth-submit,
+  .auth-button,
+  .customers-toolbar button,
+  .products-toolbar button,
+  .products-export-button,
+  .sales-create-button,
+  .suppliers-toolbar button,
+  .warehouse-primary-button,
+  .employee-accounts-toolbar button,
+  .employee-account-action,
+  .stock-transfers-actions button {
+    min-height: 44px;
+  }
+
+  .products-export-actions { width: 100%; }
+  .products-export-button { flex: 1 1 180px; }
+  .sales-create-button,
+  .warehouse-page-header .warehouse-primary-button,
+  .stock-transfers-create-button { width: 100%; }
+
+  .sales-status-board,
+  .pending-request-card,
+  .employee-stock-card,
+  .stock-transfers-card,
+  .stock-transfers-history,
+  .manager-summary-card { padding: 16px; }
+
+  .sales-status-board-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .warehouse-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pending-requests-grid { grid-template-columns: 1fr; }
+
+  .customer-modal-overlay,
+  .sales-detail-overlay,
+  .sales-editor-overlay,
+  .warehouse-modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .customer-modal,
+  .sales-detail-modal,
+  .sales-editor-modal,
+  .warehouse-modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: 94vh;
+    max-height: 94dvh;
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 14px 14px 0 0;
+  }
+
+  .customer-modal-body,
+  .sales-detail-body,
+  .sales-editor-body,
+  .warehouse-modal-body {
+    max-height: calc(94vh - 68px);
+    max-height: calc(94dvh - 68px);
+    padding: 16px;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .customer-modal-header,
+  .sales-detail-header,
+  .sales-editor-header,
+  .warehouse-modal-header {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    padding: 14px 16px;
+    background: #fff;
+  }
+
+  .customer-modal-close,
+  .sales-detail-close,
+  .warehouse-modal-close { flex: 0 0 44px; width: 44px; height: 44px; }
+
+  .sales-detail-summary,
+  .sales-detail-info { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+  .customer-detail-tabs {
+    scrollbar-width: none;
+    scroll-snap-type: x proximity;
+  }
+  .customer-detail-tabs::-webkit-scrollbar { display: none; }
+  .customer-detail-tabs button { min-height: 44px; scroll-snap-align: start; }
+
+  .searchable-dropdown-menu {
+    max-height: min(240px, 42dvh);
+    overscroll-behavior: contain;
+  }
+
+  .auth-page {
+    align-items: flex-start;
+    padding: 24px 12px 36px;
+  }
+
+  .auth-card {
+    width: min(100%, 520px);
+    padding: 26px 22px;
+  }
+
+  .company-footer {
+    min-height: 68px;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .back-to-top {
+    right: max(14px, env(safe-area-inset-right));
+    bottom: max(14px, env(safe-area-inset-bottom));
+  }
+
+  .page-transition--forward,
+  .page-transition--back { animation-name: mobile-page-appear; }
+}
+
+@media (max-width: 520px) {
+  .customers-page,
+  .products-page,
+  .sales-page,
+  .suppliers-page,
+  .warehouse-page,
+  .employee-accounts-page,
+  .employee-stock-page,
+  .stock-transfers-page,
+  .pending-requests-page,
+  .manager-analytics-page {
+    width: calc(100% - 20px);
+    padding-top: 20px;
+  }
+
+  .mobile-navigation-brand img { width: 36px; }
+  .mobile-navigation-brand strong { font-size: 12px; }
+
+  .products-export-actions { flex-direction: column; align-items: stretch; }
+  .products-export-button { flex-basis: auto; width: 100%; }
+
+  .customers-debt-range,
+  .sales-date-range,
+  .customer-detail-summary,
+  .customer-payment-history-item,
+  .sales-editor-financials,
+  .warehouse-product-summary-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .customers-debt-range span { display: none; }
+
+  .sales-date-range { gap: 20px; }
+  .sales-date-separator { display: none; }
+  .sales-date-field { flex: none; width: 100%; }
+
+  .manager-analytics-summary,
+  .sales-status-board-grid,
+  .warehouse-summary-grid,
+  .employee-stock-summary,
+  .warehouse-info-grid,
+  .customer-detail-stats { grid-template-columns: 1fr; }
+
+  .employee-stock-summary > div:first-child { grid-column: auto; }
+
+  .sales-editor-item,
+  .warehouse-editor-item {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px;
+    gap: 8px;
+  }
+
+  .sales-editor-item > .searchable-dropdown,
+  .warehouse-editor-item > .warehouse-product-field { grid-column: 1 / -1; }
+
+  .sales-editor-remove,
+  .warehouse-remove,
+  .stock-transfers-remove { width: 44px; height: 44px; }
+
+  .damage-editor-item { grid-template-columns: 104px minmax(0, 1fr) 44px; }
+
+  .stock-transfers-item { grid-template-columns: minmax(0, 1fr) 44px; }
+  .stock-transfers-item .stock-transfers-product-field { grid-column: 1 / -1; }
+
+  .customer-edit-actions,
+  .customer-payment-actions,
+  .sales-editor-actions,
+  .warehouse-modal-actions,
+  .sales-detail-actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .customer-edit-actions button,
+  .customer-payment-actions button,
+  .sales-editor-actions button,
+  .warehouse-modal-actions button,
+  .sales-detail-actions button { width: 100%; min-height: 44px; }
+
+  .sales-complete-actions { width: 100%; }
+  .sales-complete-actions input { width: 100%; }
+
+  .customer-edit-trigger {
+    width: 100%;
+    margin-top: 10px;
+    margin-left: 0;
+  }
+
+  .customer-detail-summary { flex-wrap: wrap; }
+
+  .sales-detail-summary,
+  .sales-detail-info,
+  .customer-order-meta { grid-template-columns: 1fr; }
+
+  .sales-detail-total { align-items: stretch; }
+  .sales-detail-total div { min-width: 0; text-align: left; }
+
+  .warehouse-section-heading,
+  .stock-transfers-section-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .warehouse-section-heading button,
+  .stock-transfers-section-heading button { min-height: 44px; width: 100%; }
+
+  .customers-pagination,
+  .products-pagination,
+  .sales-pagination,
+  .stock-transfers-pagination,
+  .warehouse-table-pagination { gap: 7px; font-size: 12px; }
+
+  .customers-pagination button,
+  .products-pagination button,
+  .sales-pagination button,
+  .stock-transfers-pagination button,
+  .warehouse-table-pagination button { min-width: 60px; min-height: 40px; padding: 7px 9px; }
+
+  .confirm-dialog-overlay { padding: 12px; }
+  .confirm-dialog { max-width: 100%; }
+}
+
+@media (max-width: 380px) {
+  .customers-page,
+  .products-page,
+  .sales-page,
+  .suppliers-page,
+  .warehouse-page,
+  .employee-accounts-page,
+  .employee-stock-page,
+  .stock-transfers-page,
+  .pending-requests-page,
+  .manager-analytics-page { width: calc(100% - 16px); }
+
+  .mobile-navigation-bar { padding-right: 8px; padding-left: 8px; }
+  .mobile-navigation-brand { gap: 6px; margin-left: 7px; }
+  .mobile-navigation-brand img { display: none; }
+
+  .customers-header h1,
+  .products-header h1,
+  .sales-header h1,
+  .suppliers-header h1,
+  .warehouse-page-header h1,
+  .employee-accounts-header h1,
+  .employee-stock-header h1,
+  .stock-transfers-header h1,
+  .pending-requests-header h1,
+  .manager-analytics-header h1 { font-size: 22px; }
+
+  .auth-card { padding: 22px 16px; }
+  .sales-status-board,
+  .pending-request-card,
+  .employee-stock-card,
+  .stock-transfers-card,
+  .stock-transfers-history,
+  .manager-summary-card { padding: 14px; }
+
+  .sales-editor-item,
+  .warehouse-editor-item { grid-template-columns: minmax(0, 1fr) 44px; }
+  .sales-editor-item > input,
+  .warehouse-editor-item > input { grid-column: 1; }
+  .sales-editor-item > .sales-editor-remove,
+  .warehouse-editor-item > .warehouse-remove { grid-column: 2; grid-row: 2; }
+  .damage-editor-item { grid-template-columns: minmax(0, 1fr) 44px; }
+  .damage-editor-item > input:nth-of-type(1) { grid-column: 1; grid-row: 2; }
+  .damage-editor-item > input:nth-of-type(2) { grid-column: 1 / -1; grid-row: 3; }
+  .damage-editor-item > .warehouse-remove { grid-column: 2; grid-row: 2; }
+}
+
+@media (max-width: 768px) and (max-height: 520px) {
+  .internal-sidebar,
+  .internal-sidebar.is-collapsed { padding-top: 10px; padding-bottom: 10px; }
+  .internal-sidebar-account { margin-top: 16px; }
+  .customer-modal,
+  .sales-detail-modal,
+  .sales-editor-modal,
+  .warehouse-modal { max-height: 100dvh; border-radius: 0; }
+}
+
+@media (pointer: coarse) and (max-width: 768px) {
+  button,
+  [role="button"],
+  .internal-sidebar-link { touch-action: manipulation; }
+}
+
+@keyframes mobile-page-appear {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .internal-sidebar,
+  .mobile-navigation-overlay { transition: none; }
+}
