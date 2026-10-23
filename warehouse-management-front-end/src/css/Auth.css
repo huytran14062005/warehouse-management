@@ -1,0 +1,250 @@
+.auth-page {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  background: #f5f7fb;
+}
+
+.auth-card {
+  width: min(100%, 460px);
+  padding: 32px;
+  border: 1px solid #e1e8ef;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(11, 49, 88, 0.08);
+}
+
+.auth-card h1 {
+  margin: 0 0 8px;
+  color: #0b3158;
+  font-size: 26px;
+  text-align: center;
+}
+
+.auth-subtitle {
+  margin: 0 0 26px;
+  color: #718096;
+  font-size: 13px;
+  text-align: center;
+}
+
+.auth-form {
+  display: grid;
+  gap: 15px;
+}
+
+.auth-field {
+  display: grid;
+  gap: 7px;
+}
+
+.auth-field label,
+.auth-label {
+  color: #263b50;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.auth-field input,
+.auth-field select {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid #d5e0e8;
+  border-radius: 5px;
+  color: #1b2d40;
+  background: #fff;
+  font-size: 13px;
+}
+
+.auth-field input:focus,
+.auth-field select:focus {
+  outline: 2px solid rgba(11, 49, 88, 0.16);
+  border-color: #0b3158;
+}
+
+.password-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-input {
+  padding-right: 45px !important;
+}
+
+.password-toggle-btn {
+  position: absolute;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border: 0;
+  border-radius: 4px;
+  color: #718096;
+  background: transparent;
+  cursor: pointer;
+  transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.password-toggle-btn:hover {
+  color: #0b3158;
+  background: #f1f4f7;
+}
+
+.password-toggle-btn:focus-visible {
+  outline: 2px solid #0b3158;
+  outline-offset: 2px;
+}
+
+.role-dropdown {
+  position: relative;
+}
+
+.role-dropdown-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 12px;
+  border: 1px solid #d5e0e8;
+  border-radius: 5px;
+  color: #1b2d40;
+  background: #fff;
+  font-size: 13px;
+  text-align: left;
+}
+
+.role-dropdown-trigger:focus-visible,
+.role-dropdown-trigger[aria-expanded="true"] {
+  outline: 2px solid rgba(11, 49, 88, 0.16);
+  border-color: #0b3158;
+}
+
+.role-dropdown-arrow {
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.role-dropdown-arrow.is-open {
+  transform: rotate(180deg);
+}
+
+.role-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 5px);
+  right: 0;
+  left: 0;
+  z-index: 5;
+  display: grid;
+  gap: 3px;
+  padding: 5px;
+  border: 1px solid #d5e0e8;
+  border-radius: 5px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(11, 49, 88, 0.14);
+}
+
+.role-dropdown-search {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 9px;
+  border: 1px solid #d5e0e8;
+  border-radius: 4px;
+  color: #1b2d40;
+  background: #fff;
+  outline: none;
+  font: inherit;
+  font-size: 13px;
+}
+
+.role-dropdown-search:focus {
+  border-color: #0b3158;
+  box-shadow: 0 0 0 2px rgba(11, 49, 88, 0.1);
+}
+
+.role-dropdown-option {
+  padding: 10px 11px;
+  border: 0;
+  border-radius: 4px;
+  color: #1b2d40;
+  background: #fff;
+  font-size: 13px;
+  text-align: left;
+}
+
+.role-dropdown-option:hover,
+.role-dropdown-option.is-selected {
+  color: #0b3158;
+  background: #eef4f8;
+}
+
+.auth-alert {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border-radius: 5px;
+  color: #a43131;
+  background: #fff1f1;
+  font-size: 13px;
+}
+
+.auth-success {
+  color: #24643a;
+  background: #edf9f0;
+}
+
+.auth-submit {
+  margin-top: 5px;
+  padding: 12px;
+  border: 0;
+  border-radius: 5px;
+  color: #fff;
+  background: #0b3158;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.auth-submit:hover:not(:disabled) {
+  background: #072542;
+}
+
+.auth-submit:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.auth-link-row {
+  margin: 22px 0 0;
+  color: #718096;
+  font-size: 13px;
+  text-align: center;
+}
+
+.auth-link {
+  padding: 0;
+  border: 0;
+  color: #0b3158;
+  background: transparent;
+  font-size: inherit;
+  font-weight: 700;
+}
+
+.auth-secondary-button {
+  width: 100%;
+  cursor: pointer;
+  text-align: center;
+}
+
+.auth-forgot-row {
+  margin-top: -5px;
+  text-align: right;
+}
+
+@media (max-width: 480px) {
+  .auth-card {
+    padding: 24px 20px;
+  }
+}

@@ -1,0 +1,27 @@
+.suppliers-page { width: min(1280px, calc(100% - 48px)); margin: 0 auto; padding: 38px 0 52px; color: #1b2d40; }
+.suppliers-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
+.suppliers-header h1 { margin: 0; color: #0b3158; font-size: clamp(25px, 4vw, 34px); }
+.suppliers-header p { margin: 8px 0 0; color: #71849a; font-size: 14px; }
+.suppliers-count { color: #0b3158; font-size: 13px; font-weight: 700; white-space: nowrap; }
+.suppliers-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+.suppliers-toolbar input { box-sizing: border-box; flex: 1; min-width: 220px; min-height: 40px; padding: 10px 12px; color: #1b2d40; border: 1px solid #cbd7e2; border-radius: 5px; background: #fff; outline: none; font: inherit; font-size: 13px; }
+.suppliers-toolbar input:focus { border-color: #0b3158; box-shadow: 0 0 0 2px rgba(11, 49, 88, .1); }
+.suppliers-toolbar button { min-height: 40px; padding: 10px 16px; color: #fff; border: 1px solid #0b3158; border-radius: 5px; background: #0b3158; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.suppliers-toolbar button:hover { background: #072542; }
+.suppliers-alert { margin-bottom: 16px; padding: 11px 13px; color: #9f2d2d; border: 1px solid #f1c8c8; border-radius: 5px; background: #fff1f1; font-size: 13px; }
+.suppliers-card { overflow: hidden; border: 1px solid #d9e2ec; border-radius: 6px; background: #fff; }
+.suppliers-table-wrapper { overflow-x: auto; }
+.suppliers-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.suppliers-table th, .suppliers-table td { padding: 13px 14px; border-bottom: 1px solid #edf1f5; text-align: left; vertical-align: middle; }
+.suppliers-table th { color: #52657a; background: #f7f9fb; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.suppliers-table tbody tr:last-child td { border-bottom: 0; }
+.suppliers-table tbody tr:hover { background: #fbfcfd; }
+.suppliers-name { color: #0b3158; font-weight: 600; }
+.suppliers-state { padding: 42px 20px; color: #71849a; text-align: center; font-size: 14px; }
+
+@media (max-width: 720px) {
+  .suppliers-page { width: min(100% - 32px, 560px); padding-top: 26px; }
+  .suppliers-header { align-items: flex-start; flex-direction: column; }
+  .suppliers-toolbar { align-items: stretch; flex-direction: column; }
+  .suppliers-toolbar input, .suppliers-toolbar button { width: 100%; }
+}

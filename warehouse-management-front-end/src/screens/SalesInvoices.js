@@ -1,0 +1,1875 @@
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { authApis, endpoints } from "../configs/Apis";
+import { getApiError } from "../utils/apiError";
+import useNotificationState from "../utils/useNotificationState";
+import { notifyInventoryChanged } from "../utils/inventoryEvents";
+import { digitsOnly, formatMoneyInput } from "../utils/money";
+import ConfirmDialog from "../components/ConfirmDialog";
+import AutoDismissMessage from "../components/AutoDismissMessage";
+import SharedSearchableDropdown from "../components/SearchableDropdown";
+import Pagination from "../components/Pagination";
+import Skeleton from "../components/Skeleton";
+import "../css/SalesInvoices.css";
+
+const PER_PAGE = 10;
+const DISCOUNT_PER_PAGE = 10;
+
+const STATUS_OPTIONS = [
+  { value: "", label: "Tất cả trạng thái" },
+  { value: "nháp", label: "Nháp" },
+  { value: "đang xử lý", label: "Đang xử lý" },
+  { value: "đang giao", label: "Đang giao" },
+  { value: "hoàn thành", label: "Hoàn thành" },
+  { value: "đã hủy", label: "Đã hủy" },
+];
+
+const CANCEL_REQUEST_OPTIONS = [
+  { value: "", label: "Tất cả yêu cầu hủy" },
+  { value: "pending", label: "Chờ duyệt hủy" },
+];
+
+function formatCurrency(value) {
+  return new Intl.NumberFormat("vi-VN", {
+    style: "currency",
+    currency: "VND",
+    maximumFractionDigits: 0,
+  }).format(Number(value || 0));
+}
+
+function formatDateTime(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  const pad = (number) => String(number).padStart(2, "0");
+  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function getStatusClass(status) {
+  const value = String(status || "").toLowerCase();
+  if (value === "nháp" || value === "draft") return "sales-status-draft";
+  if (value === "đang xử lý" || value === "processing")
+    return "sales-status-processing";
+  if (value === "đang giao" || value === "delivering")
+    return "sales-status-delivering";
+  if (value === "hoàn thành" || value === "completed")
+    return "sales-status-completed";
+  if (value === "đã hủy" || value === "cancelled")
+    return "sales-status-cancelled";
+  return "sales-status-default";
+}
+
+function getStatusLabel(status) {
+  const option = STATUS_OPTIONS.find((item) => item.value === status);
+  return option?.label || status || "Không xác định";
+}
+
+function isCompletedStatus(status) {
+  const value = String(status || "").toLowerCase();
+  return value === "hoàn thành" || value === "completed";
+}
+
+function hasActiveCancelRequest(invoice) {
+  const status = String(invoice?.status || "").toLowerCase();
+  return Boolean(
+    invoice?.cancel_requested &&
+      ["đang xử lý", "đang giao", "processing", "delivering"].includes(status),
+  );
+}
+
+function validateSaleDateRange(fromDate, toDate) {
+  if (fromDate && toDate && fromDate > toDate) {
+    return "Ngày bắt đầu không được lớn hơn ngày kết thúc.";
+  }
+  return "";
+}
+
+function SalesInvoiceDetail({
+  invoice,
+  onClose,
+  canEdit,
+  canCancel,
+  canRequestCancel,
+  canCancelDirect,
+  canManageStatus,
+  canApproveCancel,
+  actionLoading,
+  actionError,
+  onEdit,
+  onCancelDraft,
+  onCancelRequest,
+  onCancelDirect,
+  onAdvanceStatus,
+  onComplete,
+  onApproveCancel,
+}) {
+  const [completionPayment, setCompletionPayment] = useState(
+    String(invoice.paid_amount || ""),
+  );
+  return createPortal(
+    <div className="sales-detail-overlay" onClick={onClose}>
+      <div
+        className="sales-detail-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="sales-detail-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="sales-detail-header">
+          <div>
+            <h2 id="sales-detail-title">CHI TIẾT ĐƠN HÀNG SỐ {invoice.id}</h2>
+          </div>
+          <button
+            type="button"
+            className="sales-detail-close"
+            onClick={onClose}
+            aria-label="Đóng"
+          >
+            ×
+          </button>
+        </div>
+        <div className="sales-detail-body">
+          <AutoDismissMessage message={actionError} className="sales-alert" />
+          <div className="sales-detail-summary">
+            <div>
+              <span>Ngày bán</span>
+              <strong>{formatDateTime(invoice.sold_at)}</strong>
+            </div>
+            <div>
+              <span>Trạng thái</span>
+              <strong
+                className={`sales-status-badge ${getStatusClass(invoice.status)}`}
+              >
+                {getStatusLabel(invoice.status)}
+              </strong>
+            </div>
+            <div>
+              <span>Nhân viên lập đơn</span>
+              <strong>{invoice.employee?.full_name || "—"}</strong>
+            </div>
+            <div>
+              <span>Nguồn hàng</span>
+              <strong>
+                {invoice.sale_source === "hàng nhân viên"
+                  ? "Hàng nhân viên đi tỉnh"
+                  : "Kho trung tâm"}
+              </strong>
+            </div>
+            <div>
+              <span>Thanh toán</span>
+              <strong>{invoice.payment_status || "chưa thanh toán"}</strong>
+            </div>
+          </div>
+
+          <div className="sales-detail-info">
+            <div>
+              <span>Khách hàng</span>
+              <strong>{invoice.customer?.full_name || "—"}</strong>
+            </div>
+            <div>
+              <span>Số điện thoại</span>
+              <strong>{invoice.customer?.phone || "—"}</strong>
+            </div>
+            <div>
+              <span>Địa chỉ</span>
+              <strong>{invoice.customer?.address || "—"}</strong>
+            </div>
+          </div>
+
+          <div className="sales-detail-items-wrap">
+            <h3>Sản phẩm trong đơn</h3>
+            {invoice.items?.length ? (
+              <table className="sales-detail-items">
+                <thead>
+                  <tr>
+                    <th>Sản phẩm</th>
+                    <th>Đơn vị</th>
+                    <th>Số lượng</th>
+                    <th>Đơn giá</th>
+                    <th className="sales-money">Thành tiền</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {invoice.items.map((item) => (
+                    <tr key={item.id}>
+                      <td>{item.product_name}</td>
+                      <td>{item.unit || "—"}</td>
+                      <td>{item.quantity}</td>
+                      <td>{formatCurrency(item.unit_price)}</td>
+                      <td className="sales-money">
+                        {formatCurrency(item.total)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="sales-detail-empty">Đơn hàng chưa có sản phẩm.</p>
+            )}
+          </div>
+
+          <div className="sales-detail-total">
+            <div>
+              <span>Tạm tính</span>
+              <strong>{formatCurrency(invoice.total_amount)}</strong>
+            </div>
+            <div>
+              <span>Giảm giá</span>
+              <strong>{formatCurrency(invoice.discount?.amount)}</strong>
+            </div>
+            <div className="sales-detail-final">
+              <span>Tổng thanh toán</span>
+              <strong>{formatCurrency(invoice.final_amount)}</strong>
+            </div>
+            <div>
+              <span>Đã thanh toán</span>
+              <strong>{formatCurrency(invoice.paid_amount)}</strong>
+            </div>
+            <div>
+              <span>Còn công nợ</span>
+              <strong>{formatCurrency(invoice.remaining_amount)}</strong>
+            </div>
+          </div>
+          {invoice.note && (
+            <div className="sales-detail-note">
+              <span>Ghi chú</span>
+              <p>{invoice.note}</p>
+            </div>
+          )}
+          {(canEdit || canCancel || canApproveCancel) && (
+            <div className="sales-detail-actions">
+              {canEdit && invoice.status === "nháp" && (
+                <button type="button" onClick={onEdit} disabled={actionLoading}>
+                  Chỉnh sửa đơn nháp
+                </button>
+              )}
+              {canCancel && invoice.status === "nháp" && (
+                <button
+                  type="button"
+                  className="sales-action-danger"
+                  onClick={onCancelDraft}
+                  disabled={actionLoading}
+                >
+                  Hủy đơn nháp
+                </button>
+              )}
+              {canCancelDirect &&
+                ["đang xử lý", "đang giao"].includes(invoice.status) &&
+                !invoice.cancel_requested && (
+                  <button
+                    type="button"
+                    className="sales-action-danger"
+                    onClick={onCancelDirect}
+                    disabled={actionLoading}
+                  >
+                    Hủy đơn trực tiếp
+                  </button>
+                )}
+              {canRequestCancel &&
+                ["đang xử lý", "đang giao"].includes(invoice.status) &&
+                !invoice.cancel_requested && (
+                  <button
+                    type="button"
+                    className="sales-action-danger"
+                    onClick={onCancelRequest}
+                    disabled={actionLoading}
+                  >
+                    Gửi yêu cầu hủy đơn
+                  </button>
+                )}
+              {hasActiveCancelRequest(invoice) && (
+                <span className="sales-cancel-requested">
+                  Đã gửi yêu cầu hủy
+                </span>
+              )}
+            </div>
+          )}
+          {canManageStatus && invoice.status === "nháp" && (
+            <div className="sales-detail-actions">
+              <button
+                type="button"
+                onClick={() => onAdvanceStatus("đang xử lý")}
+                disabled={actionLoading}
+              >
+                Xác nhận xử lý đơn
+              </button>
+            </div>
+          )}
+          {canManageStatus && invoice.status === "đang xử lý" && (
+            <div className="sales-detail-actions">
+              <button
+                type="button"
+                onClick={() => onAdvanceStatus("đang giao")}
+                disabled={actionLoading}
+              >
+                Chuyển sang đang giao
+              </button>
+            </div>
+          )}
+          {canManageStatus && invoice.status === "đang giao" && (
+            <div className="sales-detail-actions sales-complete-actions">
+              <input
+                type="text"
+                inputMode="numeric"
+                value={formatMoneyInput(completionPayment)}
+                onChange={(event) =>
+                  setCompletionPayment(digitsOnly(event.target.value))
+                }
+                placeholder="Khách thanh toán"
+                aria-label="Số tiền khách thanh toán"
+              />
+              <button
+                type="button"
+                onClick={() => onComplete(Number(completionPayment) || 0)}
+                disabled={actionLoading}
+              >
+                Hoàn thành đơn
+              </button>
+            </div>
+          )}
+          {canApproveCancel && hasActiveCancelRequest(invoice) && (
+            <div className="sales-detail-actions">
+              {!isCompletedStatus(invoice.status) && (
+                <button
+                  type="button"
+                  onClick={() => onApproveCancel(true)}
+                  disabled={actionLoading}
+                >
+                  Duyệt hủy đơn
+                </button>
+              )}
+              {isCompletedStatus(invoice.status) && (
+                <span className="sales-cancel-requested">
+                  Đơn đã hoàn thành, không thể duyệt hủy trực tiếp
+                </span>
+              )}
+              <button
+                type="button"
+                className="sales-action-danger"
+                onClick={() => onApproveCancel(false)}
+                disabled={actionLoading}
+              >
+                Từ chối hủy
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
+  const isEditing = Boolean(invoice?.id);
+  const activeUser = (() => {
+    try {
+      return JSON.parse(localStorage.getItem("user")) || {};
+    } catch {
+      return {};
+    }
+  })();
+  const canUseEmployeeStock = activeUser.role === "nhân viên bán hàng";
+  const [customers, setCustomers] = useState([]);
+  const [salesAreas, setSalesAreas] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [optionsLoading, setOptionsLoading] = useState(true);
+  const [formError, setFormError] = useNotificationState();
+  const [saving, setSaving] = useState(false);
+  const [customerMode, setCustomerMode] = useState(
+    isEditing ? "existing" : "existing",
+  );
+  const [customerId, setCustomerId] = useState(
+    String(invoice?.customer?.id || ""),
+  );
+  const [customerSearchInput, setCustomerSearchInput] = useState(
+    invoice?.customer?.full_name || "",
+  );
+  const [selectedCustomer, setSelectedCustomer] = useState(
+    invoice?.customer || null,
+  );
+  const [customerSearchLoading, setCustomerSearchLoading] = useState(false);
+  const [saleSource, setSaleSource] = useState(
+    invoice?.sale_source === "hàng nhân viên"
+      ? "employee_stock"
+      : "central_warehouse",
+  );
+  const [employeeStock, setEmployeeStock] = useState([]);
+  const [employeeStockLoading, setEmployeeStockLoading] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState(
+    String(invoice?.paid_amount || ""),
+  );
+  const [newCustomer, setNewCustomer] = useState({
+    full_name: "",
+    phone: "",
+    address: "",
+    sales_area_id: "",
+  });
+  const [items, setItems] = useState(
+    (invoice?.items || []).map((item) => ({
+      productId: String(item.product_id),
+      productSearch: item.product_name || "",
+      quantity: String(item.quantity),
+      unitPrice: String(item.unit_price),
+    })),
+  );
+  const [discountAmount, setDiscountAmount] = useState(
+    String(invoice?.discount?.amount || ""),
+  );
+  const [note, setNote] = useState(invoice?.note || "");
+  const [productSearchResults, setProductSearchResults] = useState({});
+  const [productSearchLoading, setProductSearchLoading] = useState({});
+  const customerSearchTimerRef = useRef(null);
+  const customerSearchTouchedRef = useRef(false);
+  const productSearchTimerRefs = useRef({});
+  const productSearchRequestRefs = useRef({});
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadOptions = async () => {
+      try {
+        setOptionsLoading(true);
+        const [customersResponse, productsResponse, salesAreasResponse] = await Promise.all([
+          authApis().get(endpoints.customers, {
+            params: { page: 1, per_page: 1000 },
+          }),
+          authApis().get(endpoints.productsInventory, {
+            params: { page: 1, per_page: 1000 },
+          }),
+          authApis().get(endpoints.salesAreas),
+        ]);
+        if (cancelled) return;
+        setCustomers(customersResponse.data?.customers || []);
+        setProducts(productsResponse.data?.products || []);
+        setSalesAreas(salesAreasResponse.data?.sales_areas || []);
+      } catch (requestError) {
+        if (!cancelled) setFormError(getApiError(requestError));
+      } finally {
+        if (!cancelled) setOptionsLoading(false);
+      }
+    };
+    loadOptions();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (saleSource !== "employee_stock" || isEditing) return undefined;
+    let cancelled = false;
+    const loadEmployeeStock = async () => {
+      try {
+        setEmployeeStockLoading(true);
+        const response = await authApis().get(endpoints.employeeStock, {
+          params: { page: 1, per_page: 1000 },
+        });
+        if (!cancelled) setEmployeeStock(response.data?.products || []);
+      } catch (requestError) {
+        if (!cancelled) setFormError(getApiError(requestError));
+      } finally {
+        if (!cancelled) setEmployeeStockLoading(false);
+      }
+    };
+    loadEmployeeStock();
+    return () => {
+      cancelled = true;
+    };
+  }, [isEditing, saleSource]);
+
+  useEffect(() => {
+    if (!customerSearchTouchedRef.current) return undefined;
+    if (customerSearchTimerRef.current)
+      clearTimeout(customerSearchTimerRef.current);
+    let active = true;
+
+    customerSearchTimerRef.current = setTimeout(async () => {
+      try {
+        setCustomerSearchLoading(true);
+        const keyword = customerSearchInput.trim();
+        const response = await authApis().get(endpoints.customers, {
+          params: { page: 1, per_page: 100, keyword: keyword || undefined },
+        });
+        if (active) setCustomers(response.data?.customers || []);
+      } catch (requestError) {
+        if (active) setFormError(getApiError(requestError));
+      } finally {
+        if (active) setCustomerSearchLoading(false);
+      }
+    }, 750);
+
+    return () => {
+      active = false;
+      if (customerSearchTimerRef.current)
+        clearTimeout(customerSearchTimerRef.current);
+    };
+  }, [customerSearchInput]);
+
+  useEffect(
+    () => () => {
+      Object.values(productSearchTimerRefs.current).forEach((timer) =>
+        clearTimeout(timer),
+      );
+    },
+    [],
+  );
+
+  const handleCustomerSearchChange = (value) => {
+    customerSearchTouchedRef.current = true;
+    setCustomerSearchInput(value);
+    setCustomerId("");
+    setSelectedCustomer(null);
+    setCustomers([]);
+    setCustomerSearchLoading(true);
+  };
+
+  const handleCustomerSelect = (value) => {
+    customerSearchTouchedRef.current = false;
+    const selected =
+      customers.find((customer) => String(customer.id) === String(value)) ||
+      (invoice?.customer && String(invoice.customer.id) === String(value)
+        ? invoice.customer
+        : null);
+    setCustomerId(String(value));
+    setSelectedCustomer(selected || null);
+    setCustomerSearchInput(selected?.full_name || "");
+  };
+
+  const subtotal = items.reduce(
+    (total, item) =>
+      total + (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0),
+    0,
+  );
+  const discount = Number(discountAmount) || 0;
+  const saleProducts =
+    saleSource === "employee_stock"
+      ? employeeStock.map((product) => ({
+          ...product,
+          available_stock: product.quantity,
+        }))
+      : products;
+
+  const handleProductSearchChange = (index, value) => {
+    setItems((current) =>
+      current.map((item, itemIndex) =>
+        itemIndex === index
+          ? { ...item, productId: "", productSearch: value, unitPrice: "" }
+          : item,
+      ),
+    );
+    setProductSearchLoading((current) => ({ ...current, [index]: true }));
+    if (productSearchTimerRefs.current[index]) {
+      clearTimeout(productSearchTimerRefs.current[index]);
+    }
+    const requestId = (productSearchRequestRefs.current[index] || 0) + 1;
+    productSearchRequestRefs.current[index] = requestId;
+    productSearchTimerRefs.current[index] = setTimeout(async () => {
+      try {
+        const keyword = value.trim();
+        let results;
+        if (saleSource === "employee_stock") {
+          const normalizedKeyword = keyword.toLowerCase();
+          results = normalizedKeyword
+            ? saleProducts.filter((product) =>
+                `${product.name} ${product.unit}`
+                  .toLowerCase()
+                  .includes(normalizedKeyword),
+              )
+            : saleProducts;
+        } else {
+          const response = await authApis().get(endpoints.productsInventory, {
+            params: { page: 1, per_page: 100, keyword: keyword || undefined },
+          });
+          results = response.data?.products || [];
+        }
+        if (productSearchRequestRefs.current[index] !== requestId) return;
+        setProductSearchResults((current) => ({
+          ...current,
+          [index]: results,
+        }));
+      } catch (requestError) {
+        if (productSearchRequestRefs.current[index] === requestId) {
+          setFormError(getApiError(requestError));
+        }
+      } finally {
+        if (productSearchRequestRefs.current[index] === requestId) {
+          setProductSearchLoading((current) => ({
+            ...current,
+            [index]: false,
+          }));
+        }
+      }
+    }, 750);
+  };
+
+  const updateItem = (index, field, value) => {
+    setItems((current) =>
+      current.map((item, itemIndex) => {
+        if (itemIndex !== index) return item;
+        if (field !== "productId") return { ...item, [field]: value };
+        const selectedProduct = saleProducts.find(
+          (product) => String(product.id) === value,
+        );
+        return {
+          ...item,
+          productId: value,
+          productSearch: selectedProduct?.name || "",
+          unitPrice: selectedProduct
+            ? String(selectedProduct.default_sale_price)
+            : item.unitPrice,
+        };
+      }),
+    );
+  };
+
+  const addItem = () => {
+    setItems((current) => [
+      ...current,
+      { productId: "", productSearch: "", quantity: "1", unitPrice: "" },
+    ]);
+  };
+
+  const handleSaleSourceChange = (value) => {
+    setSaleSource(String(value));
+    setItems([
+      { productId: "", productSearch: "", quantity: "1", unitPrice: "" },
+    ]);
+    setProductSearchResults({});
+    setProductSearchLoading({});
+    setPaymentAmount("");
+  };
+
+  const removeItem = (index) => {
+    setItems((current) =>
+      current.filter((_, itemIndex) => itemIndex !== index),
+    );
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setFormError("");
+    if (customerMode === "existing" && !customerId) {
+      setFormError("Vui lòng chọn khách hàng.");
+      return;
+    }
+    if (
+      customerMode === "new" &&
+      (!newCustomer.full_name.trim() ||
+        !newCustomer.phone.trim() ||
+        !newCustomer.address.trim() ||
+        !newCustomer.sales_area_id)
+    ) {
+      setFormError(
+        "Vui lòng nhập đầy đủ họ tên, số điện thoại và địa chỉ khách hàng.",
+      );
+      return;
+    }
+    if (!items.length) {
+      setFormError("Đơn hàng phải có ít nhất một sản phẩm.");
+      return;
+    }
+    const productIds = new Set();
+    for (const item of items) {
+      if (
+        !item.productId ||
+        Number(item.quantity) <= 0 ||
+        Number(item.unitPrice) <= 0
+      ) {
+        setFormError("Vui lòng nhập sản phẩm, số lượng và giá bán hợp lệ.");
+        return;
+      }
+      if (productIds.has(item.productId)) {
+        setFormError("Mỗi sản phẩm chỉ được xuất hiện một lần trong đơn.");
+        return;
+      }
+      productIds.add(item.productId);
+    }
+    if (discount < 0 || discount > subtotal) {
+      setFormError("Giảm giá không được âm hoặc lớn hơn tạm tính.");
+      return;
+    }
+    const enteredPayment = Number(paymentAmount) || 0;
+    const finalAmount = subtotal - discount;
+    if (
+      saleSource === "employee_stock" &&
+      (enteredPayment < 0 || enteredPayment > finalAmount)
+    ) {
+      setFormError(
+        "Số tiền khách thanh toán không được lớn hơn tổng tiền đơn.",
+      );
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const payload = {
+        customer_id: customerMode === "existing" ? Number(customerId) : null,
+        customer:
+          customerMode === "new"
+            ? {
+                full_name: newCustomer.full_name.trim(),
+                phone: newCustomer.phone.trim(),
+                address: newCustomer.address.trim(),
+                sales_area_id: newCustomer.sales_area_id ? Number(newCustomer.sales_area_id) : null,
+              }
+            : undefined,
+        note: note.trim(),
+        discount_amount: discount,
+        discount_note: "",
+        sale_source: saleSource,
+        payment_amount: saleSource === "employee_stock" ? enteredPayment : 0,
+        items: items.map((item) => ({
+          product_id: Number(item.productId),
+          quantity: Number(item.quantity),
+          unit_price: Number(item.unitPrice),
+        })),
+      };
+      const response = isEditing
+        ? await authApis().put(
+            endpoints.salesInvoiceDetail(invoice.id),
+            payload,
+          )
+        : await authApis().post(endpoints.salesInvoices, payload);
+      onSaved(response.data?.invoice);
+    } catch (requestError) {
+      setFormError(getApiError(requestError));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return createPortal(
+    <div className="sales-editor-overlay" onClick={onClose}>
+      <div
+        className="sales-editor-modal"
+        role="dialog"
+        aria-modal="true"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="sales-editor-header">
+          <div>
+            <p className="sales-detail-eyebrow">
+              {isEditing ? "CẬP NHẬT ĐƠN NHÁP" : "TẠO ĐƠN BÁN HÀNG"}
+            </p>
+            <h2>
+              {isEditing ? `Đơn hàng #${invoice.id}` : "Thông tin đơn hàng"}
+            </h2>
+          </div>
+          <button
+            type="button"
+            className="sales-detail-close"
+            onClick={onClose}
+            aria-label="Đóng"
+          >
+            ×
+          </button>
+        </div>
+        <form className="sales-editor-body" onSubmit={handleSubmit}>
+          <AutoDismissMessage message={formError} className="sales-alert" />
+          {optionsLoading ? (
+            <Skeleton variant="form" rows={5} />
+          ) : (
+            <>
+              {!isEditing && (
+                <div className="sales-editor-field">
+                  <span>Nguồn hàng</span>
+                  <SharedSearchableDropdown
+                    value={saleSource}
+                    placeholder="Chọn nguồn hàng"
+                    ariaLabel="Chọn nguồn hàng"
+                    onChange={handleSaleSourceChange}
+                    options={[
+                      {
+                        value: "central_warehouse",
+                        label: "Xuất từ kho trung tâm",
+                      },
+                      ...(canUseEmployeeStock
+                        ? [
+                            {
+                              value: "employee_stock",
+                              label: "Hàng nhân viên mang đi tỉnh",
+                            },
+                          ]
+                        : []),
+                    ]}
+                  />
+                  {saleSource === "employee_stock" && (
+                    <small>
+                      {employeeStockLoading
+                        ? "Đang tải tồn hàng của bạn..."
+                        : "Đơn sẽ hoàn thành ngay sau khi lưu và trừ vào tồn hàng của bạn."}
+                    </small>
+                  )}
+                </div>
+              )}
+              <div className="sales-editor-field">
+                <span>Khách hàng</span>
+                {!isEditing && (
+                  <div className="sales-customer-mode">
+                    <button
+                      type="button"
+                      className={customerMode === "existing" ? "is-active" : ""}
+                      onClick={() => setCustomerMode("existing")}
+                    >
+                      Khách hàng đã lưu
+                    </button>
+                    <button
+                      type="button"
+                      className={customerMode === "new" ? "is-active" : ""}
+                      onClick={() => setCustomerMode("new")}
+                    >
+                      Khách hàng mới
+                    </button>
+                  </div>
+                )}
+                {customerMode === "existing" ? (
+                  <>
+                    <SharedSearchableDropdown
+                      value={customerId}
+                      placeholder="Chọn khách hàng"
+                      ariaLabel="Chọn khách hàng"
+                      searchValue={customerSearchInput}
+                      onSearchChange={handleCustomerSearchChange}
+                      searching={customerSearchLoading}
+                      onChange={handleCustomerSelect}
+                      emptyLabel="Không tìm thấy khách hàng."
+                      options={[
+                        ...customers.map((customer) => ({
+                          value: customer.id,
+                          label: customer.full_name,
+                        })),
+                        ...(invoice?.customer &&
+                        !customers.some(
+                          (customer) => customer.id === invoice.customer.id,
+                        )
+                          ? [
+                              {
+                                value: invoice.customer.id,
+                                label: invoice.customer.full_name,
+                              },
+                            ]
+                          : []),
+                      ]}
+                    />
+                    {selectedCustomer && (
+                      <div className="sales-customer-contact">
+                        <span>
+                          Số điện thoại:{" "}
+                          <strong>{selectedCustomer.phone || "—"}</strong>
+                        </span>
+                        <span>
+                          Địa chỉ:{" "}
+                          <strong>{selectedCustomer.address || "—"}</strong>
+                        </span>
+                        <span>
+                          Công nợ hiện tại:{" "}
+                          <strong>
+                            {formatCurrency(selectedCustomer.debt_amount)}
+                          </strong>
+                        </span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="sales-new-customer-fields">
+                    <input
+                      value={newCustomer.full_name}
+                      onChange={(event) =>
+                        setNewCustomer((current) => ({
+                          ...current,
+                          full_name: event.target.value,
+                        }))
+                      }
+                      placeholder="Họ và tên"
+                    />
+                    <input
+                      value={newCustomer.phone}
+                      onChange={(event) =>
+                        setNewCustomer((current) => ({
+                          ...current,
+                          phone: event.target.value,
+                        }))
+                      }
+                      placeholder="Số điện thoại"
+                    />
+                    <input
+                      value={newCustomer.address}
+                      onChange={(event) =>
+                        setNewCustomer((current) => ({
+                          ...current,
+                          address: event.target.value,
+                        }))
+                      }
+                      placeholder="Địa chỉ"
+                    />
+                    <select
+                      value={newCustomer.sales_area_id}
+                      onChange={(event) =>
+                        setNewCustomer((current) => ({
+                          ...current,
+                          sales_area_id: event.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">Chọn khu vực bán hàng</option>
+                      {salesAreas.map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              <div className="sales-editor-section-heading">
+                <h3>Sản phẩm</h3>
+                <button
+                  type="button"
+                  className="sales-editor-add"
+                  onClick={addItem}
+                >
+                  + Thêm sản phẩm
+                </button>
+              </div>
+              <div className="sales-editor-items">
+                {items.map((item, index) => {
+                  const selectedProduct = saleProducts.find(
+                    (product) => String(product.id) === String(item.productId),
+                  );
+                  const searchedProducts =
+                    productSearchResults[index] || saleProducts;
+                  const productOptions =
+                    selectedProduct &&
+                    !searchedProducts.some(
+                      (product) =>
+                        String(product.id) === String(selectedProduct.id),
+                    )
+                      ? [selectedProduct, ...searchedProducts]
+                      : searchedProducts;
+                  return (
+                    <div
+                      className="sales-editor-item"
+                      key={`${item.productId || "new"}-${index}`}
+                    >
+                      <SharedSearchableDropdown
+                        value={item.productId}
+                        placeholder="Chọn sản phẩm"
+                        ariaLabel="Chọn sản phẩm"
+                        searchValue={
+                          item.productSearch || selectedProduct?.name || ""
+                        }
+                        onSearchChange={(value) =>
+                          handleProductSearchChange(index, value)
+                        }
+                        searching={Boolean(productSearchLoading[index])}
+                        searchingLabel="Đang tìm sản phẩm..."
+                        emptyLabel="Không tìm thấy sản phẩm."
+                        onChange={(value) =>
+                          updateItem(index, "productId", String(value))
+                        }
+                        options={[
+                          { value: "", label: "Chọn sản phẩm" },
+                          ...productOptions.map((product) => ({
+                            value: product.id,
+                            label: product.name,
+                          })),
+                        ]}
+                      />
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={item.quantity}
+                        onChange={(event) =>
+                          updateItem(index, "quantity", event.target.value)
+                        }
+                        placeholder="Số lượng"
+                        aria-label="Số lượng"
+                        required
+                      />
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={formatMoneyInput(item.unitPrice)}
+                        onChange={(event) =>
+                          updateItem(
+                            index,
+                            "unitPrice",
+                            digitsOnly(event.target.value),
+                          )
+                        }
+                        placeholder="Giá bán"
+                        aria-label="Giá bán"
+                        required
+                      />
+                      <button
+                        type="button"
+                        className="sales-editor-remove"
+                        onClick={() => removeItem(index)}
+                        aria-label="Xóa sản phẩm"
+                      >
+                        ×
+                      </button>
+                      {selectedProduct && (
+                        <small>
+                          Tồn hiện tại: {selectedProduct.available_stock}{" "}
+                          {selectedProduct.unit}
+                        </small>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="sales-editor-financials">
+                <label className="sales-editor-field">
+                  <span>Giảm giá</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={formatMoneyInput(discountAmount)}
+                    onChange={(event) =>
+                      setDiscountAmount(digitsOnly(event.target.value))
+                    }
+                    placeholder="0"
+                  />
+                </label>
+                {saleSource === "employee_stock" && (
+                  <label className="sales-editor-field">
+                    <span>Khách thanh toán</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={formatMoneyInput(paymentAmount)}
+                      onChange={(event) =>
+                        setPaymentAmount(digitsOnly(event.target.value))
+                      }
+                      placeholder="0"
+                    />
+                  </label>
+                )}
+                <div className="sales-editor-total">
+                  <span>Tạm tính</span>
+                  <strong>{formatCurrency(subtotal)}</strong>
+                </div>
+                <div className="sales-editor-total">
+                  <span>Tổng thanh toán</span>
+                  <strong>
+                    {formatCurrency(Math.max(0, subtotal - discount))}
+                  </strong>
+                </div>
+              </div>
+              <label className="sales-editor-field">
+                <span>Ghi chú</span>
+                <textarea
+                  rows="3"
+                  value={note}
+                  onChange={(event) => setNote(event.target.value)}
+                  placeholder="Nhập ghi chú cho đơn hàng"
+                />
+              </label>
+              <div className="sales-editor-actions">
+                <button type="button" onClick={onClose} disabled={saving}>
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="sales-editor-submit"
+                  disabled={saving}
+                >
+                  {saving
+                    ? "Đang lưu..."
+                    : isEditing
+                      ? "Lưu thay đổi"
+                      : saleSource === "employee_stock"
+                        ? "Tạo và hoàn thành"
+                        : "Tạo đơn nháp"}
+                </button>
+              </div>
+            </>
+          )}
+        </form>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function SalesInvoices() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const initialCancelRequestFilter =
+    searchParams.get("cancel_requested") === "pending" ? "pending" : "";
+  const [invoices, setInvoices] = useState([]);
+  const [keywordInput, setKeywordInput] = useState("");
+  const [keyword, setKeyword] = useState("");
+  const [status, setStatus] = useState("");
+  const [cancelRequestFilter, setCancelRequestFilter] = useState(
+    initialCancelRequestFilter,
+  );
+  const [fromDateInput, setFromDateInput] = useState("");
+  const [toDateInput, setToDateInput] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ total: 0, totalPages: 1 });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useNotificationState();
+  const [dateWarning, setDateWarning] = useNotificationState();
+  const [selectedInvoice, setSelectedInvoice] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useNotificationState();
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useNotificationState();
+  const [confirmAction, setConfirmAction] = useState(null);
+  const [showEditor, setShowEditor] = useState(false);
+  const [editingInvoice, setEditingInvoice] = useState(null);
+  const [statusBoard, setStatusBoard] = useState([]);
+  const [statusBoardTotal, setStatusBoardTotal] = useState(0);
+  const [statusBoardLoading, setStatusBoardLoading] = useState(false);
+  const [statusBoardError, setStatusBoardError] = useNotificationState();
+  const [pendingDiscounts, setPendingDiscounts] = useState([]);
+  const [pendingDiscountPage, setPendingDiscountPage] = useState(1);
+  const [pendingDiscountPagination, setPendingDiscountPagination] = useState({
+    total: 0,
+    totalPages: 1,
+  });
+  const [pendingDiscountLoading, setPendingDiscountLoading] = useState(false);
+  const [pendingDiscountError, setPendingDiscountError] =
+    useNotificationState();
+  const [discountConfirm, setDiscountConfirm] = useState(null);
+  const [discountActionLoading, setDiscountActionLoading] = useState(false);
+  const [discountActionError, setDiscountActionError] = useNotificationState();
+  const debounceTimerRef = useRef(null);
+  const currentUser = (() => {
+    try {
+      return JSON.parse(localStorage.getItem("user")) || {};
+    } catch {
+      return {};
+    }
+  })();
+  const canCreateSales = ["nhân viên bán hàng", "quản lý"].includes(
+    currentUser.role,
+  );
+  const canEditSales = ["nhân viên bán hàng", "kế toán", "quản lý"].includes(
+    currentUser.role,
+  );
+  const canCancelDraft = ["nhân viên bán hàng", "quản lý"].includes(
+    currentUser.role,
+  );
+  const canRequestCancel = currentUser.role === "nhân viên bán hàng";
+  const canCancelDirect = currentUser.role === "quản lý";
+  const canManageStatus = ["thủ kho", "quản lý"].includes(currentUser.role);
+
+  const canApproveCancel = ["kế toán", "quản lý"].includes(currentUser.role);
+  const canViewStatusBoard = currentUser.role === "quản lý";
+
+  const fetchStatusBoard = useCallback(async () => {
+    if (!canViewStatusBoard) return;
+    try {
+      setStatusBoardLoading(true);
+      setStatusBoardError("");
+      const response = await authApis().get(endpoints.salesInvoiceStatusBoard);
+      const groups = response.data?.statuses || [];
+      setStatusBoard(groups);
+      setStatusBoardTotal(
+        Number(
+          response.data?.total ??
+            groups.reduce(
+              (total, group) => total + Number(group.total || 0),
+              0,
+            ),
+        ),
+      );
+    } catch (requestError) {
+      setStatusBoardError(getApiError(requestError));
+    } finally {
+      setStatusBoardLoading(false);
+    }
+  }, [canViewStatusBoard, setStatusBoardError]);
+
+  const fetchPendingDiscounts = useCallback(async () => {
+    if (!canViewStatusBoard) return;
+    try {
+      setPendingDiscountLoading(true);
+      setPendingDiscountError("");
+      const response = await authApis().get(endpoints.pendingDiscountInvoices, {
+        params: { page: pendingDiscountPage, per_page: DISCOUNT_PER_PAGE },
+      });
+      const data = response.data || {};
+      setPendingDiscounts(data.invoices || []);
+      setPendingDiscountPagination({
+        total: Number(data.total || 0),
+        totalPages: Number(data.pages || 1),
+      });
+    } catch (requestError) {
+      setPendingDiscountError(getApiError(requestError));
+    } finally {
+      setPendingDiscountLoading(false);
+    }
+  }, [canViewStatusBoard, pendingDiscountPage, setPendingDiscountError]);
+
+  const fetchInvoices = useCallback(async () => {
+    if (!localStorage.getItem("token")) {
+      navigate("/login", {
+        replace: true,
+        state: { message: "Vui lòng đăng nhập để xem đơn bán hàng." },
+      });
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError("");
+      const response = await authApis().get(endpoints.salesInvoices, {
+        params: {
+          page,
+          per_page: PER_PAGE,
+          keyword: keyword || undefined,
+          status: status || undefined,
+          from_date: fromDate || undefined,
+          to_date: toDate || undefined,
+          cancel_requested:
+            cancelRequestFilter === "pending" ? "true" : undefined,
+        },
+      });
+      const data = response.data || {};
+      setInvoices(data.invoices || []);
+      setPagination({
+        total: Number(data.total || 0),
+        totalPages: Number(data.pages || 1),
+      });
+    } catch (requestError) {
+      setError(getApiError(requestError));
+    } finally {
+      setLoading(false);
+    }
+  }, [cancelRequestFilter, fromDate, keyword, navigate, page, status, toDate]);
+
+  useEffect(() => {
+    fetchInvoices();
+  }, [fetchInvoices]);
+
+  useEffect(() => {
+    fetchStatusBoard();
+  }, [fetchStatusBoard]);
+
+  useEffect(() => {
+    fetchPendingDiscounts();
+  }, [fetchPendingDiscounts]);
+
+  useEffect(() => {
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => {
+      const value = keywordInput.trim();
+      const nextFromDate = fromDateInput.trim();
+      const nextToDate = toDateInput.trim();
+      const warning = validateSaleDateRange(nextFromDate, nextToDate);
+      if (warning) {
+        setDateWarning(warning);
+        return;
+      }
+      if (
+        value === keyword &&
+        nextFromDate === fromDate &&
+        nextToDate === toDate
+      ) return;
+      setDateWarning("");
+      setPage(1);
+      setKeyword(value);
+      setFromDate(nextFromDate);
+      setToDate(nextToDate);
+    }, 500);
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
+  }, [fromDate, fromDateInput, keyword, keywordInput, toDate, toDateInput]);
+
+  const openDetail = async (invoiceId) => {
+    try {
+      setDetailLoading(true);
+      setDetailError("");
+      setActionError("");
+      setSelectedInvoice({ id: invoiceId });
+      const response = await authApis().get(
+        endpoints.salesInvoiceDetail(invoiceId),
+      );
+      setSelectedInvoice(response.data || null);
+    } catch (requestError) {
+      setDetailError(getApiError(requestError));
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const closeDetail = () => {
+    if (!detailLoading) {
+      setSelectedInvoice(null);
+      setDetailError("");
+    }
+  };
+
+  const openCreateEditor = () => {
+    setSelectedInvoice(null);
+    setEditingInvoice(null);
+    setShowEditor(true);
+  };
+
+  const openEditEditor = () => {
+    setEditingInvoice(selectedInvoice);
+    setSelectedInvoice(null);
+    setShowEditor(true);
+  };
+
+  const handleEditorSaved = (invoice) => {
+    setShowEditor(false);
+    setEditingInvoice(null);
+    setSelectedInvoice(invoice || null);
+    fetchInvoices();
+    fetchStatusBoard();
+  };
+
+  const handleCancelDraft = async () => {
+    if (!selectedInvoice) return;
+    setConfirmAction("cancel-draft");
+  };
+
+  const handleCancelRequest = async () => {
+    if (!selectedInvoice) return;
+    setConfirmAction("cancel-request");
+  };
+
+  const handleCancelDirect = async () => {
+    if (!selectedInvoice) return;
+    setConfirmAction("cancel-manager");
+  };
+
+  const advanceInvoiceStatus = async (nextStatus) => {
+    if (!selectedInvoice) return;
+    try {
+      setActionLoading(true);
+      setActionError("");
+      const response = await authApis().put(
+        endpoints.salesInvoiceStatus(selectedInvoice.id),
+        { status: nextStatus },
+      );
+      setSelectedInvoice((current) => ({
+        ...current,
+        ...(response.data?.invoice || {}),
+      }));
+      await fetchInvoices();
+      await fetchStatusBoard();
+    } catch (requestError) {
+      setActionError(getApiError(requestError));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const completeInvoice = async (paymentAmount) => {
+    if (!selectedInvoice) return;
+    try {
+      setActionLoading(true);
+      setActionError("");
+      const response = await authApis().put(
+        endpoints.completeSalesInvoice(selectedInvoice.id),
+        { payment_amount: paymentAmount },
+      );
+      notifyInventoryChanged();
+      setSelectedInvoice(response.data?.invoice || selectedInvoice);
+      await fetchInvoices();
+      await fetchStatusBoard();
+    } catch (requestError) {
+      setActionError(getApiError(requestError));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const executeConfirmedAction = async () => {
+    if (!selectedInvoice || !confirmAction) return;
+    try {
+      setActionLoading(true);
+      setActionError("");
+      if (
+        confirmAction === "cancel-draft" ||
+        confirmAction === "cancel-manager"
+      ) {
+        await authApis().delete(
+          endpoints.salesInvoiceDetail(selectedInvoice.id),
+        );
+        setSelectedInvoice(null);
+      } else if (confirmAction === "cancel-request") {
+        const response = await authApis().post(
+          endpoints.salesInvoiceCancelRequest(selectedInvoice.id),
+          { cancel_note: "" },
+        );
+        setSelectedInvoice((current) => ({
+          ...current,
+          ...(response.data?.invoice || {}),
+        }));
+      } else {
+        const response = await authApis().put(
+          endpoints.salesInvoiceApproveCancel(selectedInvoice.id),
+          { approved: confirmAction === "approve-cancel", note: "" },
+        );
+        setSelectedInvoice((current) => ({
+          ...current,
+          ...(response.data?.invoice || {}),
+        }));
+      }
+      setConfirmAction(null);
+      await fetchInvoices();
+      await fetchStatusBoard();
+    } catch (requestError) {
+      setActionError(getApiError(requestError));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const executeDiscountAction = async () => {
+    if (!discountConfirm) return;
+    try {
+      setDiscountActionLoading(true);
+      setDiscountActionError("");
+      await authApis().put(
+        endpoints.approveSalesInvoiceDiscount(discountConfirm.invoice.id),
+        { approved: discountConfirm.approved, note: "" },
+      );
+      setDiscountConfirm(null);
+      const shouldMoveToPreviousDiscountPage =
+        pendingDiscounts.length === 1 && pendingDiscountPage > 1;
+      if (shouldMoveToPreviousDiscountPage) {
+        setPendingDiscountPage((current) => current - 1);
+      }
+      await Promise.all([
+        shouldMoveToPreviousDiscountPage
+          ? Promise.resolve()
+          : fetchPendingDiscounts(),
+        fetchInvoices(),
+        fetchStatusBoard(),
+      ]);
+    } catch (requestError) {
+      setDiscountActionError(getApiError(requestError));
+    } finally {
+      setDiscountActionLoading(false);
+    }
+  };
+
+  const isCancelApproval = confirmAction === "approve-cancel";
+  const isCancelRejection = confirmAction === "reject-cancel";
+  const isManagerCancel = confirmAction === "cancel-manager";
+
+  return (
+    <div className="sales-page">
+      <div className="sales-header">
+        <div>
+          <h1>Đơn bán hàng</h1>
+        </div>
+        {canCreateSales && (
+          <button
+            type="button"
+            className="sales-create-button"
+            onClick={openCreateEditor}
+          >
+            + Tạo đơn bán hàng
+          </button>
+        )}
+      </div>
+
+      {canViewStatusBoard && (
+        <section
+          className="sales-status-board"
+          aria-label="Tổng hợp trạng thái đơn hàng"
+        >
+          <div className="sales-status-board-header">
+            <div>
+              <h2>Tổng hợp đơn hàng</h2>
+              <p>Số lượng đơn theo từng trạng thái.</p>
+            </div>
+            <span className="sales-status-board-total">
+              {statusBoardTotal} đơn hàng
+            </span>
+          </div>
+          <AutoDismissMessage
+            message={statusBoardError}
+            className="sales-alert"
+          />
+          {statusBoardLoading && !statusBoard.length ? (
+            <Skeleton variant="cards" columns={3} />
+          ) : (
+            <div className="sales-status-board-grid">
+              {statusBoard.map((group) => (
+                <div
+                  className={`sales-status-board-card ${getStatusClass(group.status)}`}
+                  key={group.status}
+                >
+                  <span>{getStatusLabel(group.status)}</span>
+                  <strong>{Number(group.total || 0)}</strong>
+                  <small>đơn hàng</small>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {canViewStatusBoard && (
+        <section
+          className="sales-pending-discount"
+          aria-label="Đơn hàng chờ duyệt giảm giá"
+        >
+          <div className="sales-pending-discount-header">
+            <div>
+              <h2>Đơn hàng chờ duyệt giảm giá</h2>
+              <p></p>
+            </div>
+            <span>{pendingDiscountPagination.total} đơn chờ duyệt</span>
+          </div>
+          <AutoDismissMessage
+            message={pendingDiscountError}
+            className="sales-alert"
+          />
+          {pendingDiscountLoading ? (
+            <Skeleton rows={4} columns={5} />
+          ) : pendingDiscounts.length === 0 ? (
+            <div className="sales-state">
+              Không có đơn hàng nào đang chờ duyệt giảm giá.
+            </div>
+          ) : (
+            <div className="sales-table-wrap">
+              <table className="sales-table sales-pending-discount-table">
+                <thead>
+                  <tr>
+                    <th>Mã đơn</th>
+                    <th>Khách hàng</th>
+                    <th>Nhân viên lập đơn</th>
+                    <th className="sales-money">Tạm tính</th>
+                    <th className="sales-money">Mức giảm</th>
+                    <th>Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingDiscounts.map((invoice) => (
+                    <tr
+                      key={invoice.id}
+                      onClick={() => openDetail(invoice.id)}
+                      tabIndex="0"
+                    >
+                      <td>#{invoice.id}</td>
+                      <td>
+                        <strong>{invoice.customer?.full_name || "—"}</strong>
+                        <small>{invoice.customer?.phone || ""}</small>
+                      </td>
+                      <td>{invoice.employee?.full_name || "—"}</td>
+                      <td className="sales-money">
+                        {formatCurrency(invoice.total_amount)}
+                      </td>
+                      <td className="sales-money sales-discount-pending-amount">
+                        {formatCurrency(invoice.discount?.amount)}
+                      </td>
+                      <td>
+                        <div
+                          className="sales-discount-actions"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDiscountActionError("");
+                              setDiscountConfirm({ invoice, approved: true });
+                            }}
+                          >
+                            Duyệt
+                          </button>
+                          <button
+                            type="button"
+                            className="sales-action-danger"
+                            onClick={() => {
+                              setDiscountActionError("");
+                              setDiscountConfirm({ invoice, approved: false });
+                            }}
+                          >
+                            Từ chối
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <Pagination
+            page={pendingDiscountPage}
+            totalPages={pendingDiscountPagination.totalPages}
+            onPageChange={setPendingDiscountPage}
+            disabled={pendingDiscountLoading}
+          />
+        </section>
+      )}
+
+      <form
+        className="sales-toolbar"
+        onSubmit={(event) => event.preventDefault()}
+      >
+        <input
+          type="search"
+          value={keywordInput}
+          onChange={(event) => setKeywordInput(event.target.value)}
+          placeholder="Tìm theo mã đơn, tên hoặc số điện thoại khách hàng"
+          aria-label="Tìm kiếm đơn bán hàng"
+        />
+        <div className="sales-status-dropdown">
+          <SharedSearchableDropdown
+            value={status}
+            options={STATUS_OPTIONS}
+            placeholder="Tất cả trạng thái"
+            onChange={(value) => {
+              setPage(1);
+              setStatus(String(value));
+            }}
+            ariaLabel="Lọc theo trạng thái đơn hàng"
+          />
+        </div>
+        <div className="sales-cancel-dropdown">
+          <SharedSearchableDropdown
+            value={cancelRequestFilter}
+            options={CANCEL_REQUEST_OPTIONS}
+            placeholder="Tất cả yêu cầu hủy"
+            onChange={(value) => {
+              setPage(1);
+              setCancelRequestFilter(String(value));
+            }}
+            ariaLabel="Lọc theo yêu cầu hủy đơn"
+          />
+        </div>
+        <div className="sales-date-range" role="group" aria-label="Lọc theo ngày bán">
+          <label className="sales-date-field">
+            <span>Từ ngày</span>
+            <input
+              type="date"
+              value={fromDateInput}
+              onChange={(event) => setFromDateInput(event.target.value)}
+              aria-label="Ngày bán từ"
+            />
+          </label>
+          <span className="sales-date-separator" aria-hidden="true">–</span>
+          <label className="sales-date-field">
+            <span>Đến ngày</span>
+            <input
+              type="date"
+              value={toDateInput}
+              onChange={(event) => setToDateInput(event.target.value)}
+              aria-label="Ngày bán đến"
+            />
+          </label>
+        </div>
+      </form>
+
+      <AutoDismissMessage message={dateWarning} type="warning" className="sales-date-warning" />
+      <AutoDismissMessage message={error} className="sales-alert" />
+      <div className="sales-card">
+        {loading ? (
+          <Skeleton rows={7} columns={5} />
+        ) : invoices.length === 0 ? (
+          <div className="sales-state">Không có đơn hàng phù hợp.</div>
+        ) : (
+          <div className="sales-table-wrap">
+            <table className="sales-table">
+              <thead>
+                <tr>
+                  <th>Ngày bán</th>
+                  <th>Khách hàng</th>
+                  <th>Trạng thái</th>
+                  <th>Số sản phẩm</th>
+                  <th className="sales-money">Tổng tiền</th>
+                </tr>
+              </thead>
+              <tbody>
+                {invoices.map((invoice) => (
+                  <tr
+                    key={invoice.id}
+                    tabIndex="0"
+                    onClick={() => openDetail(invoice.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ")
+                        openDetail(invoice.id);
+                    }}
+                  >
+                    <td>{formatDateTime(invoice.sold_at)}</td>
+                    <td>
+                      <strong>{invoice.customer?.full_name || "—"}</strong>
+                      <small>{invoice.customer?.phone || ""}</small>
+                    </td>
+                    <td>
+                      <div className="sales-status-cell">
+                        <span
+                          className={`sales-status-badge ${getStatusClass(invoice.status)}`}
+                        >
+                          {getStatusLabel(invoice.status)}
+                        </span>
+                        {hasActiveCancelRequest(invoice) && (
+                          <span
+                            className="sales-cancel-request-badge"
+                            aria-label="Đơn hàng đang chờ duyệt hủy"
+                          >
+                            Chờ duyệt hủy
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td>{invoice.items_count || 0}</td>
+                    <td className="sales-money">
+                      {formatCurrency(invoice.final_amount)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <Pagination
+        page={page}
+        totalPages={pagination.totalPages}
+        onPageChange={setPage}
+        disabled={loading}
+      />
+
+      {selectedInvoice &&
+        (detailLoading ? (
+          createPortal(
+            <div className="sales-detail-overlay">
+              <div className="sales-detail-modal">
+                <Skeleton variant="form" rows={6} />
+                {detailError && (
+                  <AutoDismissMessage
+                    message={detailError}
+                    className="sales-alert"
+                  />
+                )}
+              </div>
+            </div>,
+            document.body,
+          )
+        ) : detailError ? (
+          createPortal(
+            <div className="sales-detail-overlay" onClick={closeDetail}>
+              <div
+                className="sales-detail-modal"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="sales-state">{detailError}</div>
+                <button
+                  type="button"
+                  className="sales-detail-error-close"
+                  onClick={closeDetail}
+                >
+                  Đóng
+                </button>
+              </div>
+            </div>,
+            document.body,
+          )
+        ) : (
+          <SalesInvoiceDetail
+            invoice={selectedInvoice}
+            onClose={closeDetail}
+            canEdit={canEditSales}
+            canCancel={canCancelDraft}
+            canRequestCancel={canRequestCancel}
+            canCancelDirect={canCancelDirect}
+            canManageStatus={canManageStatus}
+            canApproveCancel={canApproveCancel}
+            actionLoading={actionLoading}
+            actionError={actionError}
+            onEdit={openEditEditor}
+            onCancelDraft={handleCancelDraft}
+            onCancelRequest={handleCancelRequest}
+            onCancelDirect={handleCancelDirect}
+            onAdvanceStatus={advanceInvoiceStatus}
+            onComplete={completeInvoice}
+            onApproveCancel={(approved) =>
+              setConfirmAction(approved ? "approve-cancel" : "reject-cancel")
+            }
+          />
+        ))}
+      <ConfirmDialog
+        open={Boolean(confirmAction)}
+        title={
+          confirmAction === "cancel-draft"
+            ? "Hủy đơn nháp?"
+            : isManagerCancel
+              ? "Hủy đơn trực tiếp?"
+              : isCancelApproval
+                ? "Duyệt hủy đơn?"
+                : isCancelRejection
+                  ? "Từ chối hủy đơn?"
+                  : "Gửi yêu cầu hủy đơn?"
+        }
+        message={
+          confirmAction === "cancel-draft"
+            ? "Bạn có chắc muốn hủy đơn nháp này không?"
+            : isManagerCancel
+              ? "Bạn có chắc muốn hủy đơn này với quyền quản lý không?"
+              : isCancelApproval
+                ? "Bạn có chắc muốn duyệt hủy đơn này không?"
+                : isCancelRejection
+                  ? "Bạn có chắc muốn từ chối yêu cầu hủy đơn này không?"
+                  : "Bạn có chắc muốn gửi yêu cầu hủy đơn này không?"
+        }
+        confirmLabel={
+          confirmAction === "cancel-draft"
+            ? "Hủy đơn"
+            : isManagerCancel
+              ? "Hủy đơn"
+              : isCancelApproval
+                ? "Duyệt hủy"
+                : isCancelRejection
+                  ? "Từ chối"
+                  : "Gửi yêu cầu"
+        }
+        cancelLabel="Quay lại"
+        danger={!isCancelApproval}
+        loading={actionLoading}
+        onConfirm={executeConfirmedAction}
+        onCancel={() => setConfirmAction(null)}
+      />
+      <ConfirmDialog
+        open={Boolean(discountConfirm)}
+        title={
+          discountConfirm?.approved ? "Duyệt giảm giá?" : "Từ chối giảm giá?"
+        }
+        message={
+          discountActionError ||
+          (discountConfirm
+            ? `${discountConfirm.approved ? "Duyệt" : "Từ chối"} mức giảm ${formatCurrency(discountConfirm.invoice.discount?.amount)} cho đơn hàng #${discountConfirm.invoice.id}?`
+            : "")
+        }
+        confirmLabel={discountConfirm?.approved ? "Duyệt giảm giá" : "Từ chối"}
+        cancelLabel="Quay lại"
+        danger={!discountConfirm?.approved}
+        loading={discountActionLoading}
+        onConfirm={executeDiscountAction}
+        onCancel={() => {
+          if (!discountActionLoading) {
+            setDiscountActionError("");
+            setDiscountConfirm(null);
+          }
+        }}
+      />
+      {showEditor && (
+        <SalesInvoiceEditor
+          invoice={editingInvoice}
+          onClose={() => {
+            setShowEditor(false);
+            setEditingInvoice(null);
+          }}
+          onSaved={handleEditorSaved}
+        />
+      )}
+    </div>
+  );
+}
+
+export default SalesInvoices;

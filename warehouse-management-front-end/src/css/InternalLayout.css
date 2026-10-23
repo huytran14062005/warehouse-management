@@ -1,0 +1,6 @@
+.internal-workspace { display: flex; flex: 1; min-height: 0; background: #f5f7fb; }
+.internal-workspace-content { flex: 1; min-width: 0; }
+
+@media (max-width: 700px) {
+  .internal-workspace { display: block; }
+}

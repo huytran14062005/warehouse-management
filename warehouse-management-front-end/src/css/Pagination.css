@@ -1,0 +1,12 @@
+.warehouse-pagination-controls { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 28px; }
+.warehouse-page-button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 40px; height: 40px; padding: 0 12px; color: #374151; border: 1px solid #d8e1eb; border-radius: 8px; background: #fff; font-size: 14px; font-weight: 600; cursor: pointer; transition: all .2s ease; }
+.warehouse-page-button:hover:not(:disabled):not(.active) { color: #0b3158; border-color: #0b3158; background: #f1f5f8; }
+.warehouse-page-button.active { color: #fff; border-color: #0b3158; background: #0b3158; cursor: default; }
+.warehouse-page-button:disabled { opacity: .45; cursor: not-allowed; }
+.warehouse-page-ellipsis { min-width: 24px; color: #8a9bad; font-weight: 600; text-align: center; }
+@media (max-width: 700px) {
+  .warehouse-pagination-controls { gap: 6px; margin-top: 22px; }
+  .warehouse-page-button { min-width: 36px; height: 36px; padding: 0 8px; font-size: 13px; }
+  .warehouse-page-nav { font-size: 0; padding: 0 10px; }
+  .warehouse-page-nav span { font-size: 18px; }
+}

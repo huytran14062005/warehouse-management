@@ -1,0 +1,31 @@
+.app-notification {
+  margin-bottom: 16px;
+  padding: 11px 13px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  font-size: 13px;
+  animation: notification-appear .18s ease-out;
+}
+
+.app-notification-error {
+  color: #9f2d2d;
+  border-color: #f1c8c8;
+  background: #fff1f1;
+}
+
+.app-notification-success {
+  color: #26704b;
+  border-color: #a9d5bd;
+  background: #eef9f2;
+}
+
+.app-notification-warning {
+  color: #8a5a12;
+  border-color: #ecd39e;
+  background: #fff8e8;
+}
+
+@keyframes notification-appear {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}

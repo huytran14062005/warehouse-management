@@ -1,0 +1,23 @@
+.internal-header { background: #fff; border-bottom: 1px solid #e4eaf0; }
+.internal-header-inner { width: min(1180px, calc(100% - 48px)); height: 76px; display: flex; align-items: center; justify-content: space-between; margin: 0 auto; }
+.internal-brand { display: flex; align-items: center; gap: 11px; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.internal-logo { width: 58px; height: 45px; overflow: hidden; border-radius: 5px; background: #fff; }
+.internal-logo img { width: 100%; height: 100%; display: block; object-fit: contain; }
+.internal-brand-name { color: #0b3158; font-size: 16px; font-weight: 700; letter-spacing: .14em; }
+.internal-auth-actions { display: flex; align-items: center; gap: 9px; }
+.internal-welcome { color: #0b3158; font-size: 13px; font-weight: 600; }
+.auth-button { padding: 9px 15px; border: 1px solid #0b3158; border-radius: 5px; font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.auth-button-outline { color: #0b3158; background: #fff; }
+.auth-button-outline:hover { background: #f1f5f8; }
+.auth-button-primary { color: #fff; background: #0b3158; }
+.auth-button-primary:hover { background: #072542; }
+
+@media (max-width: 700px) {
+  .internal-header-inner { width: min(100% - 32px, 560px); height: 68px; }
+  .internal-auth-actions { gap: 6px; }
+  .internal-welcome { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+  .auth-button { padding: 8px 10px; font-size: 11px; }
+}
+
+@media (max-width: 480px) {
+}

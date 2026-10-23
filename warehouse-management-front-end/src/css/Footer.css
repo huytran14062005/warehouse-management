@@ -1,0 +1,2 @@
+.company-footer { display: flex; align-items: center; justify-content: center; min-height: 75px; color: #fff; background: #0b3158; }
+.company-footer p { margin: 0; padding: 0 16px; font-size: 13px; text-align: center; }

@@ -1,0 +1,368 @@
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { authApis, endpoints } from "../configs/Apis";
+import { getApiError } from "../utils/apiError";
+import useNotificationState from "../utils/useNotificationState";
+import { getInventoryStatus } from "../utils/inventoryStatus";
+import { INVENTORY_CHANGED_EVENT } from "../utils/inventoryEvents";
+import { digitsOnly, formatMoneyInput } from "../utils/money";
+import AutoDismissMessage from "../components/AutoDismissMessage";
+import SharedSearchableDropdown from "../components/SearchableDropdown";
+import Pagination from "../components/Pagination";
+import Skeleton from "../components/Skeleton";
+import "../css/Products.css";
+
+const PER_PAGE = 10;
+
+const INVENTORY_STATUS_OPTIONS = [
+  { value: "", label: "Tất cả trạng thái" },
+  { value: "available", label: "Còn hàng" },
+  { value: "low", label: "Sắp hết hàng" },
+  { value: "empty", label: "Hết hàng" },
+];
+
+function formatCurrency(value) {
+  return new Intl.NumberFormat("vi-VN", {
+    style: "currency",
+    currency: "VND",
+    maximumFractionDigits: 0,
+  }).format(Number(value || 0));
+}
+
+function formatQuantity(value) {
+  return new Intl.NumberFormat("vi-VN", {
+    maximumFractionDigits: 3,
+  }).format(Number(value || 0));
+}
+
+function validatePriceRange(minPrice, maxPrice) {
+  const minText = String(minPrice || "").trim();
+  const maxText = String(maxPrice || "").trim();
+  const minValue = Number(minText);
+  const maxValue = Number(maxText);
+
+  if (minText && (!Number.isFinite(minValue) || minValue < 0)) {
+    return "Giá từ phải là số không âm.";
+  }
+  if (maxText && (!Number.isFinite(maxValue) || maxValue < 0)) {
+    return "Giá đến phải là số không âm.";
+  }
+  if (minText && maxText && minValue > maxValue) {
+    return "Giá từ không được lớn hơn giá đến.";
+  }
+  return "";
+}
+
+function Products() {
+  const navigate = useNavigate();
+  const [products, setProducts] = useState([]);
+  const [keywordInput, setKeywordInput] = useState("");
+  const [keyword, setKeyword] = useState("");
+  const [minPriceInput, setMinPriceInput] = useState("");
+  const [maxPriceInput, setMaxPriceInput] = useState("");
+  const [minPrice, setMinPrice] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
+  const [statusInput, setStatusInput] = useState("");
+  const [status, setStatus] = useState("");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ total: 0, totalPages: 1 });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useNotificationState();
+  const [validationWarning, setValidationWarning] = useNotificationState();
+  const debounceTimerRef = useRef(null);
+
+  const currentUser = (() => {
+    try {
+      return JSON.parse(localStorage.getItem("user")) || {};
+    } catch {
+      return {};
+    }
+  })();
+  const canExportPriceList = ["kế toán", "quản lý"].includes(currentUser.role);
+  const [exportingPdf, setExportingPdf] = useState(false);
+
+  const fetchProducts = useCallback(async () => {
+    if (!localStorage.getItem("token")) {
+      navigate("/login", {
+        replace: true,
+        state: { message: "Vui lòng đăng nhập để xem tồn kho." },
+      });
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError("");
+      const response = await authApis().get(endpoints.productsInventory, {
+        params: {
+          page,
+          per_page: PER_PAGE,
+          keyword: keyword || undefined,
+          min_price: minPrice || undefined,
+          max_price: maxPrice || undefined,
+          status: status || undefined,
+        },
+      });
+
+      const data = response.data || {};
+      const responsePagination = data.pagination || {};
+      setProducts(data.products || []);
+      setPagination({
+        total: Number(responsePagination.total || 0),
+        totalPages: Number(responsePagination.total_pages || 1),
+      });
+    } catch (requestError) {
+      setError(getApiError(requestError));
+    } finally {
+      setLoading(false);
+    }
+  }, [keyword, maxPrice, minPrice, navigate, page, status]);
+
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
+
+  useEffect(() => {
+    const refreshProducts = () => fetchProducts();
+    window.addEventListener(INVENTORY_CHANGED_EVENT, refreshProducts);
+    return () => window.removeEventListener(INVENTORY_CHANGED_EVENT, refreshProducts);
+  }, [fetchProducts]);
+
+  useEffect(() => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    debounceTimerRef.current = setTimeout(() => {
+      const value = keywordInput.trim();
+      const minValue = minPriceInput.trim();
+      const maxValue = maxPriceInput.trim();
+      const statusValue = statusInput.trim();
+      const warning = validatePriceRange(minValue, maxValue);
+
+      if (warning) {
+        setValidationWarning(warning);
+        return;
+      }
+
+      if (
+        value === keyword &&
+        minValue === minPrice &&
+        maxValue === maxPrice &&
+        statusValue === status
+      )
+        return;
+
+      setValidationWarning("");
+      setPage(1);
+      setKeyword(value);
+      setMinPrice(minValue);
+      setMaxPrice(maxValue);
+      setStatus(statusValue);
+    }, 500);
+
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, [keywordInput, keyword, maxPrice, maxPriceInput, minPrice, minPriceInput, status, statusInput]);
+
+  const handleSearch = (event) => {
+    event.preventDefault();
+    const warning = validatePriceRange(minPriceInput, maxPriceInput);
+    if (warning) {
+      setValidationWarning(warning);
+      return;
+    }
+
+    setValidationWarning("");
+    setPage(1);
+    setKeyword(keywordInput.trim());
+    setMinPrice(minPriceInput.trim());
+    setMaxPrice(maxPriceInput.trim());
+    setStatus(statusInput.trim());
+  };
+
+  const handleExportPriceList = async () => {
+    try {
+      setExportingPdf(true);
+      setError("");
+      const response = await authApis().get(endpoints.priceListExport, {
+        params: {
+          format: "pdf",
+          keyword: keyword || undefined,
+          min_price: minPrice || undefined,
+          max_price: maxPrice || undefined,
+          status: status || undefined,
+        },
+        responseType: "blob",
+      });
+      const url = window.URL.createObjectURL(response.data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "bang_bao_gia.pdf";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (requestError) {
+      if (requestError.response?.data instanceof Blob) {
+        try {
+          const payload = JSON.parse(await requestError.response.data.text());
+          setError(payload.error || "Không thể xuất bảng báo giá.");
+        } catch {
+          setError("Không thể xuất bảng báo giá.");
+        }
+      } else {
+        setError(getApiError(requestError));
+      }
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
+  const handlePageChange = (nextPage) => {
+    if (nextPage < 1 || nextPage > pagination.totalPages || nextPage === page) {
+      return;
+    }
+    setPage(nextPage);
+  };
+
+  return (
+    <div className="products-page">
+      <div className="products-header">
+        <div>
+          <h1>Danh sách sản phẩm</h1>
+        </div>
+        {canExportPriceList && (
+          <div className="products-export-actions" aria-label="Xuất bảng báo giá">
+            <button
+              type="button"
+              className="products-export-button products-export-button-primary"
+              disabled={exportingPdf}
+              onClick={handleExportPriceList}
+            >
+              {exportingPdf ? "Đang xuất..." : "Xuất PDF"}
+            </button>
+          </div>
+        )}
+      </div>
+
+      <form className="products-toolbar" onSubmit={handleSearch}>
+        <input
+          type="search"
+          value={keywordInput}
+          onChange={(event) => setKeywordInput(event.target.value)}
+          placeholder="Tìm theo tên sản phẩm"
+          aria-label="Tìm kiếm sản phẩm"
+        />
+        <label className="products-price-field">
+          <input
+            type="text"
+            inputMode="numeric"
+            value={formatMoneyInput(minPriceInput)}
+            onChange={(event) => setMinPriceInput(digitsOnly(event.target.value))}
+            placeholder="Giá từ"
+            aria-label="Giá từ"
+            aria-invalid={Boolean(validationWarning)}
+          />
+        </label>
+        <label className="products-price-field">
+          <input
+            type="text"
+            inputMode="numeric"
+            value={formatMoneyInput(maxPriceInput)}
+            onChange={(event) => setMaxPriceInput(digitsOnly(event.target.value))}
+            placeholder="Giá đến"
+            aria-label="Giá đến"
+            aria-invalid={Boolean(validationWarning)}
+          />
+        </label>
+        <div className="products-status-dropdown">
+          <SharedSearchableDropdown
+            value={statusInput}
+            options={INVENTORY_STATUS_OPTIONS}
+            placeholder="Tất cả trạng thái"
+            onChange={(value) => {
+              setStatusInput(String(value));
+              setPage(1);
+            }}
+            ariaLabel="Lọc theo trạng thái tồn kho"
+          />
+        </div>
+        <button type="submit">Tìm kiếm</button>
+      </form>
+
+      <AutoDismissMessage message={validationWarning} type="warning" className="products-validation-warning" />
+      <AutoDismissMessage message={error} className="products-alert" />
+
+      <div className="products-card">
+        {loading ? (
+          <Skeleton rows={6} columns={9} />
+        ) : products.length === 0 ? (
+          <div className="products-state">Không có sản phẩm phù hợp.</div>
+        ) : (
+          <div className="products-table-wrapper">
+            <table className="products-table">
+              <thead>
+                <tr>
+                  <th>Sản phẩm</th>
+                  <th>Đơn vị</th>
+                  <th className="products-money">Giá bán mặc định</th>
+                  <th className="products-number">Đã nhập</th>
+                  <th className="products-number">Đã bán</th>
+                  <th className="products-number">Đã hư</th>
+                  <th className="products-number">Đã cấp đi</th>
+                  <th className="products-number">Tồn kho</th>
+                  <th>Trạng thái</th>
+                </tr>
+              </thead>
+              <tbody>
+                {products.map((product) => {
+                  const inventoryStatus = getInventoryStatus(
+                    product.available_stock,
+                    product.total_imported,
+                  );
+                  return (
+                  <tr key={product.id}>
+                    <td className="products-name">{product.name}</td>
+                    <td>{product.unit}</td>
+                    <td className="products-money">
+                      {formatCurrency(product.default_sale_price)}
+                    </td>
+                    <td className="products-number">
+                      {formatQuantity(product.total_imported)}
+                    </td>
+                    <td className="products-number">
+                      {formatQuantity(product.total_sold)}
+                    </td>
+                    <td className="products-number">
+                      {formatQuantity(product.total_damaged)}
+                    </td>
+                    <td className="products-number">
+                      {formatQuantity(product.total_transferred)}
+                    </td>
+                    <td className="products-number products-stock">
+                      {formatQuantity(product.available_stock)}
+                    </td>
+                    <td>
+                      <span className={`products-stock-status is-${inventoryStatus.key}`}>
+                        {inventoryStatus.label}
+                      </span>
+                    </td>
+                  </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <Pagination page={page} totalPages={pagination.totalPages} onPageChange={handlePageChange} disabled={loading} />
+    </div>
+  );
+}
+
+export default Products;
