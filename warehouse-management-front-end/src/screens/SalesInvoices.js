@@ -88,6 +88,29 @@ function isCompletedStatus(status) {
   return value === "hoàn thành" || value === "completed";
 }
 
+function isCancelledStatus(status) {
+  const value = String(status || "").toLowerCase();
+  return value === "đã hủy" || value === "cancelled";
+}
+
+function getPaymentStatusLabel(status) {
+  const value = String(status || "").toLowerCase();
+  if (value === "đã thanh toán" || value === "paid") return "Đã thanh toán";
+  if (value === "thanh toán một phần" || value === "partial") {
+    return "Đã thanh toán một phần";
+  }
+  return "Chưa thanh toán";
+}
+
+function getPaymentStatusClass(status) {
+  const value = String(status || "").toLowerCase();
+  if (value === "đã thanh toán" || value === "paid") return "is-paid";
+  if (value === "thanh toán một phần" || value === "partial") {
+    return "is-partial";
+  }
+  return "is-unpaid";
+}
+
 function hasActiveCancelRequest(invoice) {
   const status = String(invoice?.status || "").toLowerCase();
   return Boolean(
@@ -125,6 +148,18 @@ function SalesInvoiceDetail({
   const [completionPayment, setCompletionPayment] = useState(
     String(invoice.paid_amount || ""),
   );
+  const discountAmount = Number(invoice.discount?.amount || 0);
+  const paidAmount = Number(invoice.paid_amount || 0);
+  const remainingAmount = Number(invoice.remaining_amount || 0);
+  const cancelled = isCancelledStatus(invoice.status);
+  const discountPending = invoice.discount?.status === "chờ duyệt";
+  const paymentMessage = cancelled
+    ? "Đơn đã hủy nên không còn khoản cần thu."
+    : paidAmount <= 0
+      ? "Khách chưa thanh toán cho đơn này."
+      : remainingAmount > 0
+        ? "Khách đã thanh toán một phần; số còn lại là khoản cần thu của riêng đơn này."
+        : "Đơn này đã được thanh toán đủ.";
   return createPortal(
     <div className="sales-detail-overlay" onClick={onClose}>
       <div
@@ -136,119 +171,160 @@ function SalesInvoiceDetail({
       >
         <div className="sales-detail-header">
           <div>
-            <h2 id="sales-detail-title">CHI TIẾT ĐƠN HÀNG SỐ {invoice.id}</h2>
+            <p className="sales-detail-eyebrow">ĐƠN BÁN HÀNG</p>
+            <h2 id="sales-detail-title">Đơn hàng #{invoice.id}</h2>
+            <p className="sales-detail-created-at">
+              Lập lúc {formatDateTime(invoice.sold_at)}
+            </p>
           </div>
-          <button
-            type="button"
-            className="sales-detail-close"
-            onClick={onClose}
-            aria-label="Đóng"
-          >
-            ×
-          </button>
+          <div className="sales-detail-header-tools">
+            <strong
+              className={`sales-status-badge ${getStatusClass(invoice.status)}`}
+            >
+              {getStatusLabel(invoice.status)}
+            </strong>
+            <button
+              type="button"
+              className="sales-detail-close"
+              onClick={onClose}
+              aria-label="Đóng"
+            >
+              ×
+            </button>
+          </div>
         </div>
         <div className="sales-detail-body">
           <AutoDismissMessage message={actionError} className="sales-alert" />
-          <div className="sales-detail-summary">
-            <div>
-              <span>Ngày bán</span>
-              <strong>{formatDateTime(invoice.sold_at)}</strong>
-            </div>
-            <div>
-              <span>Trạng thái</span>
-              <strong
-                className={`sales-status-badge ${getStatusClass(invoice.status)}`}
-              >
-                {getStatusLabel(invoice.status)}
-              </strong>
-            </div>
-            <div>
-              <span>Nhân viên lập đơn</span>
-              <strong>{invoice.employee?.full_name || "—"}</strong>
-            </div>
-            <div>
-              <span>Nguồn hàng</span>
-              <strong>
-                {invoice.sale_source === "hàng nhân viên"
-                  ? "Hàng nhân viên đi tỉnh"
-                  : "Kho trung tâm"}
-              </strong>
-            </div>
-            <div>
-              <span>Thanh toán</span>
-              <strong>{invoice.payment_status || "chưa thanh toán"}</strong>
-            </div>
-          </div>
+          <div className="sales-detail-overview">
+            <section className="sales-detail-card">
+              <h3>Thông tin đơn</h3>
+              <dl>
+                <div>
+                  <dt>Nhân viên lập đơn</dt>
+                  <dd>{invoice.employee?.full_name || "—"}</dd>
+                </div>
+                <div>
+                  <dt>Nguồn hàng</dt>
+                  <dd>
+                    {invoice.sale_source === "hàng nhân viên"
+                      ? "Hàng nhân viên đi tỉnh"
+                      : "Kho trung tâm"}
+                  </dd>
+                </div>
+              </dl>
+            </section>
 
-          <div className="sales-detail-info">
-            <div>
-              <span>Khách hàng</span>
-              <strong>{invoice.customer?.full_name || "—"}</strong>
-            </div>
-            <div>
-              <span>Số điện thoại</span>
-              <strong>{invoice.customer?.phone || "—"}</strong>
-            </div>
-            <div>
-              <span>Địa chỉ</span>
-              <strong>{invoice.customer?.address || "—"}</strong>
-            </div>
+            <section className="sales-detail-card">
+              <h3>Khách hàng</h3>
+              <dl>
+                <div>
+                  <dt>Họ và tên</dt>
+                  <dd>{invoice.customer?.full_name || "—"}</dd>
+                </div>
+                <div>
+                  <dt>Số điện thoại</dt>
+                  <dd>{invoice.customer?.phone || "—"}</dd>
+                </div>
+                <div className="sales-detail-card-wide">
+                  <dt>Địa chỉ giao hàng</dt>
+                  <dd>{invoice.customer?.address || "—"}</dd>
+                </div>
+              </dl>
+            </section>
           </div>
 
           <div className="sales-detail-items-wrap">
-            <h3>Sản phẩm trong đơn</h3>
+            <div className="sales-detail-section-heading">
+              <h3>Sản phẩm</h3>
+              <span>{invoice.items?.length || 0} mặt hàng</span>
+            </div>
             {invoice.items?.length ? (
-              <table className="sales-detail-items">
-                <thead>
-                  <tr>
-                    <th>Sản phẩm</th>
-                    <th>Đơn vị</th>
-                    <th>Số lượng</th>
-                    <th>Đơn giá</th>
-                    <th className="sales-money">Thành tiền</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {invoice.items.map((item) => (
-                    <tr key={item.id}>
-                      <td>{item.product_name}</td>
-                      <td>{item.unit || "—"}</td>
-                      <td>{item.quantity}</td>
-                      <td>{formatCurrency(item.unit_price)}</td>
-                      <td className="sales-money">
-                        {formatCurrency(item.total)}
-                      </td>
+              <div className="sales-detail-table-wrap">
+                <table className="sales-detail-items">
+                  <thead>
+                    <tr>
+                      <th>Sản phẩm</th>
+                      <th>Đơn vị</th>
+                      <th>Số lượng</th>
+                      <th>Đơn giá</th>
+                      <th className="sales-money">Thành tiền</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {invoice.items.map((item) => (
+                      <tr key={item.id}>
+                        <td>{item.product_name}</td>
+                        <td>{item.unit || "—"}</td>
+                        <td>{item.quantity}</td>
+                        <td>{formatCurrency(item.unit_price)}</td>
+                        <td className="sales-money">
+                          {formatCurrency(item.total)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             ) : (
               <p className="sales-detail-empty">Đơn hàng chưa có sản phẩm.</p>
             )}
           </div>
 
-          <div className="sales-detail-total">
-            <div>
-              <span>Tạm tính</span>
-              <strong>{formatCurrency(invoice.total_amount)}</strong>
+          <section className="sales-payment-card">
+            <div className="sales-payment-header">
+              <h3>Thanh toán</h3>
+              <span
+                className={`sales-payment-status ${
+                  cancelled
+                    ? "is-cancelled"
+                    : getPaymentStatusClass(invoice.payment_status)
+                }`}
+              >
+                {cancelled
+                  ? "Không cần thanh toán"
+                  : getPaymentStatusLabel(invoice.payment_status)}
+              </span>
             </div>
-            <div>
-              <span>Giảm giá</span>
-              <strong>{formatCurrency(invoice.discount?.amount)}</strong>
+            <div className="sales-payment-breakdown">
+              <div>
+                <span>Tiền hàng</span>
+                <strong>{formatCurrency(invoice.total_amount)}</strong>
+              </div>
+              {discountAmount > 0 && (
+                <div>
+                  <span>
+                    Giảm giá{discountPending ? " (chờ duyệt)" : ""}
+                  </span>
+                  <strong>-{formatCurrency(discountAmount)}</strong>
+                </div>
+              )}
+              <div className="sales-payment-total">
+                <span>
+                  {cancelled ? "Giá trị đơn trước khi hủy" : "Tổng tiền đơn"}
+                </span>
+                <strong>{formatCurrency(invoice.final_amount)}</strong>
+              </div>
+              {!cancelled && paidAmount > 0 && (
+                <div>
+                  <span>Khách đã trả</span>
+                  <strong>{formatCurrency(paidAmount)}</strong>
+                </div>
+              )}
+              {!cancelled && remainingAmount > 0 && (
+                <div className="sales-payment-remaining">
+                  <span>Còn phải thu</span>
+                  <strong>{formatCurrency(remainingAmount)}</strong>
+                </div>
+              )}
             </div>
-            <div className="sales-detail-final">
-              <span>Tổng thanh toán</span>
-              <strong>{formatCurrency(invoice.final_amount)}</strong>
+            <p className="sales-payment-help">{paymentMessage}</p>
+          </section>
+          {invoice.cancel_note && (
+            <div className="sales-detail-cancel-note">
+              <span>Lý do hủy</span>
+              <p>{invoice.cancel_note}</p>
             </div>
-            <div>
-              <span>Đã thanh toán</span>
-              <strong>{formatCurrency(invoice.paid_amount)}</strong>
-            </div>
-            <div>
-              <span>Còn công nợ</span>
-              <strong>{formatCurrency(invoice.remaining_amount)}</strong>
-            </div>
-          </div>
+          )}
           {invoice.note && (
             <div className="sales-detail-note">
               <span>Ghi chú</span>
