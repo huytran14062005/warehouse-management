@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum as UserEnum
 
-from sqlalchemy import Boolean, CheckConstraint, Column, DateTime, Enum, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Column, Date, DateTime, Enum, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from web import db
@@ -268,6 +268,45 @@ class StockTransferItem(BaseModel):
     product_id = Column(Integer, ForeignKey("products.id", ondelete="RESTRICT"), nullable=False, index=True)
 
     product = relationship("Product", backref="stock_transfer_items", lazy=True)
+
+
+class Promotion(BaseModel):
+    __tablename__ = "promotions"
+    __table_args__ = (
+        CheckConstraint("discount_value > 0", name="ck_promotion_discount_value"),
+        CheckConstraint(
+            "max_discount_amount IS NULL OR max_discount_amount >= 0",
+            name="ck_promotion_max_discount",
+        ),
+        Index("ix_promotions_active_dates", "is_active", "start_date", "end_date"),
+    )
+
+    name = Column(String(150), nullable=False, unique=True)
+    condition_type = Column(String(30), nullable=False)
+    min_quantity = Column(Integer, nullable=True)
+    min_order_amount = Column(Numeric(14, 2), nullable=True)
+    start_date = Column(Date, nullable=True)
+    end_date = Column(Date, nullable=True)
+    discount_type = Column(String(20), nullable=False)
+    discount_value = Column(Numeric(14, 2), nullable=False)
+    max_discount_amount = Column(Numeric(14, 2), nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    created_by = Column(
+        Integer,
+        ForeignKey("employees.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    created_at = Column(DateTime, nullable=False, default=datetime.now)
+    updated_at = Column(DateTime, nullable=False, default=datetime.now, onupdate=datetime.now)
+
+    created_by_employee = relationship(
+        "Employee",
+        foreign_keys=[created_by],
+        backref="created_promotions",
+        lazy=True,
+    )
+
 
 class SalesInvoice(BaseModel):
     __tablename__ = "sales_invoices"

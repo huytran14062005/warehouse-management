@@ -1,6 +1,7 @@
 from web import app, dao
 from web.models import Customer
 from web.services.exceptions import NotFoundError
+from web.services.promotion_service import promotion_snapshot_from_note
 
 
 def parse_page(value):
@@ -73,6 +74,7 @@ def serialize_order_summary(order):
         "items_count": len(order.items),
         "total_amount": total_amount,
         "discount_amount": discount_amount,
+        "promotion": promotion_snapshot_from_note(order.discount_note),
         "final_amount": total_amount - discount_amount,
         "note": order.note
     }
@@ -117,6 +119,7 @@ def serialize_order_detail(order):
         "items": items_data,
         "total_amount": total_amount,
         "discount_amount": discount_amount,
+        "promotion": promotion_snapshot_from_note(order.discount_note),
         "final_amount": total_amount - discount_amount,
     }
 

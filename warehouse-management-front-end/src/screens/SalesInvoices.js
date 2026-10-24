@@ -111,6 +111,55 @@ function getPaymentStatusClass(status) {
   return "is-unpaid";
 }
 
+function evaluatePromotionForOrder(promotion, subtotal, totalQuantity, ignoreDates = false) {
+  if (!promotion) return { eligible: true, discount: 0, reason: "" };
+  const currentDate = new Date();
+  const today = [
+    currentDate.getFullYear(),
+    String(currentDate.getMonth() + 1).padStart(2, "0"),
+    String(currentDate.getDate()).padStart(2, "0"),
+  ].join("-");
+  if (!ignoreDates && promotion.start_date && today < promotion.start_date) {
+    return { eligible: false, discount: 0, reason: "Khuyến mãi chưa đến thời gian áp dụng." };
+  }
+  if (!ignoreDates && promotion.end_date && today > promotion.end_date) {
+    return { eligible: false, discount: 0, reason: "Khuyến mãi đã hết hạn." };
+  }
+  if (
+    promotion.condition_type === "min_quantity" &&
+    totalQuantity < Number(promotion.min_quantity || 0)
+  ) {
+    return {
+      eligible: false,
+      discount: 0,
+      reason: `Cần mua thêm ${Number(promotion.min_quantity || 0) - totalQuantity} sản phẩm.`,
+    };
+  }
+  if (
+    promotion.condition_type === "min_order_amount" &&
+    subtotal < Number(promotion.min_order_amount || 0)
+  ) {
+    return {
+      eligible: false,
+      discount: 0,
+      reason: `Giá trị đơn chưa đạt ${formatCurrency(promotion.min_order_amount)}.`,
+    };
+  }
+  let discount = Number(promotion.discount_value || 0);
+  if (promotion.discount_type === "percentage") {
+    discount = subtotal * discount / 100;
+    if (Number(promotion.max_discount_amount || 0) > 0) {
+      discount = Math.min(discount, Number(promotion.max_discount_amount));
+    }
+  }
+  discount = Math.min(Math.max(0, discount), subtotal);
+  return {
+    eligible: discount > 0,
+    discount,
+    reason: discount > 0 ? "Đủ điều kiện áp dụng." : "Đơn chưa phát sinh giá trị để giảm.",
+  };
+}
+
 function hasActiveCancelRequest(invoice) {
   const status = String(invoice?.status || "").toLowerCase();
   return Boolean(
@@ -284,6 +333,13 @@ function SalesInvoiceDetail({
                   ? "Không cần thanh toán"
                   : getPaymentStatusLabel(invoice.payment_status)}
               </span>
+              {invoice.discount?.promotion && (
+                <div className="sales-payment-promotion">
+                  <strong>{invoice.discount.promotion.name}</strong>
+                  <small>{invoice.discount.promotion.condition_summary}</small>
+                  <small>{invoice.discount.promotion.benefit_summary}</small>
+                </div>
+              )}
             </div>
             <div className="sales-payment-breakdown">
               <div>
@@ -293,7 +349,7 @@ function SalesInvoiceDetail({
               {discountAmount > 0 && (
                 <div>
                   <span>
-                    Giảm giá{discountPending ? " (chờ duyệt)" : ""}
+                    Khuyến mãi{discountPending ? " (chờ duyệt)" : ""}
                   </span>
                   <strong>-{formatCurrency(discountAmount)}</strong>
                 </div>
@@ -508,9 +564,12 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
       unitPrice: String(item.unit_price),
     })),
   );
-  const [discountAmount, setDiscountAmount] = useState(
-    String(invoice?.discount?.amount || ""),
+  const [selectedPromotion, setSelectedPromotion] = useState(
+    invoice?.discount?.promotion || null,
   );
+  const [promotionOptions, setPromotionOptions] = useState([]);
+  const [promotionPickerOpen, setPromotionPickerOpen] = useState(false);
+  const [promotionsLoading, setPromotionsLoading] = useState(false);
   const [note, setNote] = useState(invoice?.note || "");
   const [productSearchResults, setProductSearchResults] = useState({});
   const [productSearchLoading, setProductSearchLoading] = useState({});
@@ -630,7 +689,18 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
       total + (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0),
     0,
   );
-  const discount = Number(discountAmount) || 0;
+  const totalQuantity = items.reduce(
+    (total, item) => total + (Number(item.quantity) || 0),
+    0,
+  );
+  const originalPromotionId = invoice?.discount?.promotion?.id;
+  const promotionEvaluation = evaluatePromotionForOrder(
+    selectedPromotion,
+    subtotal,
+    totalQuantity,
+    isEditing && String(selectedPromotion?.id) === String(originalPromotionId),
+  );
+  const discount = promotionEvaluation.discount;
   const saleProducts =
     saleSource === "employee_stock"
       ? employeeStock.map((product) => ({
@@ -638,6 +708,21 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
           available_stock: product.quantity,
         }))
       : [];
+
+  const openPromotionPicker = async () => {
+    setPromotionPickerOpen(true);
+    try {
+      setPromotionsLoading(true);
+      const response = await authApis().get(endpoints.promotions, {
+        params: { subtotal, total_quantity: totalQuantity },
+      });
+      setPromotionOptions(response.data?.promotions || []);
+    } catch (requestError) {
+      setFormError(getApiError(requestError));
+    } finally {
+      setPromotionsLoading(false);
+    }
+  };
 
   const handleProductSearchChange = (index, value) => {
     setItems((current) =>
@@ -777,8 +862,8 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
       }
       productIds.add(item.productId);
     }
-    if (discount < 0 || discount > subtotal) {
-      setFormError("Giảm giá không được âm hoặc lớn hơn tạm tính.");
+    if (selectedPromotion && !promotionEvaluation.eligible) {
+      setFormError(promotionEvaluation.reason);
       return;
     }
     const enteredPayment = Number(paymentAmount) || 0;
@@ -811,8 +896,8 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
               }
             : undefined,
         note: note.trim(),
-        discount_amount: discount,
-        discount_note: "",
+        discount_amount: 0,
+        promotion_id: selectedPromotion?.id || null,
         sale_source: saleSource,
         payment_amount: saleSource === "employee_stock" ? enteredPayment : 0,
         items: items.map((item) => ({
@@ -1142,19 +1227,90 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                 })}
               </div>
 
+              <section className="sales-promotion-selector">
+                <div className="sales-promotion-selector-heading">
+                  <div>
+                    <h3>Khuyến mãi</h3>
+                    <p>Chỉ áp dụng chương trình đáp ứng điều kiện của đơn.</p>
+                  </div>
+                  <button type="button" onClick={openPromotionPicker}>
+                    {selectedPromotion ? "Đổi khuyến mãi" : "Chọn khuyến mãi"}
+                  </button>
+                </div>
+                {selectedPromotion ? (
+                  <div className={`sales-selected-promotion${promotionEvaluation.eligible ? "" : " is-invalid"}`}>
+                    <div>
+                      <strong>{selectedPromotion.name}</strong>
+                      <span>{selectedPromotion.condition_summary}</span>
+                      <small>{selectedPromotion.benefit_summary}</small>
+                    </div>
+                    <div className="sales-selected-promotion-value">
+                      <span>Mức giảm của đơn</span>
+                      <strong>-{formatCurrency(discount)}</strong>
+                    </div>
+                    <button
+                      type="button"
+                      className="sales-promotion-remove"
+                      onClick={() => {
+                        setSelectedPromotion(null);
+                        setPromotionPickerOpen(false);
+                      }}
+                    >
+                      Xóa khỏi đơn
+                    </button>
+                    {!promotionEvaluation.eligible && (
+                      <p>{promotionEvaluation.reason}</p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="sales-promotion-empty">
+                    Đơn này không áp dụng khuyến mãi.
+                  </div>
+                )}
+
+                {promotionPickerOpen && (
+                  <div className="sales-promotion-picker">
+                    <div className="sales-promotion-picker-header">
+                      <strong>Chương trình hiện có</strong>
+                      <button type="button" onClick={() => setPromotionPickerOpen(false)}>
+                        Đóng
+                      </button>
+                    </div>
+                    {promotionsLoading ? (
+                      <div className="sales-promotion-picker-state">Đang kiểm tra điều kiện...</div>
+                    ) : promotionOptions.length ? (
+                      <div className="sales-promotion-options">
+                        {promotionOptions.map((promotion) => (
+                          <button
+                            type="button"
+                            key={promotion.id}
+                            className={promotion.eligible ? "is-eligible" : "is-ineligible"}
+                            disabled={!promotion.eligible}
+                            onClick={() => {
+                              setSelectedPromotion(promotion);
+                              setPromotionPickerOpen(false);
+                            }}
+                          >
+                            <strong>{promotion.name}</strong>
+                            <span>{promotion.condition_summary}</span>
+                            <small>
+                              {promotion.eligible
+                                ? `${promotion.benefit_summary} · Giảm ${formatCurrency(promotion.calculated_discount)}`
+                                : promotion.eligibility_reason}
+                            </small>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="sales-promotion-picker-state">
+                        Chưa có chương trình khuyến mãi đang hoạt động.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </section>
+
               <div className="sales-editor-financials">
-                <label className="sales-editor-field">
-                  <span>Giảm giá</span>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={formatMoneyInput(discountAmount)}
-                    onChange={(event) =>
-                      setDiscountAmount(digitsOnly(event.target.value))
-                    }
-                    placeholder="0"
-                  />
-                </label>
                 {saleSource === "employee_stock" && (
                   <label className="sales-editor-field">
                     <span>Khách thanh toán</span>
@@ -1170,11 +1326,17 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                   </label>
                 )}
                 <div className="sales-editor-total">
-                  <span>Tạm tính</span>
+                  <span>Tiền hàng</span>
                   <strong>{formatCurrency(subtotal)}</strong>
                 </div>
+                {discount > 0 && (
+                  <div className="sales-editor-total sales-editor-discount">
+                    <span>Khuyến mãi</span>
+                    <strong>-{formatCurrency(discount)}</strong>
+                  </div>
+                )}
                 <div className="sales-editor-total">
-                  <span>Tổng thanh toán</span>
+                  <span>Tổng tiền đơn</span>
                   <strong>
                     {formatCurrency(Math.max(0, subtotal - discount))}
                   </strong>
@@ -1637,11 +1799,11 @@ function SalesInvoices() {
       {canViewStatusBoard && (
         <section
           className="sales-pending-discount"
-          aria-label="Đơn hàng chờ duyệt giảm giá"
+          aria-label="Đơn hàng chờ duyệt khuyến mãi"
         >
           <div className="sales-pending-discount-header">
             <div>
-              <h2>Đơn hàng chờ duyệt giảm giá</h2>
+              <h2>Đơn hàng chờ duyệt khuyến mãi</h2>
               <p></p>
             </div>
             <span>{pendingDiscountPagination.total} đơn chờ duyệt</span>
@@ -1654,7 +1816,7 @@ function SalesInvoices() {
             <Skeleton rows={4} columns={5} />
           ) : pendingDiscounts.length === 0 ? (
             <div className="sales-state">
-              Không có đơn hàng nào đang chờ duyệt giảm giá.
+              Không có đơn hàng nào đang chờ duyệt khuyến mãi.
             </div>
           ) : (
             <div className="sales-table-wrap">
@@ -1664,8 +1826,8 @@ function SalesInvoices() {
                     <th>Mã đơn</th>
                     <th>Khách hàng</th>
                     <th>Nhân viên lập đơn</th>
-                    <th className="sales-money">Tạm tính</th>
-                    <th className="sales-money">Mức giảm</th>
+                    <th className="sales-money">Tiền hàng</th>
+                    <th className="sales-money">Khuyến mãi</th>
                     <th>Thao tác</th>
                   </tr>
                 </thead>
@@ -1686,7 +1848,8 @@ function SalesInvoices() {
                         {formatCurrency(invoice.total_amount)}
                       </td>
                       <td className="sales-money sales-discount-pending-amount">
-                        {formatCurrency(invoice.discount?.amount)}
+                        <strong>{formatCurrency(invoice.discount?.amount)}</strong>
+                        <small>{invoice.discount?.promotion?.name || "Điều chỉnh giá cũ"}</small>
                       </td>
                       <td>
                         <div
@@ -1960,15 +2123,15 @@ function SalesInvoices() {
       <ConfirmDialog
         open={Boolean(discountConfirm)}
         title={
-          discountConfirm?.approved ? "Duyệt giảm giá?" : "Từ chối giảm giá?"
+          discountConfirm?.approved ? "Duyệt khuyến mãi?" : "Từ chối khuyến mãi?"
         }
         message={
           discountActionError ||
           (discountConfirm
-            ? `${discountConfirm.approved ? "Duyệt" : "Từ chối"} mức giảm ${formatCurrency(discountConfirm.invoice.discount?.amount)} cho đơn hàng #${discountConfirm.invoice.id}?`
+            ? `${discountConfirm.approved ? "Duyệt" : "Từ chối"} khuyến mãi ${discountConfirm.invoice.discount?.promotion?.name || "đã chọn"} với mức giảm ${formatCurrency(discountConfirm.invoice.discount?.amount)} cho đơn hàng #${discountConfirm.invoice.id}?`
             : "")
         }
-        confirmLabel={discountConfirm?.approved ? "Duyệt giảm giá" : "Từ chối"}
+        confirmLabel={discountConfirm?.approved ? "Duyệt khuyến mãi" : "Từ chối"}
         cancelLabel="Quay lại"
         danger={!discountConfirm?.approved}
         loading={discountActionLoading}

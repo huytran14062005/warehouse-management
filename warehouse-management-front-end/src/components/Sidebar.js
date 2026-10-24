@@ -137,6 +137,17 @@ function Sidebar({ user, pendingRequests, isMobileOpen = false, onMobileClose = 
                 {salesPendingCount > 0 && <span className="internal-sidebar-badge">{salesPendingCount}</span>}
               </NavLink>
             )}
+            {canManageEmployeeAccounts && (
+              <NavLink
+                to="/promotions"
+                onClick={onMobileClose}
+                className={({ isActive }) =>
+                  `internal-sidebar-link${isActive ? " is-active" : ""}`
+                }
+              >
+                <span>Khuyến mãi</span>
+              </NavLink>
+            )}
             {canManageStockTransfers && (
               <NavLink
                 to="/stock-transfers"

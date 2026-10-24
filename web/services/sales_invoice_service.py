@@ -23,6 +23,13 @@ from web.services.exceptions import AppError, NotFoundError, ValidationError
 from web.services.authorization import ensure_bounded_items, ensure_warehouse_access
 from web.services.validators import require_text, validate_phone
 from web.services.sales_area_service import resolve_sales_area_id
+from web.services.promotion_service import (
+    append_approval_note,
+    approval_notes_from_note,
+    build_promotion_note,
+    get_promotion_for_invoice,
+    promotion_snapshot_from_note,
+)
 
 
 ACTIVE_CANCEL_REQUEST_STATUSES = frozenset(
@@ -172,7 +179,7 @@ def _validate_items_available_in_warehouse(items, warehouse_id):
             )
 
 
-def determine_discount_status(total_amount, discount_amount):
+def determine_discount_status(total_amount, discount_amount, is_promotion=False):
        
     MIN_ORDER_AMOUNT = 5_000_000           
     AUTO_APPROVE_THRESHOLD = 20_000       
@@ -183,16 +190,21 @@ def determine_discount_status(total_amount, discount_amount):
 
     if discount_amount > total_amount:
         raise ValidationError("Sá»‘ tiá»n giáº£m giÃ¡ khÃ´ng Ä‘Æ°á»£c vÆ°á»£t quá» tÃ´ng tiá»n Ä‘Æ¡n")
+
+    # Promotions are configured and authorized by a manager in advance, so
+    # applying an eligible program must not create a second approval step.
+    if is_promotion:
+        return DiscountStatus.AUTO_APPROVED
     
                                        
-    if total_amount < MIN_ORDER_AMOUNT:
+    if not is_promotion and total_amount < MIN_ORDER_AMOUNT:
         raise ValidationError(
             f"Đơn hàng phải từ {MIN_ORDER_AMOUNT:,.0f} VNĐ trở lên mới được giảm giá. "
             f"Tổng tiền hiện tại: {total_amount:,.0f} VNĐ"
         )
     
                                  
-    if discount_amount < MIN_DISCOUNT:
+    if not is_promotion and discount_amount < MIN_DISCOUNT:
         raise ValidationError(f"Giảm giá tối thiểu là {MIN_DISCOUNT:,.0f} VNĐ")
     
                          
@@ -313,6 +325,7 @@ def serialize_sales_invoice(invoice):
                             
     discount = float(invoice.discount_amount)
     final_amount = total_amount - discount
+    promotion_snapshot = promotion_snapshot_from_note(invoice.discount_note)
 
     return {
         "id": invoice.id,
@@ -345,7 +358,9 @@ def serialize_sales_invoice(invoice):
         "discount": {
             "amount": discount,
             "status": invoice.discount_status.value,
-            "note": invoice.discount_note,
+            "note": None if promotion_snapshot else invoice.discount_note,
+            "promotion": promotion_snapshot,
+            "approval_notes": approval_notes_from_note(invoice.discount_note),
             "approved_by": {
                 "id": invoice.discount_approved_by_employee.id,
                 "full_name": invoice.discount_approved_by_employee.full_name
@@ -366,6 +381,7 @@ def create_sales_invoice_service(
     items=None,
     discount_amount=0,
     discount_note="",
+    promotion_id=None,
     sale_source=None,
     payment_amount=0,
     stock_employee_id=None,
@@ -413,7 +429,26 @@ def create_sales_invoice_service(
     validated_items = _validate_sales_items(items)
 
     total_amount = calculate_total_amount(validated_items)
-    discount_status = determine_discount_status(total_amount, discount_amount)
+    total_quantity = sum(item["quantity"] for item in validated_items)
+    if promotion_id not in (None, ""):
+        promotion, discount_amount = get_promotion_for_invoice(
+            promotion_id,
+            total_amount,
+            total_quantity,
+        )
+        discount_note = build_promotion_note(promotion, discount_amount)
+    else:
+        if discount_amount > 0:
+            raise ValidationError(
+                "Vui lòng chọn chương trình khuyến mãi thay vì nhập giảm giá thủ công"
+            )
+        discount_amount = Decimal("0")
+        discount_note = None
+    discount_status = determine_discount_status(
+        total_amount,
+        discount_amount,
+        is_promotion=promotion_id not in (None, ""),
+    )
     final_amount = total_amount - discount_amount
 
     if sale_source == SaleSource.EMPLOYEE_STOCK:
@@ -421,7 +456,7 @@ def create_sales_invoice_service(
             raise ValidationError("Chỉ nhân viên bán hàng mới được tạo đơn từ hàng đi tỉnh của mình")
         stock_employee_id = employee_id
         if discount_status in {DiscountStatus.PENDING_APPROVAL, DiscountStatus.REJECTED}:
-            raise ValidationError("Đơn bán từ hàng nhân viên không thể hoàn thành khi giảm giá chưa được duyệt")
+            raise ValidationError("Đơn bán từ hàng nhân viên không thể hoàn thành khi khuyến mãi chưa được duyệt")
         payment_amount = validate_money(payment_amount, "Số tiền khách thanh toán")
         if payment_amount > final_amount:
             raise ValidationError("Số tiền khách thanh toán không được lớn hơn tổng tiền đơn")
@@ -446,7 +481,7 @@ def create_sales_invoice_service(
                 items=validated_items,
                 discount_amount=discount_amount,
                 discount_status=discount_status,
-                discount_note=discount_note.strip() if discount_note else None,
+                discount_note=discount_note,
                 sale_source=sale_source,
                 status=InvoiceStatus.COMPLETED,
                 sales_area_id=customer.sales_area_id,
@@ -467,7 +502,7 @@ def create_sales_invoice_service(
         items=validated_items,
         discount_amount=discount_amount,
         discount_status=discount_status,
-        discount_note=discount_note.strip() if discount_note else None,
+        discount_note=discount_note,
         sale_source=sale_source,
         payment_status=PaymentStatus.UNPAID,
         paid_amount=0,
@@ -476,7 +511,7 @@ def create_sales_invoice_service(
 
 
 
-def update_sales_invoice_service(invoice_id, employee_id, warehouse_id, customer_id, note, items, discount_amount=0, discount_note=""):
+def update_sales_invoice_service(invoice_id, employee_id, warehouse_id, customer_id, note, items, discount_amount=0, discount_note="", promotion_id=None):
        
                               
     invoice = SalesInvoice.query.get(invoice_id)
@@ -538,7 +573,34 @@ def update_sales_invoice_service(invoice_id, employee_id, warehouse_id, customer
     _validate_items_available_in_warehouse(validated_items, warehouse_id)
 
     total_amount = calculate_total_amount(validated_items)
-    discount_status = determine_discount_status(total_amount, discount_amount)
+    total_quantity = sum(item["quantity"] for item in validated_items)
+    current_promotion = promotion_snapshot_from_note(invoice.discount_note)
+    current_promotion_id = None
+    if current_promotion:
+        try:
+            current_promotion_id = int(current_promotion.get("id"))
+        except (TypeError, ValueError):
+            current_promotion_id = None
+    if promotion_id not in (None, ""):
+        promotion, discount_amount = get_promotion_for_invoice(
+            promotion_id,
+            total_amount,
+            total_quantity,
+            existing_promotion_id=current_promotion_id,
+        )
+        discount_note = build_promotion_note(promotion, discount_amount)
+    else:
+        if discount_amount > 0:
+            raise ValidationError(
+                "Vui lòng chọn chương trình khuyến mãi thay vì nhập giảm giá thủ công"
+            )
+        discount_amount = Decimal("0")
+        discount_note = None
+    discount_status = determine_discount_status(
+        total_amount,
+        discount_amount,
+        is_promotion=promotion_id not in (None, ""),
+    )
 
                       
     updated_invoice = dao.update_sales_invoice(
@@ -549,7 +611,7 @@ def update_sales_invoice_service(invoice_id, employee_id, warehouse_id, customer
         items=validated_items,
         discount_amount=discount_amount,
         discount_status=discount_status,
-        discount_note=discount_note.strip() if discount_note else None,
+        discount_note=discount_note,
         sales_area_id=customer.sales_area_id,
     )
 
@@ -575,13 +637,13 @@ def complete_sales_invoice_service(invoice_id, employee_id, payment_amount=0):
 
     if invoice.discount_status == DiscountStatus.PENDING_APPROVAL:
         raise ValidationError(
-            "Không thể xuất kho khi giảm giá chưa được duyệt. "
-            "Vui lòng chờ quản lý duyệt giảm giá."
+            "Không thể xuất kho khi khuyến mãi chưa được duyệt. "
+            "Vui lòng chờ quản lý duyệt khuyến mãi."
         )
     
     if invoice.discount_status == DiscountStatus.REJECTED:
         raise ValidationError(
-            "Không thể xuất kho khi giảm giá đã bị từ chối. "
+            "Không thể xuất kho khi khuyến mãi đã bị từ chối. "
             "Vui lòng cập nhật lại đơn hàng."
         )
 
@@ -681,6 +743,7 @@ def serialize_invoice_summary(invoice):
     
     discount = float(invoice.discount_amount)
     final_amount = total_amount - discount
+    promotion_snapshot = promotion_snapshot_from_note(invoice.discount_note)
     
     return {
         "id": invoice.id,
@@ -702,7 +765,8 @@ def serialize_invoice_summary(invoice):
         },
         "discount": {
             "amount": discount,
-            "status": invoice.discount_status.value
+            "status": invoice.discount_status.value,
+            "promotion": promotion_snapshot,
         },
         "items_count": len(invoice.items),
         "total_amount": total_amount,
@@ -960,13 +1024,13 @@ def approve_discount_service(invoice_id, manager_id, approved, note=""):
     
                                                               
     if manager.role != EmployeeRole.QUAN_LY:
-        raise ValidationError("Chỉ quản lý mới được duyệt giảm giá")
+        raise ValidationError("Chỉ quản lý mới được duyệt khuyến mãi")
     if invoice.employee_id == manager_id:
-        raise ValidationError("Người tạo đơn không được tự duyệt giảm giá")
+        raise ValidationError("Người tạo đơn không được tự duyệt khuyến mãi")
 
     if invoice.discount_status != DiscountStatus.PENDING_APPROVAL:
         raise ValidationError(
-            f"Đơn hàng không cần duyệt giảm giá. "
+            f"Đơn hàng không cần duyệt khuyến mãi. "
             f"Trạng thái hiện tại: {invoice.discount_status.value}"
         )
     
@@ -978,10 +1042,13 @@ def approve_discount_service(invoice_id, manager_id, approved, note=""):
             
                                   
             if note:
-                current_note = invoice.discount_note or ""
-                invoice.discount_note = f"{current_note}\n[Quản lý duyệt]: {note.strip()}".strip()
+                invoice.discount_note = append_approval_note(
+                    invoice.discount_note,
+                    "Quản lý duyệt",
+                    note.strip(),
+                )
             
-            message = "Đã duyệt giảm giá"
+            message = "Đã duyệt khuyến mãi"
         else:
                               
             invoice.discount_status = DiscountStatus.REJECTED
@@ -991,11 +1058,14 @@ def approve_discount_service(invoice_id, manager_id, approved, note=""):
             invoice.discount_amount = 0
             
                            
-            reject_note = note.strip() if note else "Từ chối giảm giá"
-            current_note = invoice.discount_note or ""
-            invoice.discount_note = f"{current_note}\n[Quản lý từ chối]: {reject_note}".strip()
+            reject_note = note.strip() if note else "Từ chối khuyến mãi"
+            invoice.discount_note = append_approval_note(
+                invoice.discount_note,
+                "Quản lý từ chối",
+                reject_note,
+            )
             
-            message = "Đã từ chối giảm giá"
+            message = "Đã từ chối khuyến mãi"
         
         db.session.commit()
         
@@ -1003,7 +1073,7 @@ def approve_discount_service(invoice_id, manager_id, approved, note=""):
     
     except Exception as ex:
         db.session.rollback()
-        raise Exception(f"Lỗi duyệt giảm giá: {str(ex)}")
+        raise Exception(f"Lỗi duyệt khuyến mãi: {str(ex)}")
 
 
 def get_pending_discount_invoices_service(page_value, per_page_value, keyword):

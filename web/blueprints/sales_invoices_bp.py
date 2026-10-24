@@ -104,6 +104,7 @@ def create_sales_invoice():
         items=data.get("items", []),
         discount_amount=data.get("discount_amount", 0),
         discount_note=data.get("discount_note", ""),
+        promotion_id=data.get("promotion_id"),
         sale_source=data.get("sale_source"),
         payment_amount=data.get("payment_amount", 0),
         stock_employee_id=data.get("stock_employee_id"),
@@ -131,7 +132,8 @@ def update_sales_invoice(invoice_id):
         note=data.get("note", ""),
         items=data.get("items", []),
         discount_amount=data.get("discount_amount", 0),
-        discount_note=data.get("discount_note", "")
+        discount_note=data.get("discount_note", ""),
+        promotion_id=data.get("promotion_id"),
     )
 
     return jsonify({

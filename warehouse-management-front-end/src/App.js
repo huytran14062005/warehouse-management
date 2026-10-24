@@ -21,6 +21,7 @@ import ManagerSalesAnalytics from "./screens/ManagerSalesAnalytics";
 import Register from "./screens/User/Register";
 import EmployeeAccounts from "./screens/EmployeeAccounts";
 import PendingRequests from "./screens/PendingRequests";
+import Promotions from "./screens/Promotions";
 import { authApis, endpoints, scheduleTokenRefresh, stopTokenRefresh } from "./configs/Apis";
 import "./css/Responsive.css";
 
@@ -193,6 +194,7 @@ function App() {
                   <Route path="/customers" element={<Customers />} />
                   <Route path="/products" element={<Products />} />
                   <Route path="/sales-invoices" element={<SalesInvoices />} />
+                  <Route path="/promotions" element={<Promotions />} />
                   <Route path="/stock-transfers" element={<StockTransfers />} />
                   <Route path="/employee-stock" element={<EmployeeStock />} />
                   <Route path="/import-invoices" element={<ImportInvoices />} />

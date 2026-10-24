@@ -753,11 +753,13 @@ function Customers() {
                                   </table>
                                 </div>
                                 <div className="customer-order-total">
-                                  <span>Tạm tính: {formatCurrency(selectedOrder.total_amount)}</span>
+                                  <span>Tiền hàng: {formatCurrency(selectedOrder.total_amount)}</span>
                                   {Number(selectedOrder.discount_amount || 0) > 0 && (
-                                    <span>Giảm giá: {formatCurrency(selectedOrder.discount_amount)}</span>
+                                    <span>
+                                      Khuyến mãi{selectedOrder.promotion?.name ? ` (${selectedOrder.promotion.name})` : ""}: {formatCurrency(selectedOrder.discount_amount)}
+                                    </span>
                                   )}
-                                  <strong>Tổng thanh toán: {formatCurrency(selectedOrder.final_amount ?? selectedOrder.total_amount)}</strong>
+                                  <strong>Tổng tiền đơn: {formatCurrency(selectedOrder.final_amount ?? selectedOrder.total_amount)}</strong>
                                 </div>
                               </div>
                             </>
