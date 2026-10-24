@@ -63,6 +63,7 @@ def serialize_order_summary(order):
         "id": order.id,
         "sold_at": order.sold_at.isoformat() if order.sold_at else None,
         "status": order.status.value,
+        "sale_source": order.sale_source.value,
         "warehouse": {
             "id": order.warehouse.id,
             "name": order.warehouse.name
@@ -105,6 +106,7 @@ def serialize_order_detail(order):
         "id": order.id,
         "sold_at": order.sold_at.isoformat() if order.sold_at else None,
         "status": order.status.value,
+        "sale_source": order.sale_source.value,
         "note": order.note,
         "warehouse": {
             "id": order.warehouse.id,

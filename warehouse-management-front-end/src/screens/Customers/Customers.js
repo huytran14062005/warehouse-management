@@ -28,6 +28,17 @@ function formatDateTime(value) {
   return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+function getSaleSourceLabel(value) {
+  const source = String(value || "").toLowerCase();
+  if (source === "employee_stock" || source.includes("hàng nhân viên")) {
+    return "Hàng nhân viên đi tỉnh";
+  }
+  if (source === "central_warehouse" || source.includes("kho trung tâm")) {
+    return "Kho trung tâm";
+  }
+  return value || "Chưa xác định";
+}
+
 function getStatusClass(status) {
   const value = String(status || "").toLowerCase();
   if (value.includes("nháp") || value === "draft") return "customer-status-draft";
@@ -734,6 +745,7 @@ function Customers() {
                               </div>
                               <div className="customer-order-meta">
                                 <div><span>Người tạo đơn</span><strong>{selectedOrder.employee?.full_name}</strong></div>
+                                <div><span>Nguồn hàng</span><strong>{getSaleSourceLabel(selectedOrder.sale_source)}</strong></div>
                                 <div><span>Ghi chú</span><strong>{selectedOrder.note || "—"}</strong></div>
                               </div>
                               <div className="customer-order-items">
