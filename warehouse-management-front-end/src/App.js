@@ -90,7 +90,7 @@ function AppFrame() {
   });
   const [pendingRequests, setPendingRequests] = useState({
     total: 0,
-    counts: { accounts: 0, damage_reports: 0, discount_invoices: 0, cancel_requests: 0 },
+    counts: { accounts: 0, damage_reports: 0, discount_invoices: 0, cancel_requests: 0, product_requests: 0 },
   });
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
 
@@ -189,7 +189,7 @@ function AppFrame() {
     if (!isManager) {
       setPendingRequests({
         total: 0,
-        counts: { accounts: 0, damage_reports: 0, discount_invoices: 0, cancel_requests: 0 },
+        counts: { accounts: 0, damage_reports: 0, discount_invoices: 0, cancel_requests: 0, product_requests: 0 },
       });
       return undefined;
     }
@@ -208,7 +208,7 @@ function AppFrame() {
         if (!cancelled && [401, 403].includes(error.response?.status)) {
           setPendingRequests({
             total: 0,
-            counts: { accounts: 0, damage_reports: 0, discount_invoices: 0, cancel_requests: 0 },
+            counts: { accounts: 0, damage_reports: 0, discount_invoices: 0, cancel_requests: 0, product_requests: 0 },
           });
         }
       }

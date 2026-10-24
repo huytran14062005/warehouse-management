@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { createPortal } from "react-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { authApis, endpoints } from "../configs/Apis";
 import { getApiError } from "../utils/apiError";
 import useNotificationState from "../utils/useNotificationState";
@@ -11,6 +12,7 @@ import SharedSearchableDropdown from "../components/SearchableDropdown";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import "../css/Products.css";
+import "../css/WarehouseOperations.css";
 
 const PER_PAGE = 10;
 
@@ -53,8 +55,80 @@ function validatePriceRange(minPrice, maxPrice) {
   return "";
 }
 
+function ProductEditor({ request, onClose, onSaved }) {
+  const [name, setName] = useState(request?.name || "");
+  const [unit, setUnit] = useState(request?.unit || "");
+  const [price, setPrice] = useState("");
+  const [note, setNote] = useState(request?.note || "");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setError("");
+    if (!name.trim() || !unit.trim()) {
+      setError("Vui lòng nhập tên sản phẩm và đơn vị tính.");
+      return;
+    }
+    try {
+      setSaving(true);
+      await authApis().post(endpoints.products, {
+        name: name.trim(),
+        unit: unit.trim(),
+        default_sale_price: Number(price || 0),
+        note: note.trim(),
+        request_id: request?.id || null,
+      });
+      onSaved();
+    } catch (requestError) {
+      setError(getApiError(requestError));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return createPortal(
+    <div className="warehouse-modal-overlay" onClick={onClose}>
+      <div className="warehouse-modal warehouse-editor-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+        <div className="warehouse-modal-header">
+          <div>
+            <h2>{request ? "Xử lý yêu cầu thêm sản phẩm" : "Thêm sản phẩm"}</h2>
+            {request && <small>Người gửi: {request.requested_by?.full_name} ({request.requested_by?.role})</small>}
+          </div>
+          <button type="button" className="warehouse-modal-close" onClick={onClose} aria-label="Đóng">×</button>
+        </div>
+        <form className="warehouse-modal-body" onSubmit={submit}>
+          <AutoDismissMessage message={error} className="warehouse-error" />
+          <label className="warehouse-field">
+            <span>Tên sản phẩm</span>
+            <input value={name} onChange={(event) => setName(event.target.value)} required autoFocus />
+          </label>
+          <label className="warehouse-field">
+            <span>Đơn vị tính</span>
+            <input value={unit} onChange={(event) => setUnit(event.target.value)} placeholder="Ví dụ: Cái, Hộp, Kg" required />
+          </label>
+          <label className="warehouse-field">
+            <span>Giá bán mặc định</span>
+            <input type="text" inputMode="numeric" value={formatMoneyInput(price)} onChange={(event) => setPrice(digitsOnly(event.target.value))} placeholder="0" />
+          </label>
+          <label className="warehouse-field">
+            <span>Ghi chú</span>
+            <textarea rows="3" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Thông tin thêm về sản phẩm" />
+          </label>
+          <div className="warehouse-modal-actions">
+            <button type="button" onClick={onClose} disabled={saving}>Hủy</button>
+            <button type="submit" className="warehouse-primary-button" disabled={saving}>{saving ? "Đang lưu..." : "Thêm sản phẩm"}</button>
+          </div>
+        </form>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function Products() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [products, setProducts] = useState([]);
   const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
@@ -79,7 +153,10 @@ function Products() {
     }
   })();
   const canExportPriceList = ["kế toán", "quản lý"].includes(currentUser.role);
+  const canCreateProducts = currentUser.role === "quản lý";
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [productEditor, setProductEditor] = useState(null);
+  const productRequestId = new URLSearchParams(location.search).get("product_request_id");
 
   const fetchProducts = useCallback(async () => {
     if (!localStorage.getItem("token")) {
@@ -127,6 +204,27 @@ function Products() {
     window.addEventListener(INVENTORY_CHANGED_EVENT, refreshProducts);
     return () => window.removeEventListener(INVENTORY_CHANGED_EVENT, refreshProducts);
   }, [fetchProducts]);
+
+  useEffect(() => {
+    if (!canCreateProducts || !productRequestId) return undefined;
+    let cancelled = false;
+    authApis().get(endpoints.productRequests)
+      .then((response) => {
+        if (cancelled) return;
+        const request = (response.data?.requests || []).find((item) => String(item.id) === String(productRequestId));
+        if (request) {
+          setProductEditor(request);
+        } else {
+          setError("Yêu cầu sản phẩm không còn ở trạng thái chờ xử lý.");
+        }
+      })
+      .catch((requestError) => {
+        if (!cancelled) setError(getApiError(requestError));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canCreateProducts, productRequestId, setError]);
 
   useEffect(() => {
     if (debounceTimerRef.current) {
@@ -235,8 +333,14 @@ function Products() {
         <div>
           <h1>Danh sách sản phẩm</h1>
         </div>
-        {canExportPriceList && (
+        {(canExportPriceList || canCreateProducts) && (
           <div className="products-export-actions" aria-label="Xuất bảng báo giá">
+            {canCreateProducts && (
+              <button type="button" className="products-export-button products-export-button-primary" onClick={() => setProductEditor("new")}>
+                + Thêm sản phẩm
+              </button>
+            )}
+            {canExportPriceList && (
             <button
               type="button"
               className="products-export-button products-export-button-primary"
@@ -245,6 +349,7 @@ function Products() {
             >
               {exportingPdf ? "Đang xuất..." : "Xuất PDF"}
             </button>
+            )}
           </div>
         )}
       </div>
@@ -361,6 +466,21 @@ function Products() {
       </div>
 
       <Pagination page={page} totalPages={pagination.totalPages} onPageChange={handlePageChange} disabled={loading} />
+      {productEditor && (
+        <ProductEditor
+          request={productEditor === "new" ? null : productEditor}
+          onClose={() => {
+            setProductEditor(null);
+            if (productRequestId) navigate("/products", { replace: true });
+          }}
+          onSaved={() => {
+            setProductEditor(null);
+            setError("");
+            fetchProducts();
+            if (productRequestId) navigate("/products", { replace: true });
+          }}
+        />
+      )}
     </div>
   );
 }

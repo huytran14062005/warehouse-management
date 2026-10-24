@@ -1,9 +1,30 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { authApis, endpoints } from "../configs/Apis";
+import { getApiError } from "../utils/apiError";
+import AutoDismissMessage from "../components/AutoDismissMessage";
 import "../css/PendingRequests.css";
 
 function PendingRequests({ pendingRequests }) {
   const counts = pendingRequests?.counts || {};
+  const [productRequests, setProductRequests] = useState([]);
+  const [productRequestError, setProductRequestError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    authApis()
+      .get(endpoints.productRequests)
+      .then((response) => {
+        if (!cancelled) setProductRequests(response.data?.requests || []);
+      })
+      .catch((error) => {
+        if (!cancelled) setProductRequestError(getApiError(error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const requests = [
     {
       key: "accounts",
@@ -63,6 +84,34 @@ function PendingRequests({ pendingRequests }) {
             </Link>
           </section>
         ))}
+        <section
+          className={`pending-request-card${Number(counts.product_requests || 0) ? " has-pending" : ""}`}
+        >
+          <div className="pending-request-card-top">
+            <h2>Yêu cầu thêm sản phẩm</h2>
+            <span>{Number(counts.product_requests || 0)}</span>
+          </div>
+          <p>Nhân viên bán hàng hoặc thủ kho gửi yêu cầu khi chưa có sản phẩm trong danh mục.</p>
+          <AutoDismissMessage message={productRequestError} className="pending-request-error" />
+          {productRequests.length ? (
+            <div className="pending-product-request-list">
+              {productRequests.map((request) => (
+                <Link
+                  key={request.id}
+                  className="pending-product-request-link"
+                  to={`/products?product_request_id=${request.id}`}
+                >
+                  <strong>{request.name}</strong>
+                  <small>
+                    {request.requested_by?.full_name || "Nhân viên"} · {request.requested_by?.role || ""}
+                  </small>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <span className="pending-request-empty">Chưa có yêu cầu đang chờ.</span>
+          )}
+        </section>
       </div>
     </div>
   );

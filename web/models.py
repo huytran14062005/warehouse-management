@@ -13,6 +13,12 @@ class EmployeeRole(UserEnum):
     THU_KHO = "thủ kho"
     QUAN_LY = "quản lý"
 
+
+class ProductRequestStatus(UserEnum):
+    PENDING = "pending"
+    COMPLETED = "completed"
+    REJECTED = "rejected"
+
 class InvoiceStatus(UserEnum):
     DRAFT = "nháp"
     PROCESSING = "đang xử lý"
@@ -128,6 +134,35 @@ class Employee(BaseModel):
     )
     customer_payments = relationship("CustomerPayment", backref="collected_by_employee", lazy=True)
     refresh_sessions = relationship("RefreshSession", backref="employee", lazy=True, cascade="all, delete-orphan")
+
+
+class ProductRequest(BaseModel):
+    __tablename__ = "product_requests"
+    __table_args__ = (
+        Index("ix_product_requests_status_created", "status", "created_at"),
+    )
+
+    name = Column(String(255), nullable=False)
+    unit = Column(String(50), nullable=False)
+    note = Column(Text)
+    status = Column(String(20), nullable=False, default=ProductRequestStatus.PENDING.value, index=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.now)
+    resolved_at = Column(DateTime, nullable=True)
+    requested_by_employee_id = Column(Integer, ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False, index=True)
+    resolved_product_id = Column(Integer, ForeignKey("products.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    requested_by_employee = relationship(
+        "Employee",
+        foreign_keys=[requested_by_employee_id],
+        backref="product_requests",
+        lazy=True,
+    )
+    resolved_product = relationship(
+        "Product",
+        foreign_keys=[resolved_product_id],
+        backref="product_requests",
+        lazy=True,
+    )
 
 
 class RefreshSession(BaseModel):

@@ -14,6 +14,7 @@ from web.models import (
     PaymentStatus,
     PaymentType,
     Product,
+    ProductRequest,
     SalesInvoice,
     SalesInvoiceItem,
     SalesArea,

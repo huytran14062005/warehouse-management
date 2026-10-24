@@ -11,3 +11,5 @@
 .searchable-dropdown-option { display: block; width: 100%; padding: 9px 10px; color: #1b2d40; border: 0; background: #fff; font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
 .searchable-dropdown-option:hover, .searchable-dropdown-option.is-selected { color: #fff; background: #1d68c9; }
 .searchable-dropdown-state { padding: 10px; color: #71849a; font-size: 13px; }
+.searchable-dropdown-action { display: block; width: calc(100% - 16px); margin: 2px 8px 8px; padding: 8px 10px; color: #0b3158; border: 1px solid #b7c8d8; border-radius: 5px; background: #f7fafc; font: inherit; font-size: 12px; font-weight: 600; text-align: left; cursor: pointer; }
+.searchable-dropdown-action:hover { background: #eef3f8; }

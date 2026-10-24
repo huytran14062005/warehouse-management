@@ -8,6 +8,7 @@ import { notifyInventoryChanged } from "../utils/inventoryEvents";
 import { digitsOnly, formatMoneyInput } from "../utils/money";
 import ConfirmDialog from "../components/ConfirmDialog";
 import AutoDismissMessage from "../components/AutoDismissMessage";
+import ProductRequestModal from "../components/ProductRequestModal";
 import SharedSearchableDropdown from "../components/SearchableDropdown";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
@@ -573,6 +574,8 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
   const [note, setNote] = useState(invoice?.note || "");
   const [productSearchResults, setProductSearchResults] = useState({});
   const [productSearchLoading, setProductSearchLoading] = useState({});
+  const [productRequestName, setProductRequestName] = useState("");
+  const [productRequestOpen, setProductRequestOpen] = useState(false);
   const customerSearchTimerRef = useRef(null);
   const customerSearchTouchedRef = useRef(false);
   const productSearchTimerRefs = useRef({});
@@ -1170,6 +1173,21 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                         searching={Boolean(productSearchLoading[index])}
                         searchingLabel="Đang tìm sản phẩm..."
                         emptyLabel="Không tìm thấy sản phẩm."
+                        emptyAction={
+                          activeUser.role === "nhân viên bán hàng" &&
+                          item.productSearch.trim() ? (
+                            <button
+                              type="button"
+                              className="searchable-dropdown-action"
+                              onClick={() => {
+                                setProductRequestName(item.productSearch.trim());
+                                setProductRequestOpen(true);
+                              }}
+                            >
+                              + Gửi yêu cầu thêm sản phẩm
+                            </button>
+                          ) : null
+                        }
                         onChange={(value) =>
                           updateItem(index, "productId", String(value))
                         }
@@ -1371,7 +1389,17 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
               </div>
         </form>
       </div>
-    </div>,
+        {productRequestOpen && (
+          <ProductRequestModal
+            initialName={productRequestName}
+            onClose={() => setProductRequestOpen(false)}
+            onSaved={() => {
+              setProductRequestOpen(false);
+              setFormError("Đã gửi yêu cầu thêm sản phẩm đến quản lý.");
+            }}
+          />
+        )}
+      </div>,
     document.body,
   );
 }

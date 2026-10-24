@@ -5,6 +5,7 @@ import useNotificationState from "../utils/useNotificationState";
 import { notifyInventoryChanged } from "../utils/inventoryEvents";
 import AutoDismissMessage from "../components/AutoDismissMessage";
 import SharedSearchableDropdown from "../components/SearchableDropdown";
+import ProductRequestModal from "../components/ProductRequestModal";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import "../css/StockTransfers.css";
@@ -38,6 +39,8 @@ function StockTransfers() {
   const [transfersPage, setTransfersPage] = useState(1);
   const [transfersPagination, setTransfersPagination] = useState(null);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [productRequestName, setProductRequestName] = useState("");
+  const [productRequestOpen, setProductRequestOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -240,7 +243,7 @@ function StockTransfers() {
               onClick={() =>
                 setItems((current) => [
                   ...current,
-                  { product_id: "", quantity: "1" },
+                  { product_id: "", productSearch: "", quantity: "1" },
                 ])
               }
             >
@@ -259,9 +262,30 @@ function StockTransfers() {
                     value={item.product_id}
                     placeholder="Chọn sản phẩm"
                     ariaLabel="Chọn sản phẩm cấp đi"
-                    onChange={(value) =>
-                      updateItem(index, "product_id", String(value))
+                    searchValue={item.productSearch || ""}
+                    onSearchChange={(value) =>
+                      updateItem(index, "productSearch", value)
                     }
+                    filterLocally
+                    emptyLabel="Không tìm thấy sản phẩm."
+                    emptyAction={
+                      item.productSearch?.trim() ? (
+                        <button
+                          type="button"
+                          className="searchable-dropdown-action"
+                          onClick={() => {
+                            setProductRequestName(item.productSearch.trim());
+                            setProductRequestOpen(true);
+                          }}
+                        >
+                          + Gửi yêu cầu thêm sản phẩm
+                        </button>
+                      ) : null
+                    }
+                    onChange={(value, label) => {
+                      updateItem(index, "product_id", String(value));
+                      updateItem(index, "productSearch", label || "");
+                    }}
                     options={productOptions}
                   />
                   {item.product_id &&
@@ -324,6 +348,17 @@ function StockTransfers() {
             </form>
           </div>
         </div>
+      )}
+
+      {productRequestOpen && (
+        <ProductRequestModal
+          initialName={productRequestName}
+          onClose={() => setProductRequestOpen(false)}
+          onSaved={() => {
+            setProductRequestOpen(false);
+            setSuccess("Đã gửi yêu cầu thêm sản phẩm đến quản lý.");
+          }}
+        />
       )}
 
       <section className="stock-transfers-history">

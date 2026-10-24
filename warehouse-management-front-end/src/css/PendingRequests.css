@@ -13,4 +13,10 @@
 .pending-request-card p { min-height: 42px; margin: 12px 0 18px; color: #71849a; font-size: 13px; line-height: 1.55; }
 .pending-request-card a { color: #0b3158; font-size: 13px; font-weight: 700; text-decoration: none; }
 .pending-request-card a:hover { text-decoration: underline; }
+.pending-request-error { margin: 0 0 10px; }
+.pending-request-empty { display: block; color: #71849a; font-size: 13px; }
+.pending-product-request-list { display: grid; gap: 8px; max-height: 220px; overflow-y: auto; }
+.pending-product-request-link { display: grid; gap: 3px; padding: 9px 10px; border: 1px solid #e1e8ef; border-radius: 5px; background: #f8fafc; text-decoration: none !important; }
+.pending-product-request-link strong { overflow: hidden; color: #0b3158; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.pending-product-request-link small { overflow: hidden; color: #71849a; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 700px) { .pending-requests-page { width: min(100% - 32px, 560px); padding-top: 26px; } .pending-requests-header { align-items: flex-start; flex-direction: column; } .pending-requests-grid { grid-template-columns: 1fr; } }

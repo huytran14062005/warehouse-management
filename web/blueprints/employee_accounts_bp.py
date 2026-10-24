@@ -12,6 +12,8 @@ from web.models import (
     Employee,
     EmployeeRole,
     InvoiceStatus,
+    ProductRequest,
+    ProductRequestStatus,
     SalesInvoice,
 )
 from web.services.employee_account_service import (
@@ -97,6 +99,9 @@ def get_pending_requests_summary():
             SalesInvoice.status.in_(
                 [InvoiceStatus.PROCESSING, InvoiceStatus.DELIVERING]
             ),
+        ).count(),
+        "product_requests": ProductRequest.query.filter(
+            ProductRequest.status == ProductRequestStatus.PENDING.value,
         ).count(),
     }
     return jsonify({

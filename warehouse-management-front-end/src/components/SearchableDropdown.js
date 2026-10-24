@@ -17,6 +17,8 @@ function SearchableDropdown({
   searching = false,
   searchingLabel = "Đang tìm kiếm...",
   emptyLabel = "Không tìm thấy kết quả.",
+  emptyAction = null,
+  filterLocally = false,
 }) {
   const [open, setOpen] = useState(false);
   const [localSearch, setLocalSearch] = useState("");
@@ -26,7 +28,7 @@ function SearchableDropdown({
   );
   const controlledSearch = typeof onSearchChange === "function";
   const query = controlledSearch ? String(searchValue || "") : localSearch;
-  const filteredOptions = controlledSearch || !query.trim()
+  const filteredOptions = (controlledSearch && !filterLocally) || !query.trim()
     ? options
     : options.filter((option) =>
         String(option.label || "").toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
@@ -139,7 +141,10 @@ function SearchableDropdown({
               </button>
             ))
           ) : (
-            <div className="searchable-dropdown-state">{emptyLabel}</div>
+            <>
+              <div className="searchable-dropdown-state">{emptyLabel}</div>
+              {emptyAction}
+            </>
           )}
         </div>
       )}
