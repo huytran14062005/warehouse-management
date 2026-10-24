@@ -493,11 +493,31 @@ def update_sales_invoice_service(invoice_id, employee_id, warehouse_id, customer
     if invoice.status != InvoiceStatus.DRAFT:
         raise ValidationError("Không thể sửa đơn hàng đã xuất kho")
 
+    # Customer, warehouse, creator and sale source identify the original
+    # transaction. They must not be transferred to another party while editing.
+    if customer_id not in (None, ""):
+        requested_customer_id = validate_positive_integer(
+            customer_id,
+            "Mã khách hàng",
+        )
+        if requested_customer_id != invoice.customer_id:
+            raise ValidationError(
+                "Không thể thay đổi khách hàng của đơn. "
+                "Vui lòng hủy đơn cũ và tạo đơn mới."
+            )
+
+    if warehouse_id not in (None, ""):
+        requested_warehouse_id = validate_positive_integer(warehouse_id, "Mã kho")
+        if requested_warehouse_id != invoice.warehouse_id:
+            raise ValidationError("Không thể thay đổi kho của đơn hàng")
+
+    customer_id = invoice.customer_id
+    warehouse_id = invoice.warehouse_id
+
                     
     if not items or len(items) == 0:
         raise ValidationError("Đơn hàng phải có ít nhất 1 sản phẩm")
 
-    customer_id = validate_positive_integer(customer_id, "Mã khách hàng")
     discount_amount = validate_money(discount_amount, "Số tiền giảm giá")
 
                                
@@ -506,7 +526,6 @@ def update_sales_invoice_service(invoice_id, employee_id, warehouse_id, customer
         raise NotFoundError("Nhân viên không tồn tại")
 
                                 
-    warehouse_id, warehouse = resolve_sales_warehouse(warehouse_id)
     ensure_warehouse_access(employee_id, warehouse_id)
 
                                

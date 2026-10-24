@@ -664,11 +664,12 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
   const handleSubmit = async (event) => {
     event.preventDefault();
     setFormError("");
-    if (customerMode === "existing" && !customerId) {
+    if (!isEditing && customerMode === "existing" && !customerId) {
       setFormError("Vui lòng chọn khách hàng.");
       return;
     }
     if (
+      !isEditing &&
       customerMode === "new" &&
       (!newCustomer.full_name.trim() ||
         !newCustomer.phone.trim() ||
@@ -719,9 +720,13 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
     try {
       setSaving(true);
       const payload = {
-        customer_id: customerMode === "existing" ? Number(customerId) : null,
+        customer_id: isEditing
+          ? Number(invoice.customer.id)
+          : customerMode === "existing"
+            ? Number(customerId)
+            : null,
         customer:
-          customerMode === "new"
+          !isEditing && customerMode === "new"
             ? {
                 full_name: newCustomer.full_name.trim(),
                 phone: newCustomer.phone.trim(),
@@ -834,7 +839,24 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                     </button>
                   </div>
                 )}
-                {customerMode === "existing" ? (
+                {isEditing ? (
+                  <div className="sales-customer-contact">
+                    <span>
+                      <strong>{invoice.customer?.full_name || "—"}</strong>
+                    </span>
+                    <span>
+                      Số điện thoại:{" "}
+                      <strong>{invoice.customer?.phone || "—"}</strong>
+                    </span>
+                    <span>
+                      Địa chỉ: <strong>{invoice.customer?.address || "—"}</strong>
+                    </span>
+                    <small>
+                      Khách hàng của đơn không thể thay đổi. Nếu chọn nhầm,
+                      hãy hủy đơn này và tạo đơn mới.
+                    </small>
+                  </div>
+                ) : customerMode === "existing" ? (
                   <>
                     <SharedSearchableDropdown
                       value={customerId}
