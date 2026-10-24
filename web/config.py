@@ -31,8 +31,18 @@ class Config:
     JWT_ACCESS_TOKEN_EXPIRES_SECONDS = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRES_SECONDS", 900))
     JWT_REFRESH_TOKEN_EXPIRES_DAYS = int(os.getenv("JWT_REFRESH_TOKEN_EXPIRES_DAYS", 7))
     REFRESH_COOKIE_NAME = os.getenv("REFRESH_COOKIE_NAME", "refresh_token")
-    REFRESH_COOKIE_SECURE = os.getenv("REFRESH_COOKIE_SECURE", "false").lower() == "true"
-    REFRESH_COOKIE_SAMESITE = os.getenv("REFRESH_COOKIE_SAMESITE", "Lax")
+    # The frontend is deployed on GitHub Pages while the API is deployed on
+    # Vercel. In production this is a cross-site XHR, so the refresh cookie
+    # must be sent with SameSite=None and Secure. Keep local development easy
+    # by retaining the normal Lax/non-secure defaults there.
+    REFRESH_COOKIE_SECURE = os.getenv(
+        "REFRESH_COOKIE_SECURE",
+        "true" if IS_PRODUCTION else "false",
+    ).lower() == "true"
+    REFRESH_COOKIE_SAMESITE = os.getenv(
+        "REFRESH_COOKIE_SAMESITE",
+        "None" if IS_PRODUCTION else "Lax",
+    )
     MAIL_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
     MAIL_PORT = int(os.getenv("SMTP_PORT", 587))
     MAIL_USERNAME = os.getenv("SMTP_USER", "")

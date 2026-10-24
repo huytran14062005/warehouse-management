@@ -117,6 +117,12 @@ export const refreshAccessToken = () => {
   return refreshRequest;
 };
 
+export const hasUsableAccessToken = () => {
+  const token = localStorage.getItem("token");
+  const expiresAt = token && readTokenExpiry(token);
+  return Boolean(expiresAt && expiresAt > Date.now());
+};
+
 export const scheduleTokenRefresh = () => {
   stopTokenRefresh();
 

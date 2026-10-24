@@ -22,7 +22,14 @@ import Register from "./screens/User/Register";
 import EmployeeAccounts from "./screens/EmployeeAccounts";
 import PendingRequests from "./screens/PendingRequests";
 import Promotions from "./screens/Promotions";
-import { authApis, endpoints, scheduleTokenRefresh, stopTokenRefresh } from "./configs/Apis";
+import {
+  authApis,
+  endpoints,
+  hasUsableAccessToken,
+  refreshAccessToken,
+  scheduleTokenRefresh,
+  stopTokenRefresh,
+} from "./configs/Apis";
 import "./css/Responsive.css";
 
 function App() {
@@ -40,7 +47,26 @@ function App() {
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
 
   useEffect(() => {
-    scheduleTokenRefresh();
+    let cancelled = false;
+
+    const restoreSession = async () => {
+      // Restore an access token on startup when the refresh cookie still
+      // exists but localStorage has an expired or missing access token.
+      const hasStoredUser = Boolean(localStorage.getItem("user"));
+      if (hasStoredUser && !hasUsableAccessToken()) {
+        try {
+          await refreshAccessToken();
+        } catch {
+          if (!cancelled) {
+            stopTokenRefresh();
+          }
+        }
+      } else {
+        scheduleTokenRefresh();
+      }
+    };
+
+    restoreSession();
 
     const syncAuthentication = () => {
       try {
@@ -61,6 +87,7 @@ function App() {
     window.addEventListener("storage", syncAuthentication);
 
     return () => {
+      cancelled = true;
       window.removeEventListener("auth:login", syncAuthentication);
       window.removeEventListener("auth:logout", handleLogout);
       window.removeEventListener("storage", syncAuthentication);
