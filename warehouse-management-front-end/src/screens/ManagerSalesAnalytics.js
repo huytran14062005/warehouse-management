@@ -40,6 +40,10 @@ const money = (value) => `${Number(value || 0).toLocaleString("vi-VN")} đ`;
 const quantity = (value) => Number(value || 0).toLocaleString("vi-VN");
 const chartMoney = (value) => `${Number(value || 0).toLocaleString("vi-VN")} đ`;
 const CHART_COLORS = ["#0d3863", "#2f73b7", "#53a2d8", "#f0a43c", "#68b684", "#9b8bd4"];
+const shortChartLabel = (value, maxLength = 16) => {
+  const label = String(value || "");
+  return label.length > maxLength ? `${label.slice(0, maxLength - 1)}…` : label;
+};
 
 function compactRevenueRows(rows) {
   const sorted = (rows || [])
@@ -83,20 +87,32 @@ function ManagerAnalyticsCharts({ report }) {
         }],
       },
       options: {
-        indexAxis: "y",
         responsive: true,
         maintainAspectRatio: false,
         scales: {
           x: {
+            grid: { display: false },
+            ticks: {
+              autoSkip: false,
+              maxRotation: 45,
+              minRotation: 0,
+              callback: (value) => shortChartLabel(debtRows[value]?.customer_name),
+            },
+          },
+          y: {
             beginAtZero: true,
             grid: { color: "#e8eef5" },
             ticks: { callback: (value) => chartMoney(value), maxTicksLimit: 5 },
           },
-          y: { grid: { display: false } },
         },
         plugins: {
           legend: { display: false },
-          tooltip: { callbacks: { label: (context) => ` ${chartMoney(context.parsed.x)}` } },
+          tooltip: {
+            callbacks: {
+              title: (items) => debtRows[items[0]?.dataIndex]?.customer_name || "",
+              label: (context) => ` ${chartMoney(context.parsed.y)}`,
+            },
+          },
         },
       },
     });
