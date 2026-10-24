@@ -15,6 +15,24 @@ import "../css/SalesInvoices.css";
 
 const PER_PAGE = 10;
 const DISCOUNT_PER_PAGE = 10;
+let cachedSalesAreas = null;
+let salesAreasRequest = null;
+
+async function getSalesAreasOnce() {
+  if (cachedSalesAreas) return cachedSalesAreas;
+  if (!salesAreasRequest) {
+    salesAreasRequest = authApis()
+      .get(endpoints.salesAreas)
+      .then((response) => {
+        cachedSalesAreas = response.data?.sales_areas || [];
+        return cachedSalesAreas;
+      })
+      .finally(() => {
+        salesAreasRequest = null;
+      });
+  }
+  return salesAreasRequest;
+}
 
 const STATUS_OPTIONS = [
   { value: "", label: "Tất cả trạng thái" },
@@ -372,9 +390,8 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
   })();
   const canUseEmployeeStock = activeUser.role === "nhân viên bán hàng";
   const [customers, setCustomers] = useState([]);
-  const [salesAreas, setSalesAreas] = useState([]);
-  const [products, setProducts] = useState([]);
-  const [optionsLoading, setOptionsLoading] = useState(true);
+  const [salesAreas, setSalesAreas] = useState(() => cachedSalesAreas || []);
+  const [salesAreasLoading, setSalesAreasLoading] = useState(false);
   const [formError, setFormError] = useNotificationState();
   const [saving, setSaving] = useState(false);
   const [customerMode, setCustomerMode] = useState(
@@ -410,6 +427,7 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
     (invoice?.items || []).map((item) => ({
       productId: String(item.product_id),
       productSearch: item.product_name || "",
+      unit: item.unit || "",
       quantity: String(item.quantity),
       unitPrice: String(item.unit_price),
     })),
@@ -426,34 +444,30 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
   const productSearchRequestRefs = useRef({});
 
   useEffect(() => {
+    if (isEditing || customerMode !== "new" || salesAreas.length) {
+      return undefined;
+    }
+
     let cancelled = false;
-    const loadOptions = async () => {
+    const loadSalesAreas = async () => {
       try {
-        setOptionsLoading(true);
-        const [customersResponse, productsResponse, salesAreasResponse] = await Promise.all([
-          authApis().get(endpoints.customers, {
-            params: { page: 1, per_page: 1000 },
-          }),
-          authApis().get(endpoints.productsInventory, {
-            params: { page: 1, per_page: 1000 },
-          }),
-          authApis().get(endpoints.salesAreas),
-        ]);
-        if (cancelled) return;
-        setCustomers(customersResponse.data?.customers || []);
-        setProducts(productsResponse.data?.products || []);
-        setSalesAreas(salesAreasResponse.data?.sales_areas || []);
+        setSalesAreasLoading(true);
+        const areas = await getSalesAreasOnce();
+        if (!cancelled) {
+          setSalesAreas(areas);
+        }
       } catch (requestError) {
         if (!cancelled) setFormError(getApiError(requestError));
       } finally {
-        if (!cancelled) setOptionsLoading(false);
+        if (!cancelled) setSalesAreasLoading(false);
       }
     };
-    loadOptions();
+
+    loadSalesAreas();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [customerMode, isEditing, salesAreas.length, setFormError]);
 
   useEffect(() => {
     if (saleSource !== "employee_stock" || isEditing) return undefined;
@@ -547,7 +561,7 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
           ...product,
           available_stock: product.quantity,
         }))
-      : products;
+      : [];
 
   const handleProductSearchChange = (index, value) => {
     setItems((current) =>
@@ -607,13 +621,15 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
       current.map((item, itemIndex) => {
         if (itemIndex !== index) return item;
         if (field !== "productId") return { ...item, [field]: value };
-        const selectedProduct = saleProducts.find(
-          (product) => String(product.id) === value,
-        );
+        const selectedProduct = [
+          ...(productSearchResults[index] || []),
+          ...saleProducts,
+        ].find((product) => String(product.id) === value);
         return {
           ...item,
           productId: value,
           productSearch: selectedProduct?.name || "",
+          unit: selectedProduct?.unit || item.unit,
           unitPrice: selectedProduct
             ? String(selectedProduct.default_sale_price)
             : item.unitPrice,
@@ -766,10 +782,6 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
         </div>
         <form className="sales-editor-body" onSubmit={handleSubmit}>
           <AutoDismissMessage message={formError} className="sales-alert" />
-          {optionsLoading ? (
-            <Skeleton variant="form" rows={5} />
-          ) : (
-            <>
               {!isEditing && (
                 <div className="sales-editor-field">
                   <span>Nguồn hàng</span>
@@ -904,6 +916,7 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                     />
                     <select
                       value={newCustomer.sales_area_id}
+                      disabled={salesAreasLoading}
                       onChange={(event) =>
                         setNewCustomer((current) => ({
                           ...current,
@@ -911,7 +924,11 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                         }))
                       }
                     >
-                      <option value="">Chọn khu vực bán hàng</option>
+                      <option value="">
+                        {salesAreasLoading
+                          ? "Đang tải khu vực bán hàng..."
+                          : "Chọn khu vực bán hàng"}
+                      </option>
                       {salesAreas.map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}
                     </select>
                   </div>
@@ -930,11 +947,20 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
               </div>
               <div className="sales-editor-items">
                 {items.map((item, index) => {
-                  const selectedProduct = saleProducts.find(
-                    (product) => String(product.id) === String(item.productId),
-                  );
                   const searchedProducts =
                     productSearchResults[index] || saleProducts;
+                  const selectedProduct =
+                    searchedProducts.find(
+                      (product) =>
+                        String(product.id) === String(item.productId),
+                    ) ||
+                    (item.productId
+                      ? {
+                          id: item.productId,
+                          name: item.productSearch,
+                          unit: item.unit,
+                        }
+                      : null);
                   const productOptions =
                     selectedProduct &&
                     !searchedProducts.some(
@@ -1007,7 +1033,7 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                       >
                         ×
                       </button>
-                      {selectedProduct && (
+                      {selectedProduct?.available_stock != null && (
                         <small>
                           Tồn hiện tại: {selectedProduct.available_stock}{" "}
                           {selectedProduct.unit}
@@ -1083,8 +1109,6 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                         : "Tạo đơn nháp"}
                 </button>
               </div>
-            </>
-          )}
         </form>
       </div>
     </div>,
