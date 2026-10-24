@@ -239,7 +239,7 @@ def get_import_invoice_detail_service(invoice_id):
     return invoice
 
 
-def create_import_invoice_service(employee_id, warehouse_id, supplier_id, supplier_data=None, note="", items=None, is_return=False):
+def create_import_invoice_service(employee_id, warehouse_id, supplier_id, supplier_data=None, note="", items=None, is_return=False, imported_at=None):
        
                     
     if not items or len(items) == 0:
@@ -248,6 +248,7 @@ def create_import_invoice_service(employee_id, warehouse_id, supplier_id, suppli
     warehouse_id = validate_positive_integer(warehouse_id, "Mã kho") if warehouse_id not in (None, "") else None
 
                                
+    imported_at = parse_date(imported_at) if imported_at not in (None, "") else datetime.now()
     employee = Employee.query.get(employee_id)
     if not employee:
         raise NotFoundError("Nhân viên không tồn tại")
@@ -275,6 +276,7 @@ def create_import_invoice_service(employee_id, warehouse_id, supplier_id, suppli
         warehouse_id=warehouse_id,
         supplier_id=supplier_id,
         employee_id=employee_id,
+        imported_at=imported_at,
         note=final_note,
         items=validated_items
     )
@@ -282,7 +284,7 @@ def create_import_invoice_service(employee_id, warehouse_id, supplier_id, suppli
     return invoice
 
 
-def update_import_invoice_service(invoice_id, employee_id, warehouse_id, supplier_id, supplier_data=None, note="", items=None, is_return=False):
+def update_import_invoice_service(invoice_id, employee_id, warehouse_id, supplier_id, supplier_data=None, note="", items=None, is_return=False, imported_at=None):
        
                               
     invoice = import_invoice_dao.get_import_invoice_by_id(invoice_id)
@@ -304,6 +306,7 @@ def update_import_invoice_service(invoice_id, employee_id, warehouse_id, supplie
         else invoice.warehouse_id
     )
 
+    imported_at = parse_date(imported_at) if imported_at not in (None, "") else invoice.imported_at
     warehouse = Warehouse.query.get(warehouse_id)
     if not warehouse:
         raise NotFoundError("Kho không tồn tại")
@@ -370,6 +373,7 @@ def update_import_invoice_service(invoice_id, employee_id, warehouse_id, supplie
         invoice_id=invoice_id,
         warehouse_id=warehouse_id,
         supplier_id=supplier_id,
+        imported_at=imported_at,
         note=final_note,
         items=validated_items
     )

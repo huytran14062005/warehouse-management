@@ -71,6 +71,7 @@ def create_import_invoice():
         warehouse_id=data.get("warehouse_id"),
         supplier_id=data.get("supplier_id"),
         supplier_data=data.get("supplier_data"),
+        imported_at=data.get("imported_at"),
         note=data.get("note", ""),
         items=data.get("items", []),
         is_return=parse_bool(data.get("is_return", False), "is_return")
@@ -99,6 +100,7 @@ def update_import_invoice(invoice_id):
         warehouse_id=data.get("warehouse_id"),
         supplier_id=data.get("supplier_id"),
         supplier_data=data.get("supplier_data"),
+        imported_at=data.get("imported_at"),
         note=data.get("note", ""),
         items=data.get("items", []),
         is_return=parse_bool(data.get("is_return", False), "is_return")

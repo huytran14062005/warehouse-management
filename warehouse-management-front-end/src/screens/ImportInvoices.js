@@ -15,6 +15,12 @@ import "../css/WarehouseOperations.css";
 
 const PER_PAGE = 10;
 
+function toDateInputValue(value) {
+  if (value) return String(value).slice(0, 10);
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 function formatCurrency(value) {
   return new Intl.NumberFormat("vi-VN", {
     style: "currency",
@@ -137,6 +143,9 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = true }) {
   );
   const [supplierSearchLoading, setSupplierSearchLoading] = useState(false);
   const [newSupplier, setNewSupplier] = useState({ name: "", address: "" });
+  const [importedAt, setImportedAt] = useState(
+    toDateInputValue(invoice?.imported_at),
+  );
   const [items, setItems] = useState(
     (invoice?.items || []).map((item) => ({
       product_id: String(item.product_id),
@@ -226,6 +235,8 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = true }) {
       (!newSupplier.name.trim() || !newSupplier.address.trim())
     )
       return setError("Vui lòng nhập tên và địa chỉ nhà cung cấp mới.");
+    if (!importedAt)
+      return setError("Vui lòng chọn ngày nhập.");
     if (!items.length)
       return setError("Vui lòng thêm ít nhất một sản phẩm vào phiếu nhập.");
     const productIds = new Set();
@@ -258,6 +269,7 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = true }) {
               }
             : undefined,
         note: note.trim(),
+        imported_at: importedAt,
         items: items.map((item) => ({
           product_id: Number(item.product_id),
           quantity: Number(item.quantity),
@@ -384,6 +396,16 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = true }) {
                   />
                 </div>
               )}
+              <label className="warehouse-field">
+                <span>Ngày nhập</span>
+                <input
+                  type="date"
+                  value={importedAt}
+                  onChange={(event) => setImportedAt(event.target.value)}
+                  aria-label="Ngày nhập kho"
+                  required
+                />
+              </label>
               <div className="warehouse-section-heading">
                 <h3>Sản phẩm nhập</h3>
                 <button type="button" onClick={addItem}>

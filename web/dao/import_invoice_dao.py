@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
@@ -79,7 +81,7 @@ def get_import_invoice_by_id(invoice_id):
     )
 
 
-def create_import_invoice(warehouse_id, supplier_id, employee_id, note, items):
+def create_import_invoice(warehouse_id, supplier_id, employee_id, note, items, imported_at=None):
        
     try:
                      
@@ -87,6 +89,7 @@ def create_import_invoice(warehouse_id, supplier_id, employee_id, note, items):
             warehouse_id=warehouse_id,
             supplier_id=supplier_id,
             employee_id=employee_id,
+            imported_at=imported_at or datetime.now(),
             note=note
         )
         db.session.add(invoice)
@@ -114,7 +117,7 @@ def create_import_invoice(warehouse_id, supplier_id, employee_id, note, items):
         raise Exception(f"Lỗi tạo phiếu nhập kho: {str(ex)}")
 
 
-def update_import_invoice(invoice_id, warehouse_id, supplier_id, note, items):
+def update_import_invoice(invoice_id, warehouse_id, supplier_id, note, items, imported_at=None):
        
     try:
         invoice = ImportInvoice.query.get(invoice_id)
@@ -127,6 +130,8 @@ def update_import_invoice(invoice_id, warehouse_id, supplier_id, note, items):
                                     
         invoice.warehouse_id = warehouse_id
         invoice.supplier_id = supplier_id
+        if imported_at is not None:
+            invoice.imported_at = imported_at
         invoice.note = note
 
                        
