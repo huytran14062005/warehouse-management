@@ -28,9 +28,13 @@ function SearchableDropdown({
   );
   const controlledSearch = typeof onSearchChange === "function";
   const query = controlledSearch ? String(searchValue || "") : localSearch;
-  const filteredOptions = (controlledSearch && !filterLocally) || !query.trim()
-    ? options
-    : options.filter((option) =>
+  const hasQuery = Boolean(query.trim());
+  const searchableOptions = hasQuery
+    ? options.filter((option) => String(option.value) !== "")
+    : options;
+  const filteredOptions = (controlledSearch && !filterLocally) || !hasQuery
+    ? searchableOptions
+    : searchableOptions.filter((option) =>
         String(option.label || "").toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
       );
 

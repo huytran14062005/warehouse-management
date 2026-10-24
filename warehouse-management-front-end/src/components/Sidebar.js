@@ -14,7 +14,7 @@ function Sidebar({ user, pendingRequests, isMobileOpen = false, onMobileClose = 
     "kế toán",
     "quản lý",
   ].includes(user?.role);
-  const canViewProducts = ["nhân viên bán hàng", "thủ kho", "quản lý"].includes(
+  const canViewProducts = ["nhân viên bán hàng", "thủ kho", "kế toán", "quản lý"].includes(
     user?.role,
   );
   const canViewSalesInvoices = [

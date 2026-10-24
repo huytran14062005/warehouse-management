@@ -6,10 +6,12 @@ from web.models import EmployeeRole
 from web.services.product_service import (
     create_product_request_service,
     create_product_service,
+    get_product_detail_service,
     get_products_inventory_service,
     get_product_requests_service,
     serialize_product_request,
     serialize_product_inventory,
+    update_product_service,
 )
 from web.services.price_list_export_service import build_price_list_export
 from web.services.authorization import scoped_warehouse_id
@@ -17,6 +19,41 @@ from web.utils.pagination import build_pagination
 
 
 products_bp = Blueprint("products", __name__, url_prefix="/api/products")
+
+
+@products_bp.route("/<int:product_id>", methods=["GET"])
+@verify_token
+@verify_role(EmployeeRole.NHAN_VIEN_BAN_HANG, EmployeeRole.THU_KHO, EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY)
+@handle_api_errors
+def get_product_detail(product_id):
+    product = get_product_detail_service(
+        product_id,
+        warehouse_id=scoped_warehouse_id(request.employee_id, request.args.get("warehouse_id")),
+    )
+    return jsonify({"product": product}), 200
+
+
+@products_bp.route("/<int:product_id>", methods=["PUT"])
+@verify_token
+@verify_role(EmployeeRole.QUAN_LY)
+@handle_api_errors
+def update_product(product_id):
+    data = request.get_json(silent=True) or {}
+    product = update_product_service(
+        product_id,
+        name=data.get("name"),
+        unit=data.get("unit"),
+        default_sale_price=data.get("default_sale_price", 0),
+    )
+    return jsonify({
+        "message": "Đã cập nhật sản phẩm thành công",
+        "product": {
+            "id": product.id,
+            "name": product.name,
+            "unit": product.unit,
+            "default_sale_price": float(product.default_sale_price),
+        },
+    }), 200
 
 
 @products_bp.route("", methods=["POST"])

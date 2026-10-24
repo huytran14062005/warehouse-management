@@ -12,6 +12,7 @@ export const endpoints = {
   forgotPasswordReset: "/auth/forgot-password/reset",
   customers: "/customers",
   products: "/products",
+  productDetail: (productId) => `/products/${productId}`,
   productsInventory: "/products/inventory",
   productRequests: "/products/requests",
   priceListExport: "/products/price-list/export",

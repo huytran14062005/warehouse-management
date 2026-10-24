@@ -102,6 +102,26 @@ def serialize_product_inventory(product, inventory):
     }
 
 
+def get_product_detail_service(product_id, warehouse_id=None):
+    product = Product.query.get(product_id)
+    if not product:
+        raise NotFoundError("Sản phẩm không tồn tại")
+    inventory = dao.calculate_inventory_for_products(
+        [product.id], warehouse_id=warehouse_id,
+    ).get(product.id, {
+        "total_imported": 0,
+        "total_sold": 0,
+        "total_damaged": 0,
+        "total_transferred": 0,
+        "available_stock": 0,
+        "warehouses": [],
+    })
+    return {
+        **serialize_product_inventory(product, inventory),
+        "warehouses": inventory.get("warehouses", []),
+    }
+
+
 def get_products_inventory_service(
     page_value,
     per_page_value,
@@ -228,3 +248,31 @@ def create_product_service(name, unit, default_sale_price=0, request_id=None):
 
     db.session.commit()
     return product, request
+
+
+def update_product_service(product_id, name, unit, default_sale_price=0):
+    product = Product.query.get(product_id)
+    if not product:
+        raise NotFoundError("Sản phẩm không tồn tại")
+
+    name = require_text(name, "Tên sản phẩm", max_length=255)
+    unit = require_text(unit, "Đơn vị tính", max_length=50)
+    try:
+        price = Decimal(str(default_sale_price if default_sale_price not in (None, "") else 0))
+    except (InvalidOperation, ValueError, TypeError):
+        raise ValidationError("Giá bán mặc định không hợp lệ")
+    if not price.is_finite() or price < 0:
+        raise ValidationError("Giá bán mặc định không được âm")
+
+    duplicate = Product.query.filter(
+        func.lower(Product.name) == name.lower(),
+        Product.id != product.id,
+    ).first()
+    if duplicate:
+        raise ValidationError("Tên sản phẩm đã tồn tại")
+
+    product.name = name
+    product.unit = unit
+    product.default_sale_price = price
+    db.session.commit()
+    return product

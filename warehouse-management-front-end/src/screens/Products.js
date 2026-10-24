@@ -55,10 +55,12 @@ function validatePriceRange(minPrice, maxPrice) {
   return "";
 }
 
-function ProductEditor({ request, onClose, onSaved }) {
-  const [name, setName] = useState(request?.name || "");
-  const [unit, setUnit] = useState(request?.unit || "");
-  const [price, setPrice] = useState("");
+function ProductEditor({ request, product, onClose, onSaved }) {
+  const editing = Boolean(product?.id);
+  const source = product || request;
+  const [name, setName] = useState(source?.name || "");
+  const [unit, setUnit] = useState(source?.unit || "");
+  const [price, setPrice] = useState(product ? String(product.default_sale_price || "") : "");
   const [note, setNote] = useState(request?.note || "");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -72,13 +74,13 @@ function ProductEditor({ request, onClose, onSaved }) {
     }
     try {
       setSaving(true);
-      await authApis().post(endpoints.products, {
+      const payload = {
         name: name.trim(),
         unit: unit.trim(),
         default_sale_price: Number(price || 0),
-        note: note.trim(),
-        request_id: request?.id || null,
-      });
+      };
+      if (editing) await authApis().put(endpoints.productDetail(product.id), payload);
+      else await authApis().post(endpoints.products, { ...payload, note: note.trim(), request_id: request?.id || null });
       onSaved();
     } catch (requestError) {
       setError(getApiError(requestError));
@@ -92,7 +94,7 @@ function ProductEditor({ request, onClose, onSaved }) {
       <div className="warehouse-modal warehouse-editor-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
         <div className="warehouse-modal-header">
           <div>
-            <h2>{request ? "Xử lý yêu cầu thêm sản phẩm" : "Thêm sản phẩm"}</h2>
+            <h2>{editing ? "Chỉnh sửa sản phẩm" : request ? "Xử lý yêu cầu thêm sản phẩm" : "Thêm sản phẩm"}</h2>
             {request && <small>Người gửi: {request.requested_by?.full_name} ({request.requested_by?.role})</small>}
           </div>
           <button type="button" className="warehouse-modal-close" onClick={onClose} aria-label="Đóng">×</button>
@@ -111,15 +113,60 @@ function ProductEditor({ request, onClose, onSaved }) {
             <span>Giá bán mặc định</span>
             <input type="text" inputMode="numeric" value={formatMoneyInput(price)} onChange={(event) => setPrice(digitsOnly(event.target.value))} placeholder="0" />
           </label>
-          <label className="warehouse-field">
+          {!editing && <label className="warehouse-field">
             <span>Ghi chú</span>
             <textarea rows="3" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Thông tin thêm về sản phẩm" />
-          </label>
+          </label>}
           <div className="warehouse-modal-actions">
             <button type="button" onClick={onClose} disabled={saving}>Hủy</button>
-            <button type="submit" className="warehouse-primary-button" disabled={saving}>{saving ? "Đang lưu..." : "Thêm sản phẩm"}</button>
+            <button type="submit" className="warehouse-primary-button" disabled={saving}>{saving ? "Đang lưu..." : editing ? "Lưu thay đổi" : "Thêm sản phẩm"}</button>
           </div>
         </form>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function ProductDetail({ product, canEdit, onClose, onEdit }) {
+  return createPortal(
+    <div className="warehouse-modal-overlay" onClick={onClose}>
+      <div className="warehouse-modal product-detail-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+        <div className="warehouse-modal-header">
+          <div>
+            <p className="product-detail-eyebrow">CHI TIẾT SẢN PHẨM</p>
+            <h2>{product.name}</h2>
+          </div>
+          <button type="button" className="warehouse-modal-close" onClick={onClose} aria-label="Đóng">×</button>
+        </div>
+        <div className="warehouse-modal-body">
+          <div className="product-detail-summary">
+            <div><span>Đơn vị tính</span><strong>{product.unit}</strong></div>
+            <div><span>Giá bán mặc định</span><strong>{formatCurrency(product.default_sale_price)}</strong></div>
+            <div><span>Tồn kho</span><strong>{formatQuantity(product.available_stock)}</strong></div>
+          </div>
+          <div className="product-detail-stats">
+            <div><span>Đã nhập</span><strong>{formatQuantity(product.total_imported)}</strong></div>
+            <div><span>Đã bán</span><strong>{formatQuantity(product.total_sold)}</strong></div>
+            <div><span>Đã hư</span><strong>{formatQuantity(product.total_damaged)}</strong></div>
+            <div><span>Đã cấp đi</span><strong>{formatQuantity(product.total_transferred)}</strong></div>
+          </div>
+          <h3 className="product-detail-section-title">Tồn theo kho</h3>
+          {product.warehouses?.length ? (
+            <div className="product-detail-warehouse-list">
+              {product.warehouses.map((warehouse) => (
+                <div key={warehouse.warehouse_id} className="product-detail-warehouse-row">
+                  <span>{warehouse.warehouse_name}</span>
+                  <strong>{formatQuantity(warehouse.stock)} {product.unit}</strong>
+                </div>
+              ))}
+            </div>
+          ) : <p className="product-detail-empty">Chưa có phát sinh tồn kho.</p>}
+          <div className="warehouse-modal-actions">
+            <button type="button" onClick={onClose}>Đóng</button>
+            {canEdit && <button type="button" className="warehouse-primary-button" onClick={onEdit}>Chỉnh sửa sản phẩm</button>}
+          </div>
+        </div>
       </div>
     </div>,
     document.body,
@@ -156,7 +203,22 @@ function Products() {
   const canCreateProducts = currentUser.role === "quản lý";
   const [exportingPdf, setExportingPdf] = useState(false);
   const [productEditor, setProductEditor] = useState(null);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const productRequestId = new URLSearchParams(location.search).get("product_request_id");
+
+  const openProductDetail = async (product) => {
+    setSelectedProduct(null);
+    setDetailLoading(true);
+    try {
+      const response = await authApis().get(endpoints.productDetail(product.id));
+      setSelectedProduct(response.data?.product || product);
+    } catch (requestError) {
+      setError(getApiError(requestError));
+    } finally {
+      setDetailLoading(false);
+    }
+  };
 
   const fetchProducts = useCallback(async () => {
     if (!localStorage.getItem("token")) {
@@ -430,7 +492,17 @@ function Products() {
                     product.total_imported,
                   );
                   return (
-                  <tr key={product.id}>
+                  <tr
+                    key={product.id}
+                    className="products-clickable-row"
+                    onClick={() => openProductDetail(product)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") openProductDetail(product);
+                    }}
+                    tabIndex="0"
+                    role="button"
+                    aria-label={`Xem chi tiết ${product.name}`}
+                  >
                     <td className="products-name">{product.name}</td>
                     <td>{product.unit}</td>
                     <td className="products-money">
@@ -466,9 +538,21 @@ function Products() {
       </div>
 
       <Pagination page={page} totalPages={pagination.totalPages} onPageChange={handlePageChange} disabled={loading} />
+      {selectedProduct && !detailLoading && (
+        <ProductDetail
+          product={selectedProduct}
+          canEdit={canCreateProducts}
+          onClose={() => setSelectedProduct(null)}
+          onEdit={() => {
+            setProductEditor({ product: selectedProduct });
+            setSelectedProduct(null);
+          }}
+        />
+      )}
       {productEditor && (
         <ProductEditor
-          request={productEditor === "new" ? null : productEditor}
+          request={productEditor === "new" ? null : productEditor.product ? null : productEditor}
+          product={productEditor.product || null}
           onClose={() => {
             setProductEditor(null);
             if (productRequestId) navigate("/products", { replace: true });
