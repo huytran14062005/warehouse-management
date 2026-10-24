@@ -116,6 +116,23 @@ def get_manager_sales_analytics_service(from_date_value=None, to_date_value=None
         })
     debt_rows.sort(key=lambda row: (-row["current_debt"], -row["net_debt_change"], row["customer_name"]))
     debt_total = len(debt_rows)
+    debt_chart_rows = [
+        {
+            "customer_name": row["customer_name"],
+            "current_debt": row["current_debt"],
+        }
+        for row in debt_rows[:8]
+        if row["current_debt"] > 0
+    ]
+    remaining_debt = sum(
+        float(row["current_debt"] or 0)
+        for row in debt_rows[8:]
+    )
+    if remaining_debt > 0:
+        debt_chart_rows.append({
+            "customer_name": "Khách còn lại",
+            "current_debt": remaining_debt,
+        })
     start = (page - 1) * per_page
     paged_debts = debt_rows[start:start + per_page]
 
@@ -188,6 +205,7 @@ def get_manager_sales_analytics_service(from_date_value=None, to_date_value=None
             "net_debt_change": total_period_sales - total_period_paid,
         },
         "debts": paged_debts,
+        "debt_chart": debt_chart_rows,
         "debt_pagination": build_pagination(page, per_page, debt_total),
         "revenue_by_area": revenue_by_area,
     }

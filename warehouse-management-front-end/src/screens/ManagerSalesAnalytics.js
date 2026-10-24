@@ -1,5 +1,16 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  ArcElement,
+  BarController,
+  BarElement,
+  CategoryScale,
+  Chart,
+  Legend,
+  LinearScale,
+  PieController,
+  Tooltip,
+} from "chart.js";
 import { authApis, endpoints } from "../configs/Apis";
 import { getApiError } from "../utils/apiError";
 import useNotificationState from "../utils/useNotificationState";
@@ -7,6 +18,17 @@ import AutoDismissMessage from "../components/AutoDismissMessage";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import "../css/ManagerSalesAnalytics.css";
+
+Chart.register(
+  ArcElement,
+  BarController,
+  BarElement,
+  CategoryScale,
+  Legend,
+  LinearScale,
+  PieController,
+  Tooltip,
+);
 
 const today = () => new Date().toISOString().slice(0, 10);
 const thirtyDaysAgo = () => {
@@ -16,6 +38,157 @@ const thirtyDaysAgo = () => {
 };
 const money = (value) => `${Number(value || 0).toLocaleString("vi-VN")} đ`;
 const quantity = (value) => Number(value || 0).toLocaleString("vi-VN");
+const chartMoney = (value) => `${Number(value || 0).toLocaleString("vi-VN")} đ`;
+const CHART_COLORS = ["#0d3863", "#2f73b7", "#53a2d8", "#f0a43c", "#68b684", "#9b8bd4"];
+
+function compactRevenueRows(rows) {
+  const sorted = (rows || [])
+    .map((row) => ({ area: row.area || "Chưa xác định", revenue: Number(row.revenue || 0) }))
+    .filter((row) => row.revenue > 0)
+    .sort((a, b) => b.revenue - a.revenue);
+  const top = sorted.slice(0, 5);
+  const otherRevenue = sorted.slice(5).reduce((sum, row) => sum + row.revenue, 0);
+  if (otherRevenue > 0) top.push({ area: "Khu vực khác", revenue: otherRevenue });
+  return top;
+}
+
+function ManagerAnalyticsCharts({ report }) {
+  const debtCanvasRef = useRef(null);
+  const revenueCanvasRef = useRef(null);
+  const debtChartRef = useRef(null);
+  const revenueChartRef = useRef(null);
+  const debtRows = useMemo(
+    () => report?.debt_chart || [],
+    [report?.debt_chart],
+  );
+  const revenueRows = useMemo(
+    () => compactRevenueRows(report?.revenue_by_area),
+    [report?.revenue_by_area],
+  );
+
+  useEffect(() => {
+    if (!debtCanvasRef.current || debtRows.length === 0) return undefined;
+    debtChartRef.current?.destroy();
+    debtChartRef.current = new Chart(debtCanvasRef.current, {
+      type: "bar",
+      data: {
+        labels: debtRows.map((row) => row.customer_name),
+        datasets: [{
+          label: "Công nợ hiện tại",
+          data: debtRows.map((row) => row.current_debt),
+          backgroundColor: "#2f73b7",
+          borderRadius: 5,
+          borderSkipped: false,
+          barThickness: 22,
+        }],
+      },
+      options: {
+        indexAxis: "y",
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            beginAtZero: true,
+            grid: { color: "#e8eef5" },
+            ticks: { callback: (value) => chartMoney(value), maxTicksLimit: 5 },
+          },
+          y: { grid: { display: false } },
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (context) => ` ${chartMoney(context.parsed.x)}` } },
+        },
+      },
+    });
+    return () => {
+      debtChartRef.current?.destroy();
+      debtChartRef.current = null;
+    };
+  }, [debtRows]);
+
+  useEffect(() => {
+    if (!revenueCanvasRef.current || revenueRows.length === 0) return undefined;
+    revenueChartRef.current?.destroy();
+    const totalRevenue = revenueRows.reduce((sum, row) => sum + row.revenue, 0);
+    revenueChartRef.current = new Chart(revenueCanvasRef.current, {
+      type: "pie",
+      data: {
+        labels: revenueRows.map((row) => row.area),
+        datasets: [{
+          data: revenueRows.map((row) => row.revenue),
+          backgroundColor: revenueRows.map((_, index) => CHART_COLORS[index % CHART_COLORS.length]),
+          borderColor: "#ffffff",
+          borderWidth: 2,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (context) => {
+                const value = Number(context.parsed || 0);
+                const percent = totalRevenue ? ((value / totalRevenue) * 100).toFixed(1) : 0;
+                return ` ${chartMoney(value)} (${percent}%)`;
+              },
+            },
+          },
+        },
+      },
+    });
+    return () => {
+      revenueChartRef.current?.destroy();
+      revenueChartRef.current = null;
+    };
+  }, [revenueRows]);
+
+  return (
+    <div className="manager-analytics-chart-grid">
+      <section className="manager-analytics-chart-card">
+        <div className="manager-analytics-card-heading">
+          <div>
+            <h2>Công nợ hiện tại</h2>
+            <small>Top khách hàng theo số dư công nợ</small>
+          </div>
+          <span>{debtRows.length ? "Đơn vị: VND" : "Chưa có dữ liệu"}</span>
+        </div>
+        {debtRows.length ? (
+          <div className="manager-chart-box manager-debt-chart-box"><canvas ref={debtCanvasRef} /></div>
+        ) : (
+          <div className="manager-chart-empty">Chưa có khách hàng phát sinh công nợ.</div>
+        )}
+      </section>
+
+      <section className="manager-analytics-chart-card">
+        <div className="manager-analytics-card-heading">
+          <div>
+            <h2>Cơ cấu doanh thu</h2>
+            <small>Doanh thu theo khu vực trong kỳ</small>
+          </div>
+          <span>{revenueRows.length ? "Đơn vị: VND" : "Chưa có dữ liệu"}</span>
+        </div>
+        {revenueRows.length ? (
+          <>
+            <div className="manager-chart-box manager-revenue-chart-box"><canvas ref={revenueCanvasRef} /></div>
+            <div className="manager-chart-legend">
+              {revenueRows.map((row, index) => (
+                <div className="manager-chart-legend-row" key={row.area}>
+                  <span className="manager-chart-legend-dot" style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }} />
+                  <span className="manager-chart-legend-name" title={row.area}>{row.area}</span>
+                  <strong>{chartMoney(row.revenue)}</strong>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="manager-chart-empty">Chưa có doanh thu trong kỳ đã chọn.</div>
+        )}
+      </section>
+    </div>
+  );
+}
 
 function ManagerSalesAnalytics() {
   const navigate = useNavigate();
@@ -130,6 +303,7 @@ function ManagerSalesAnalytics() {
                 }
               />
             </div>
+            <ManagerAnalyticsCharts report={report} />
             <section className="manager-analytics-card">
               <div className="manager-analytics-card-heading">
                 <h2>Công nợ theo khách hàng</h2>
