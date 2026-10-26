@@ -17,16 +17,16 @@
 .manager-summary-card small { margin-top: -6px; color: #7186a1; font-size: 12px; }
 .manager-summary-card.is-warning strong { color: #ad6910; }
 .manager-summary-card.is-positive strong { color: #19754a; }
-.manager-analytics-chart-grid { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr); gap: 18px; margin-bottom: 18px; }
+.manager-analytics-chart-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; margin-bottom: 18px; }
 .manager-analytics-chart-card { min-width: 0; overflow: hidden; border: 1px solid #d7e1ed; border-radius: 8px; background: #fff; scroll-margin-top: 18px; }
 .manager-analytics-chart-card .manager-analytics-card-heading { min-height: 72px; }
 .manager-analytics-card-heading h2 { margin: 0; font-size: 20px; }
 .manager-analytics-card-heading small { display: block; margin-top: 5px; color: #7186a1; font-size: 12px; }
 .manager-chart-box { position: relative; width: 100%; padding: 18px 20px 12px; box-sizing: border-box; }
-.manager-debt-chart-box { height: 350px; }
-.manager-revenue-chart-box { height: 290px; max-width: 350px; margin: 0 auto; }
+.manager-debt-chart-box { height: 390px; }
+.manager-revenue-chart-box { height: 390px; max-width: 520px; margin: 0 auto; }
 .manager-quantity-chart-card { grid-column: span 1; }
-.manager-quantity-chart-box { height: 280px; max-width: 360px; margin: 0 auto; }
+.manager-quantity-chart-box { height: 390px; max-width: 520px; margin: 0 auto; }
 .manager-chart-empty { min-height: 260px; display: grid; place-items: center; padding: 24px; color: #7186a1; text-align: center; }
 .manager-chart-legend { display: grid; gap: 2px; padding: 0 20px 18px; }
 .manager-chart-legend-row { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 8px 0; border-top: 1px solid #eef2f6; font-size: 12px; }
@@ -56,4 +56,4 @@
 .manager-analytics-empty, .manager-analytics-state { padding: 28px; text-align:center; color:#7186a1; }
 @media (max-width: 1200px) { .manager-analytics-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 900px) { .manager-analytics-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .manager-analytics-filter { flex-wrap: wrap; } }
-@media (max-width: 900px) { .manager-analytics-chart-grid { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .manager-debt-chart-box, .manager-revenue-chart-box, .manager-quantity-chart-box { height: 320px; } }

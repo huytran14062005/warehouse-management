@@ -39,7 +39,10 @@ const thirtyDaysAgo = () => {
 const money = (value) => `${Number(value || 0).toLocaleString("vi-VN")} đ`;
 const quantity = (value) => Number(value || 0).toLocaleString("vi-VN");
 const chartMoney = (value) => `${Number(value || 0).toLocaleString("vi-VN")} đ`;
-const CHART_COLORS = ["#0d3863", "#2f73b7", "#53a2d8", "#f0a43c", "#68b684", "#9b8bd4"];
+const CHART_COLORS = [
+  "#0d3863", "#2f73b7", "#53a2d8", "#f0a43c", "#68b684", "#9b8bd4",
+  "#e76f51", "#2a9d8f", "#e9c46a", "#6d597a", "#ef476f", "#118ab2",
+];
 const shortChartLabel = (value, maxLength = 16) => {
   const label = String(value || "");
   return label.length > maxLength ? `${label.slice(0, maxLength - 1)}…` : label;
@@ -265,8 +268,8 @@ function ManagerAnalyticsCharts({ report, debtPagination, page, setPage }) {
       <section id="manager-debt-chart" className="manager-analytics-chart-card">
         <div className="manager-analytics-card-heading">
           <div>
-            <h2>Công nợ hiện tại</h2>
-            <small>Top khách hàng theo số dư công nợ</small>
+            <h2>Công nợ theo khách hàng</h2>
+            <small>Những khách hàng có số dư công nợ cao nhất</small>
           </div>
           <span>{debtRows.length ? "Đơn vị: VND" : "Chưa có dữ liệu"}</span>
         </div>
@@ -321,8 +324,8 @@ function ManagerAnalyticsCharts({ report, debtPagination, page, setPage }) {
       <section id="manager-revenue-chart" className="manager-analytics-chart-card">
         <div className="manager-analytics-card-heading">
           <div>
-            <h2>Cơ cấu doanh thu</h2>
-            <small>Doanh thu theo khu vực trong kỳ</small>
+            <h2>Doanh thu theo khu vực</h2>
+            <small>Phân bổ doanh thu trong khoảng thời gian đã chọn</small>
           </div>
           <span>{revenueRows.length ? "Đơn vị: VND" : "Chưa có dữ liệu"}</span>
         </div>
@@ -360,15 +363,15 @@ function ManagerAnalyticsCharts({ report, debtPagination, page, setPage }) {
       </section>
       <QuantityPieChartCard
         id="manager-inventory-chart"
-        title="Cơ cấu tồn kho hiện tại"
-        subtitle="Phân bổ số lượng hàng còn trong kho"
+        title="Tồn kho theo sản phẩm"
+        subtitle="Số lượng hàng còn lại trong kho hiện tại"
         rows={report?.inventory_chart}
         emptyMessage="Chưa có sản phẩm còn tồn kho."
       />
       <QuantityPieChartCard
         id="manager-sold-chart"
-        title="Cơ cấu hàng đã bán"
-        subtitle="Số lượng sản phẩm đã bán trong kỳ"
+        title="Số lượng bán theo sản phẩm"
+        subtitle="Số lượng hàng đã bán trong khoảng thời gian đã chọn"
         rows={report?.sold_chart}
         emptyMessage="Chưa có sản phẩm được bán trong kỳ đã chọn."
       />
