@@ -108,11 +108,18 @@ function AppFrame() {
       if (hasStoredUser && !hasUsableAccessToken()) {
         try {
           await refreshAccessToken();
-        } catch {
+        } catch (error) {
           if (!cancelled) {
-            stopTokenRefresh();
-            clearStoredSession();
-            setCurrentUser(null);
+            // An expired access token is recoverable while the refresh
+            // session is still valid. Only a definitive 401 from /refresh
+            // means that the user must sign in again.
+            if (error.response?.status === 401) {
+              stopTokenRefresh();
+              clearStoredSession();
+              setCurrentUser(null);
+            } else {
+              scheduleTokenRefresh();
+            }
           }
         }
       } else {

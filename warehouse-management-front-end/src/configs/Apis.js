@@ -68,6 +68,13 @@ const authenticatedApi = axios.create({
 let refreshRequest = null;
 let refreshTimer = null;
 
+const ACCESS_TOKEN_REFRESH_LEAD_MS = 60 * 1000;
+const REFRESH_RETRY_MS = 5 * 1000;
+const REFRESH_LOCK_KEY = "warehouse:auth-refresh-lock";
+const REFRESH_LOCK_TTL_MS = 20 * 1000;
+const REFRESH_TOKEN_EVENT = "auth:token-refreshed";
+const tabId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
 const readTokenExpiry = (token) => {
   try {
     const payload = token.split(".")[1];
@@ -78,6 +85,79 @@ const readTokenExpiry = (token) => {
     return null;
   }
 };
+
+const isAccessTokenUsable = (token) => {
+  const expiresAt = token && readTokenExpiry(token);
+  return Boolean(expiresAt && expiresAt > Date.now());
+};
+
+const readRefreshLock = () => {
+  try {
+    const rawLock = localStorage.getItem(REFRESH_LOCK_KEY);
+    return rawLock ? JSON.parse(rawLock) : null;
+  } catch {
+    return null;
+  }
+};
+
+const acquireRefreshLock = () => {
+  const currentLock = readRefreshLock();
+  if (currentLock && currentLock.expiresAt > Date.now() && currentLock.owner !== tabId) {
+    return false;
+  }
+
+  const nextLock = {
+    owner: tabId,
+    expiresAt: Date.now() + REFRESH_LOCK_TTL_MS,
+  };
+  localStorage.setItem(REFRESH_LOCK_KEY, JSON.stringify(nextLock));
+  return readRefreshLock()?.owner === tabId;
+};
+
+const releaseRefreshLock = () => {
+  const currentLock = readRefreshLock();
+  if (currentLock?.owner === tabId) {
+    localStorage.removeItem(REFRESH_LOCK_KEY);
+  }
+};
+
+const waitForOtherTabRefresh = (previousToken) => new Promise((resolve, reject) => {
+  const startedAt = Date.now();
+  let interval = null;
+  let timeout = null;
+
+  const cleanup = () => {
+    window.removeEventListener("storage", checkForNewToken);
+    window.removeEventListener(REFRESH_TOKEN_EVENT, checkForNewToken);
+    if (interval) window.clearInterval(interval);
+    if (timeout) window.clearTimeout(timeout);
+  };
+
+  const checkForNewToken = () => {
+    const nextToken = localStorage.getItem("token");
+    if (nextToken && nextToken !== previousToken && isAccessTokenUsable(nextToken)) {
+      cleanup();
+      scheduleTokenRefresh();
+      resolve(nextToken);
+      return;
+    }
+
+    const lock = readRefreshLock();
+    if ((!lock || lock.expiresAt <= Date.now()) && Date.now() - startedAt >= REFRESH_RETRY_MS) {
+      cleanup();
+      reject(new Error("Không nhận được access token mới từ tab đang làm mới phiên."));
+    }
+  };
+
+  window.addEventListener("storage", checkForNewToken);
+  window.addEventListener(REFRESH_TOKEN_EVENT, checkForNewToken);
+  interval = window.setInterval(checkForNewToken, 250);
+  timeout = window.setTimeout(() => {
+    cleanup();
+    reject(new Error("Làm mới phiên đăng nhập mất quá nhiều thời gian."));
+  }, REFRESH_LOCK_TTL_MS + REFRESH_RETRY_MS);
+  checkForNewToken();
+});
 
 const stopTokenRefresh = () => {
   if (refreshTimer) {
@@ -102,19 +182,29 @@ const redirectToLoginAfterRefreshFailure = () => {
 
 export const refreshAccessToken = () => {
   if (!refreshRequest) {
-    refreshRequest = Apis.post(endpoints.refresh)
-      .then((response) => {
-        const token = response.data.token;
-        if (!token) {
-          throw new Error("Máy chủ không trả về access token mới.");
-        }
-        localStorage.setItem("token", token);
-        scheduleTokenRefresh();
-        return token;
-      })
-      .finally(() => {
+    const previousToken = localStorage.getItem("token");
+
+    if (!acquireRefreshLock()) {
+      refreshRequest = waitForOtherTabRefresh(previousToken).finally(() => {
         refreshRequest = null;
       });
+    } else {
+      refreshRequest = Apis.post(endpoints.refresh)
+        .then((response) => {
+          const token = response.data.token;
+          if (!token) {
+            throw new Error("Máy chủ không trả về access token mới.");
+          }
+          localStorage.setItem("token", token);
+          window.dispatchEvent(new Event(REFRESH_TOKEN_EVENT));
+          scheduleTokenRefresh();
+          return token;
+        })
+        .finally(() => {
+          releaseRefreshLock();
+          refreshRequest = null;
+        });
+    }
   }
 
   return refreshRequest;
@@ -122,8 +212,29 @@ export const refreshAccessToken = () => {
 
 export const hasUsableAccessToken = () => {
   const token = localStorage.getItem("token");
-  const expiresAt = token && readTokenExpiry(token);
-  return Boolean(expiresAt && expiresAt > Date.now());
+  return isAccessTokenUsable(token);
+};
+
+const isRefreshSessionInvalid = (error) => error?.response?.status === 401;
+
+const retryRefreshUntilSessionEnds = () => {
+  stopTokenRefresh();
+
+  if (!localStorage.getItem("token") && !localStorage.getItem("user")) {
+    return;
+  }
+
+  refreshTimer = window.setTimeout(async () => {
+    try {
+      await refreshAccessToken();
+    } catch (error) {
+      if (isRefreshSessionInvalid(error)) {
+        redirectToLoginAfterRefreshFailure();
+      } else {
+        retryRefreshUntilSessionEnds();
+      }
+    }
+  }, REFRESH_RETRY_MS);
 };
 
 export const scheduleTokenRefresh = () => {
@@ -133,12 +244,16 @@ export const scheduleTokenRefresh = () => {
   const expiresAt = token && readTokenExpiry(token);
   if (!expiresAt) return;
 
-  const refreshIn = Math.max(expiresAt - Date.now() - 30 * 1000, 5 * 1000);
+  const refreshIn = Math.max(expiresAt - Date.now() - ACCESS_TOKEN_REFRESH_LEAD_MS, 5 * 1000);
   refreshTimer = window.setTimeout(async () => {
     try {
       await refreshAccessToken();
-    } catch {
-      redirectToLoginAfterRefreshFailure();
+    } catch (error) {
+      if (isRefreshSessionInvalid(error)) {
+        redirectToLoginAfterRefreshFailure();
+      } else {
+        retryRefreshUntilSessionEnds();
+      }
     }
   }, refreshIn);
 };
@@ -183,7 +298,11 @@ authenticatedApi.interceptors.response.use(
       originalRequest.headers.Authorization = `Bearer ${token}`;
       return authenticatedApi(originalRequest);
     } catch (refreshError) {
-      redirectToLoginAfterRefreshFailure();
+      if (isRefreshSessionInvalid(refreshError)) {
+        redirectToLoginAfterRefreshFailure();
+      } else {
+        retryRefreshUntilSessionEnds();
+      }
       return Promise.reject(refreshError);
     }
   },
