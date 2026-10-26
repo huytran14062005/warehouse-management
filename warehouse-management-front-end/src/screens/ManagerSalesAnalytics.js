@@ -56,7 +56,107 @@ function compactRevenueRows(rows) {
   return top;
 }
 
-function ManagerAnalyticsCharts({ report }) {
+function compactQuantityRows(rows) {
+  const sorted = (rows || [])
+    .map((row) => ({
+      product_id: row.product_id,
+      product_name: row.product_name || "Chưa xác định",
+      unit: row.unit || "",
+      quantity: Number(row.quantity || 0),
+    }))
+    .filter((row) => row.quantity > 0)
+    .sort((a, b) => b.quantity - a.quantity || a.product_name.localeCompare(b.product_name));
+  const top = sorted.slice(0, 8);
+  const otherQuantity = sorted.slice(8).reduce((sum, row) => sum + row.quantity, 0);
+  if (otherQuantity > 0) {
+    top.push({ product_id: "other", product_name: "Sản phẩm khác", unit: "", quantity: otherQuantity });
+  }
+  return top;
+}
+
+const percentage = (value, total) => (total ? `${((value / total) * 100).toFixed(1)}%` : "0%");
+
+function QuantityPieChartCard({ id, title, subtitle, rows, emptyMessage }) {
+  const canvasRef = useRef(null);
+  const chartRef = useRef(null);
+  const chartRows = useMemo(() => compactQuantityRows(rows), [rows]);
+
+  useEffect(() => {
+    if (!canvasRef.current || chartRows.length === 0) return undefined;
+    chartRef.current?.destroy();
+    const total = chartRows.reduce((sum, row) => sum + row.quantity, 0);
+    chartRef.current = new Chart(canvasRef.current, {
+      type: "pie",
+      data: {
+        labels: chartRows.map((row) => row.product_name),
+        datasets: [{
+          data: chartRows.map((row) => row.quantity),
+          backgroundColor: chartRows.map((_, index) => CHART_COLORS[index % CHART_COLORS.length]),
+          borderColor: "#ffffff",
+          borderWidth: 2,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (context) => {
+                const row = chartRows[context.dataIndex];
+                return ` ${quantity(row.quantity)} ${row.unit} (${percentage(row.quantity, total)})`;
+              },
+            },
+          },
+        },
+      },
+    });
+    return () => {
+      chartRef.current?.destroy();
+      chartRef.current = null;
+    };
+  }, [chartRows]);
+
+  const total = chartRows.reduce((sum, row) => sum + row.quantity, 0);
+  return (
+    <section id={id} className="manager-analytics-chart-card manager-quantity-chart-card">
+      <div className="manager-analytics-card-heading">
+        <div>
+          <h2>{title}</h2>
+          <small>{subtitle}</small>
+        </div>
+        <span>{total ? `${quantity(total)} đơn vị hàng` : "Chưa có dữ liệu"}</span>
+      </div>
+      {chartRows.length ? (
+        <>
+          <div className="manager-chart-box manager-quantity-chart-box"><canvas ref={canvasRef} /></div>
+          <div className="manager-chart-table-wrap">
+            <table className="manager-chart-table">
+              <thead>
+                <tr><th>Sản phẩm</th><th>Đơn vị</th><th>Số lượng</th><th>Tỷ trọng</th></tr>
+              </thead>
+              <tbody>
+                {chartRows.map((row) => (
+                  <tr key={`${id}-${row.product_id}`}>
+                    <td><strong>{row.product_name}</strong></td>
+                    <td>{row.unit || "—"}</td>
+                    <td>{quantity(row.quantity)}</td>
+                    <td>{percentage(row.quantity, total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : (
+        <div className="manager-chart-empty">{emptyMessage}</div>
+      )}
+    </section>
+  );
+}
+
+function ManagerAnalyticsCharts({ report, debtPagination, page, setPage }) {
   const debtCanvasRef = useRef(null);
   const revenueCanvasRef = useRef(null);
   const debtChartRef = useRef(null);
@@ -162,7 +262,7 @@ function ManagerAnalyticsCharts({ report }) {
 
   return (
     <div className="manager-analytics-chart-grid">
-      <section className="manager-analytics-chart-card">
+      <section id="manager-debt-chart" className="manager-analytics-chart-card">
         <div className="manager-analytics-card-heading">
           <div>
             <h2>Công nợ hiện tại</h2>
@@ -171,13 +271,54 @@ function ManagerAnalyticsCharts({ report }) {
           <span>{debtRows.length ? "Đơn vị: VND" : "Chưa có dữ liệu"}</span>
         </div>
         {debtRows.length ? (
-          <div className="manager-chart-box manager-debt-chart-box"><canvas ref={debtCanvasRef} /></div>
+          <>
+            <div className="manager-chart-box manager-debt-chart-box"><canvas ref={debtCanvasRef} /></div>
+            <div className="manager-chart-table-wrap">
+              <table className="manager-chart-table">
+                <thead>
+                  <tr>
+                    <th>Khách hàng</th>
+                    <th>Khu vực</th>
+                    <th>Doanh số</th>
+                    <th>Đã thu</th>
+                    <th>Biến động</th>
+                    <th>Công nợ hiện tại</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(report.debts || []).map((row) => (
+                    <tr key={row.customer_id}>
+                      <td>
+                        <strong>{row.customer_name}</strong>
+                        <small>{row.phone}</small>
+                      </td>
+                      <td>{row.area}</td>
+                      <td>{money(row.period_sales)}</td>
+                      <td>{money(row.period_paid)}</td>
+                      <td className={Number(row.net_debt_change) > 0 ? "is-warning" : "is-positive"}>
+                        {money(row.net_debt_change)}
+                      </td>
+                      <td>{money(row.current_debt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {!report.debts?.length && <div className="manager-analytics-empty">Không có dữ liệu công nợ.</div>}
+            </div>
+          </>
         ) : (
           <div className="manager-chart-empty">Chưa có khách hàng phát sinh công nợ.</div>
         )}
+        {Number(debtPagination.total_pages || 1) > 1 && (
+          <Pagination
+            currentPage={Number(debtPagination.page || page)}
+            totalPages={Number(debtPagination.total_pages)}
+            onPageChange={setPage}
+          />
+        )}
       </section>
 
-      <section className="manager-analytics-chart-card">
+      <section id="manager-revenue-chart" className="manager-analytics-chart-card">
         <div className="manager-analytics-card-heading">
           <div>
             <h2>Cơ cấu doanh thu</h2>
@@ -197,11 +338,40 @@ function ManagerAnalyticsCharts({ report }) {
                 </div>
               ))}
             </div>
+            <div className="manager-chart-table-wrap">
+              <table className="manager-chart-table">
+                <thead><tr><th>Khu vực</th><th>Số đơn</th><th>Số lượng</th><th>Doanh thu</th></tr></thead>
+                <tbody>
+                  {(report.revenue_by_area || []).map((row) => (
+                    <tr key={`revenue-${row.area}`}>
+                      <td><strong>{row.area}</strong></td>
+                      <td>{quantity(row.orders)}</td>
+                      <td>{quantity(row.quantity)}</td>
+                      <td>{money(row.revenue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </>
         ) : (
           <div className="manager-chart-empty">Chưa có doanh thu trong kỳ đã chọn.</div>
         )}
       </section>
+      <QuantityPieChartCard
+        id="manager-inventory-chart"
+        title="Cơ cấu tồn kho hiện tại"
+        subtitle="Phân bổ số lượng hàng còn trong kho"
+        rows={report?.inventory_chart}
+        emptyMessage="Chưa có sản phẩm còn tồn kho."
+      />
+      <QuantityPieChartCard
+        id="manager-sold-chart"
+        title="Cơ cấu hàng đã bán"
+        subtitle="Số lượng sản phẩm đã bán trong kỳ"
+        rows={report?.sold_chart}
+        emptyMessage="Chưa có sản phẩm được bán trong kỳ đã chọn."
+      />
     </div>
   );
 }
@@ -302,124 +472,45 @@ function ManagerSalesAnalytics() {
               <SummaryCard
                 label="Tổng công nợ hiện tại"
                 value={money(summary.current_debt_total)}
+                onClick={() => scrollToSection("manager-debt-chart")}
               />
               <SummaryCard
                 label="Doanh số"
                 value={money(summary.period_sales_total)}
+                onClick={() => scrollToSection("manager-revenue-chart")}
               />
               <SummaryCard
                 label="Đã thu"
                 value={money(summary.period_paid_total)}
+                onClick={() => scrollToSection("manager-revenue-chart")}
               />
               <SummaryCard
                 label="Biến động công nợ"
                 value={money(summary.net_debt_change)}
+                onClick={() => scrollToSection("manager-debt-chart")}
                 tone={
                   Number(summary.net_debt_change) > 0 ? "warning" : "positive"
                 }
               />
+              <SummaryCard
+                label="Tồn kho hiện tại"
+                value={quantity(summary.current_stock_total)}
+                suffix="đơn vị hàng"
+                onClick={() => scrollToSection("manager-inventory-chart")}
+              />
+              <SummaryCard
+                label="Đã bán trong kỳ"
+                value={quantity(summary.period_sold_quantity)}
+                suffix="đơn vị hàng"
+                onClick={() => scrollToSection("manager-sold-chart")}
+              />
             </div>
-            <ManagerAnalyticsCharts report={report} />
-            <section className="manager-analytics-card">
-              <div className="manager-analytics-card-heading">
-                <h2>Công nợ theo khách hàng</h2>
-                <span>{summary.customer_count || 0} khách hàng</span>
-              </div>
-              <div className="manager-analytics-table-wrap">
-                <table className="manager-analytics-table">
-                  <thead>
-                    <tr>
-                      <th>Khách hàng</th>
-                      <th>Khu vực</th>
-                      <th>Doanh số</th>
-                      <th>Đã thu</th>
-                      <th>Biến động</th>
-                      <th>Công nợ hiện tại</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(report.debts || []).map((row) => (
-                      <tr key={row.customer_id}>
-                        <td>
-                          <strong>{row.customer_name}</strong>
-                          <small>{row.phone}</small>
-                        </td>
-                        <td>{row.area}</td>
-                        <td>{money(row.period_sales)}</td>
-                        <td>{money(row.period_paid)}</td>
-                        <td
-                          className={
-                            Number(row.net_debt_change) > 0
-                              ? "is-warning"
-                              : "is-positive"
-                          }
-                        >
-                          {money(row.net_debt_change)}
-                        </td>
-                        <td>
-                          <strong>{money(row.current_debt)}</strong>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {!report.debts?.length && (
-                  <div className="manager-analytics-empty">
-                    Không có dữ liệu công nợ.
-                  </div>
-                )}
-              </div>
-              {Number(debtPagination.total_pages || 1) > 1 && (
-                <Pagination
-                  currentPage={Number(debtPagination.page || page)}
-                  totalPages={Number(debtPagination.total_pages)}
-                  onPageChange={setPage}
-                />
-              )}
-            </section>
-            <section className="manager-analytics-card">
-              <div className="manager-analytics-card-heading">
-                <h2>Doanh thu theo khu vực</h2>
-                <span>{(report.revenue_by_area || []).length} khu vực</span>
-              </div>
-              <div className="manager-analytics-table-wrap">
-                <table className="manager-analytics-table">
-                  <thead>
-                    <tr>
-                      <th>Khu vực</th>
-                      <th>Số đơn hoàn thành</th>
-                      <th>Số lượng hàng</th>
-                      <th>Doanh thu</th>
-                      <th>Sản phẩm bán nhiều nhất</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(report.revenue_by_area || []).map((row) => (
-                      <tr key={row.area}>
-                        <td>
-                          <strong>{row.area}</strong>
-                        </td>
-                        <td>{quantity(row.orders)}</td>
-                        <td>{quantity(row.quantity)}</td>
-                        <td>
-                          <strong>{money(row.revenue)}</strong>
-                        </td>
-                        <td>
-                          {row.top_product
-                            ? `${row.top_product.name} (${quantity(row.top_product.quantity)})`
-                            : "—"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {!report.revenue_by_area?.length && (
-                  <div className="manager-analytics-empty">
-                  Không có doanh thu.
-                  </div>
-                )}
-              </div>
-            </section>
+            <ManagerAnalyticsCharts
+              report={report}
+              debtPagination={debtPagination}
+              page={page}
+              setPage={setPage}
+            />
           </>
         )
       )}
@@ -427,12 +518,21 @@ function ManagerSalesAnalytics() {
   );
 }
 
-function SummaryCard({ label, value, tone = "" }) {
+function scrollToSection(id) {
+  document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function SummaryCard({ label, value, suffix = "", tone = "", onClick }) {
   return (
-    <div className={`manager-summary-card ${tone ? `is-${tone}` : ""}`}>
+    <button
+      type="button"
+      className={`manager-summary-card ${tone ? `is-${tone}` : ""} ${onClick ? "is-clickable" : ""}`}
+      onClick={onClick}
+    >
       <span>{label}</span>
       <strong>{value}</strong>
-    </div>
+      {suffix && <small>{suffix}</small>}
+    </button>
   );
 }
 

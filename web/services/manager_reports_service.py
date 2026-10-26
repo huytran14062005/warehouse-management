@@ -3,6 +3,7 @@ from sqlalchemy import func, literal
 from sqlalchemy.orm import selectinload
 
 from web import db, app
+from web.dao import product_dao
 from web.models import (
     Customer,
     CustomerPayment,
@@ -189,6 +190,54 @@ def get_manager_sales_analytics_service(from_date_value=None, to_date_value=None
         for row in revenue_rows
     ]
 
+    # Tồn kho hiện tại lấy theo cùng một công thức với màn hình quản lý kho:
+    # nhập - bán trực tiếp - hư hỏng - đã cấp cho nhân viên.
+    products = Product.query.order_by(Product.name.asc()).all()
+    inventory_by_product = product_dao.calculate_inventory_for_products(
+        [product.id for product in products]
+    )
+    inventory_chart = []
+    total_current_stock = 0
+    for product in products:
+        available_stock = max(0, int(
+            inventory_by_product.get(product.id, {}).get("available_stock", 0) or 0
+        ))
+        total_current_stock += available_stock
+        if available_stock > 0:
+            inventory_chart.append({
+                "product_id": product.id,
+                "product_name": product.name,
+                "unit": product.unit,
+                "quantity": available_stock,
+            })
+    inventory_chart.sort(key=lambda row: (-row["quantity"], row["product_name"]))
+
+    sold_rows = (
+        db.session.query(
+            Product.id.label("product_id"),
+            Product.name.label("product_name"),
+            Product.unit.label("unit"),
+            func.sum(SalesInvoiceItem.quantity).label("quantity"),
+        )
+        .join(SalesInvoice, SalesInvoice.id == SalesInvoiceItem.sales_invoice_id)
+        .join(Product, Product.id == SalesInvoiceItem.product_id)
+        .filter(*invoice_filters)
+        .group_by(Product.id, Product.name, Product.unit)
+        .order_by(func.sum(SalesInvoiceItem.quantity).desc(), Product.name.asc())
+        .all()
+    )
+    sold_chart = [
+        {
+            "product_id": row.product_id,
+            "product_name": row.product_name,
+            "unit": row.unit,
+            "quantity": int(row.quantity or 0),
+        }
+        for row in sold_rows
+        if int(row.quantity or 0) > 0
+    ]
+    total_period_sold = sum(row["quantity"] for row in sold_chart)
+
     total_current_debt = sum(float(customer.debt_amount or 0) for customer in customers)
     total_period_sales = sum(sales_by_customer.values())
     total_period_paid = sum(paid_by_customer.values())
@@ -203,9 +252,13 @@ def get_manager_sales_analytics_service(from_date_value=None, to_date_value=None
             "period_sales_total": total_period_sales,
             "period_paid_total": total_period_paid,
             "net_debt_change": total_period_sales - total_period_paid,
+            "current_stock_total": total_current_stock,
+            "period_sold_quantity": total_period_sold,
         },
         "debts": paged_debts,
         "debt_chart": debt_chart_rows,
         "debt_pagination": build_pagination(page, per_page, debt_total),
         "revenue_by_area": revenue_by_area,
+        "inventory_chart": inventory_chart,
+        "sold_chart": sold_chart,
     }
