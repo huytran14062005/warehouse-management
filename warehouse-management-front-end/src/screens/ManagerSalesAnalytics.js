@@ -31,9 +31,9 @@ Chart.register(
 );
 
 const today = () => new Date().toISOString().slice(0, 10);
-const thirtyDaysAgo = () => {
+const twelveMonthsAgo = () => {
   const value = new Date();
-  value.setDate(value.getDate() - 30);
+  value.setMonth(value.getMonth() - 11);
   return value.toISOString().slice(0, 10);
 };
 const money = (value) => `${Number(value || 0).toLocaleString("vi-VN")} đ`;
@@ -92,13 +92,32 @@ function compactQuantityRows(rows) {
 }
 
 const percentage = (value, total) => (total ? `${((value / total) * 100).toFixed(1)}%` : "0%");
+const formatMonthLabel = (value) => {
+  const [year, month] = String(value || "").split("-");
+  return year && month ? `T${Number(month)}/${year}` : value || "—";
+};
 
-function QuantityPieChartCard({ id, title, subtitle, rows, emptyMessage, showChart = true, showAllRows = false }) {
+function QuantityPieChartCard({
+  id,
+  title,
+  subtitle,
+  rows,
+  tableRows,
+  tablePagination,
+  onTablePageChange,
+  tableLoading = false,
+  emptyMessage,
+  showChart = true,
+}) {
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
   const chartRows = useMemo(
-    () => (showAllRows ? normalizeQuantityRows(rows) : compactQuantityRows(rows)),
-    [rows, showAllRows],
+    () => compactQuantityRows(rows),
+    [rows],
+  );
+  const renderedTableRows = useMemo(
+    () => normalizeQuantityRows(tableRows ?? rows),
+    [rows, tableRows],
   );
 
   useEffect(() => {
@@ -159,7 +178,7 @@ function QuantityPieChartCard({ id, title, subtitle, rows, emptyMessage, showCha
                 <tr><th>Sản phẩm</th><th>Đơn vị</th><th>Số lượng</th><th>Tỷ trọng</th></tr>
               </thead>
               <tbody>
-                {chartRows.map((row) => (
+                {renderedTableRows.map((row) => (
                   <tr key={`${id}-${row.product_id}`}>
                     <td><strong>{row.product_name}</strong></td>
                     <td>{row.unit || "—"}</td>
@@ -170,6 +189,16 @@ function QuantityPieChartCard({ id, title, subtitle, rows, emptyMessage, showCha
               </tbody>
             </table>
           </div>
+          {Number(tablePagination?.total_pages || 1) > 1 && (
+            <div className="manager-chart-pagination">
+              <Pagination
+                page={Number(tablePagination?.page || 1)}
+                totalPages={Number(tablePagination?.total_pages || 1)}
+                onPageChange={onTablePageChange}
+                disabled={tableLoading}
+              />
+            </div>
+          )}
         </>
       ) : (
         <div className="manager-chart-empty">{emptyMessage}</div>
@@ -178,11 +207,13 @@ function QuantityPieChartCard({ id, title, subtitle, rows, emptyMessage, showCha
   );
 }
 
-function ManagerAnalyticsCharts({ report, debtPagination, page, setPage }) {
+function ManagerAnalyticsCharts({ report, debtPagination, tablePages, onTablePageChange, tableLoading }) {
   const debtCanvasRef = useRef(null);
   const revenueCanvasRef = useRef(null);
   const debtChartRef = useRef(null);
   const revenueChartRef = useRef(null);
+  const monthlyCanvasRef = useRef(null);
+  const monthlyChartRef = useRef(null);
   const debtRows = useMemo(
     () => report?.debt_chart || [],
     [report?.debt_chart],
@@ -191,6 +222,54 @@ function ManagerAnalyticsCharts({ report, debtPagination, page, setPage }) {
     () => compactRevenueRows(report?.revenue_by_area),
     [report?.revenue_by_area],
   );
+  const monthlyRows = useMemo(() => report?.monthly_trend || [], [report?.monthly_trend]);
+
+  useEffect(() => {
+    if (!monthlyCanvasRef.current || monthlyRows.length === 0) return undefined;
+    monthlyChartRef.current?.destroy();
+    monthlyChartRef.current = new Chart(monthlyCanvasRef.current, {
+      type: "bar",
+      data: {
+        labels: monthlyRows.map((row) => formatMonthLabel(row.month)),
+        datasets: [{
+          label: "Doanh thu",
+          data: monthlyRows.map((row) => row.revenue),
+          backgroundColor: monthlyRows.map((_, index) => CHART_COLORS[index % CHART_COLORS.length]),
+          borderRadius: 5,
+          borderSkipped: false,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { grid: { display: false } },
+          y: {
+            beginAtZero: true,
+            grid: { color: "#e8eef5" },
+            ticks: { callback: (value) => chartMoney(value), maxTicksLimit: 6 },
+          },
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: (items) => formatMonthLabel(monthlyRows[items[0]?.dataIndex]?.month),
+              label: (context) => ` ${chartMoney(context.parsed.y)}`,
+              afterLabel: (context) => {
+                const row = monthlyRows[context.dataIndex];
+                return ` ${quantity(row.orders)} đơn · ${quantity(row.sold_quantity)} sản phẩm`;
+              },
+            },
+          },
+        },
+      },
+    });
+    return () => {
+      monthlyChartRef.current?.destroy();
+      monthlyChartRef.current = null;
+    };
+  }, [monthlyRows]);
 
   useEffect(() => {
     if (!debtCanvasRef.current || debtRows.length === 0) return undefined;
@@ -285,6 +364,53 @@ function ManagerAnalyticsCharts({ report, debtPagination, page, setPage }) {
 
   return (
     <div className="manager-analytics-chart-grid">
+      <section id="manager-monthly-chart" className="manager-analytics-chart-card">
+        <div className="manager-analytics-card-heading">
+          <div>
+            <h2>Doanh thu theo tháng</h2>
+            <small>So sánh doanh thu từng tháng để nhận diện giai đoạn cao điểm</small>
+          </div>
+          <span>
+            {report?.monthly_peak
+              ? `Cao nhất: ${formatMonthLabel(report.monthly_peak.month)}`
+              : "Chưa có dữ liệu"}
+          </span>
+        </div>
+        {monthlyRows.length ? (
+          <>
+            <div className="manager-chart-box manager-monthly-chart-box"><canvas ref={monthlyCanvasRef} /></div>
+            <div className="manager-chart-table-wrap">
+              <table className="manager-chart-table">
+                <thead>
+                  <tr><th>Tháng</th><th>Số đơn</th><th>Số lượng bán</th><th>Doanh thu</th><th>Đã thu</th><th>Doanh thu TB/đơn</th></tr>
+                </thead>
+                <tbody>
+                  {(report.monthly_table || monthlyRows).map((row) => (
+                    <tr key={`monthly-${row.month}`}>
+                      <td><strong>{formatMonthLabel(row.month)}</strong></td>
+                      <td>{quantity(row.orders)}</td>
+                      <td>{quantity(row.sold_quantity)}</td>
+                      <td>{money(row.revenue)}</td>
+                      <td>{money(row.paid)}</td>
+                      <td>{money(row.average_order_value)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {Number(report.monthly_pagination?.total_pages || 1) > 1 && (
+              <Pagination
+                page={Number(report.monthly_pagination?.page || tablePages.monthly)}
+                totalPages={Number(report.monthly_pagination?.total_pages || 1)}
+                onPageChange={(nextPage) => onTablePageChange("monthly", nextPage)}
+                disabled={tableLoading.monthly}
+              />
+            )}
+          </>
+        ) : (
+          <div className="manager-chart-empty">Chưa có dữ liệu doanh thu trong khoảng thời gian đã chọn.</div>
+        )}
+      </section>
       <section id="manager-debt-chart" className="manager-analytics-chart-card">
         <div className="manager-analytics-card-heading">
           <div>
@@ -334,9 +460,10 @@ function ManagerAnalyticsCharts({ report, debtPagination, page, setPage }) {
         )}
         {Number(debtPagination.total_pages || 1) > 1 && (
           <Pagination
-            currentPage={Number(debtPagination.page || page)}
+            page={Number(debtPagination.page || tablePages.debt)}
             totalPages={Number(debtPagination.total_pages)}
-            onPageChange={setPage}
+            onPageChange={(nextPage) => onTablePageChange("debt", nextPage)}
+            disabled={tableLoading.debt}
           />
         )}
       </section>
@@ -365,7 +492,7 @@ function ManagerAnalyticsCharts({ report, debtPagination, page, setPage }) {
               <table className="manager-chart-table">
                 <thead><tr><th>Khu vực</th><th>Số đơn</th><th>Số lượng</th><th>Doanh thu</th></tr></thead>
                 <tbody>
-                  {(report.revenue_by_area || []).map((row) => (
+                  {(report.revenue_table || report.revenue_by_area || []).map((row) => (
                     <tr key={`revenue-${row.area}`}>
                       <td><strong>{row.area}</strong></td>
                       <td>{quantity(row.orders)}</td>
@@ -376,6 +503,14 @@ function ManagerAnalyticsCharts({ report, debtPagination, page, setPage }) {
                 </tbody>
               </table>
             </div>
+            {Number(report.revenue_pagination?.total_pages || 1) > 1 && (
+              <Pagination
+                page={Number(report.revenue_pagination?.page || tablePages.revenue)}
+                totalPages={Number(report.revenue_pagination?.total_pages || 1)}
+                onPageChange={(nextPage) => onTablePageChange("revenue", nextPage)}
+                disabled={tableLoading.revenue}
+              />
+            )}
           </>
         ) : (
           <div className="manager-chart-empty">Chưa có doanh thu trong kỳ đã chọn.</div>
@@ -386,15 +521,22 @@ function ManagerAnalyticsCharts({ report, debtPagination, page, setPage }) {
         title="Tồn kho theo sản phẩm"
         subtitle="Số lượng hàng còn lại trong kho hiện tại"
         rows={report?.inventory_chart}
+        tableRows={report?.inventory_table}
+        tablePagination={report?.inventory_pagination}
+        onTablePageChange={(nextPage) => onTablePageChange("inventory", nextPage)}
+        tableLoading={tableLoading.inventory}
         emptyMessage="Chưa có sản phẩm còn tồn kho."
         showChart={false}
-        showAllRows
       />
       <QuantityPieChartCard
         id="manager-sold-chart"
         title="Số lượng bán theo sản phẩm"
         subtitle="Số lượng hàng đã bán trong khoảng thời gian đã chọn"
         rows={report?.sold_chart}
+        tableRows={report?.sold_table}
+        tablePagination={report?.sold_pagination}
+        onTablePageChange={(nextPage) => onTablePageChange("sold", nextPage)}
+        tableLoading={tableLoading.sold}
         emptyMessage="Chưa có sản phẩm được bán trong kỳ đã chọn."
       />
     </div>
@@ -403,9 +545,10 @@ function ManagerAnalyticsCharts({ report, debtPagination, page, setPage }) {
 
 function ManagerSalesAnalytics() {
   const navigate = useNavigate();
-  const [fromDate, setFromDate] = useState(thirtyDaysAgo);
+  const [fromDate, setFromDate] = useState(twelveMonthsAgo);
   const [toDate, setToDate] = useState(today);
-  const [page, setPage] = useState(1);
+  const [tablePages, setTablePages] = useState({ debt: 1, revenue: 1, inventory: 1, sold: 1, monthly: 1 });
+  const [tableLoading, setTableLoading] = useState({ debt: false, revenue: false, inventory: false, sold: false, monthly: false });
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useNotificationState();
@@ -424,7 +567,7 @@ function ManagerSalesAnalytics() {
           params: {
             from_date: fromDate || undefined,
             to_date: toDate || undefined,
-            page,
+            page: 1,
             per_page: 10,
           },
         });
@@ -435,8 +578,29 @@ function ManagerSalesAnalytics() {
         setLoading(false);
       }
     },
-    [fromDate, page, setError, toDate],
+    [fromDate, setError, toDate],
   );
+
+  const loadTablePage = useCallback(async (table, nextPage) => {
+    try {
+      setTableLoading((current) => ({ ...current, [table]: true }));
+      const response = await authApis().get(endpoints.managerSalesReport, {
+        params: {
+          from_date: fromDate || undefined,
+          to_date: toDate || undefined,
+          table,
+          table_page: nextPage,
+          table_per_page: 10,
+        },
+      });
+      setReport((current) => ({ ...(current || {}), ...(response.data || {}) }));
+      setTablePages((current) => ({ ...current, [table]: nextPage }));
+    } catch (requestError) {
+      setError(getApiError(requestError));
+    } finally {
+      setTableLoading((current) => ({ ...current, [table]: false }));
+    }
+  }, [fromDate, setError, toDate]);
 
   useEffect(() => {
     if (!localStorage.getItem("token")) {
@@ -467,7 +631,7 @@ function ManagerSalesAnalytics() {
             value={fromDate}
             onChange={(event) => {
               setFromDate(event.target.value);
-              setPage(1);
+              setTablePages({ debt: 1, revenue: 1, inventory: 1, sold: 1, monthly: 1 });
             }}
           />
         </label>
@@ -478,7 +642,7 @@ function ManagerSalesAnalytics() {
             value={toDate}
             onChange={(event) => {
               setToDate(event.target.value);
-              setPage(1);
+              setTablePages({ debt: 1, revenue: 1, inventory: 1, sold: 1, monthly: 1 });
             }}
           />
         </label>
@@ -529,12 +693,19 @@ function ManagerSalesAnalytics() {
                 suffix="đơn vị hàng"
                 onClick={() => scrollToSection("manager-sold-chart")}
               />
+              <SummaryCard
+                label="Tháng doanh thu cao nhất"
+                value={report.monthly_peak ? formatMonthLabel(report.monthly_peak.month) : "—"}
+                suffix={report.monthly_peak ? money(report.monthly_peak.revenue) : "Chưa có dữ liệu"}
+                onClick={() => scrollToSection("manager-monthly-chart")}
+              />
             </div>
             <ManagerAnalyticsCharts
               report={report}
               debtPagination={debtPagination}
-              page={page}
-              setPage={setPage}
+              tablePages={tablePages}
+              onTablePageChange={loadTablePage}
+              tableLoading={tableLoading}
             />
           </>
         )

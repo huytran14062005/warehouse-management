@@ -27,6 +27,9 @@ def get_manager_sales_report():
         to_date_value=request.args.get("to_date"),
         page_value=request.args.get("page"),
         per_page_value=request.args.get("per_page"),
+        table_value=request.args.get("table"),
+        table_page_value=request.args.get("table_page"),
+        table_per_page_value=request.args.get("table_per_page"),
     )), 200
 
 

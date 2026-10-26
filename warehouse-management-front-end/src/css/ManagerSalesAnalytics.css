@@ -6,7 +6,7 @@
 .manager-analytics-filter input { min-width: 180px; padding: 11px 12px; border: 1px solid #c8d6e6; border-radius: 6px; color: #263e59; font-size: 15px; }
 .manager-analytics-filter button { padding: 12px 20px; border: 0; border-radius: 6px; background: #0d3863; color: white; font-weight: 700; cursor: pointer; }
 .manager-analytics-error { margin-bottom: 16px; }
-.manager-analytics-summary { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+.manager-analytics-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
 .manager-summary-card, .manager-analytics-card { border: 1px solid #d7e1ed; border-radius: 8px; background: #fff; }
 .manager-summary-card { display: flex; flex-direction: column; align-items: flex-start; gap: 9px; padding: 18px; min-height: 84px; box-sizing: border-box; text-align: left; font: inherit; background: #fff; color: inherit; appearance: none; }
 .manager-summary-card.is-clickable { width: 100%; cursor: pointer; transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease; }
@@ -24,6 +24,7 @@
 .manager-analytics-card-heading small { display: block; margin-top: 5px; color: #7186a1; font-size: 12px; }
 .manager-chart-box { position: relative; width: 100%; padding: 18px 20px 12px; box-sizing: border-box; }
 .manager-debt-chart-box { height: 390px; }
+.manager-monthly-chart-box { height: 360px; }
 .manager-revenue-chart-box { height: 390px; max-width: 520px; margin: 0 auto; }
 .manager-quantity-chart-card { grid-column: span 1; }
 .manager-quantity-chart-box { height: 390px; max-width: 520px; margin: 0 auto; }
@@ -41,6 +42,7 @@
 .manager-chart-table td strong { color: #183f68; }
 .manager-chart-table td small { display: block; margin-top: 3px; color: #8093aa; }
 .manager-chart-table tbody tr:last-child td { border-bottom: 0; }
+.manager-chart-pagination { padding: 0 0 4px; }
 .manager-analytics-card { margin-bottom: 18px; overflow: hidden; }
 .manager-analytics-card-heading { display:flex; justify-content:space-between; align-items:center; padding: 18px 20px; border-bottom: 1px solid #e4ebf3; }
 .manager-analytics-card-heading h2 { margin: 0; font-size: 20px; }
@@ -56,4 +58,4 @@
 .manager-analytics-empty, .manager-analytics-state { padding: 28px; text-align:center; color:#7186a1; }
 @media (max-width: 1200px) { .manager-analytics-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 900px) { .manager-analytics-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .manager-analytics-filter { flex-wrap: wrap; } }
-@media (max-width: 900px) { .manager-debt-chart-box, .manager-revenue-chart-box, .manager-quantity-chart-box { height: 320px; } }
+@media (max-width: 900px) { .manager-debt-chart-box, .manager-monthly-chart-box, .manager-revenue-chart-box, .manager-quantity-chart-box { height: 320px; } }
