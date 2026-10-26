@@ -430,7 +430,6 @@ function ManagerAnalyticsCharts({ report, debtPagination, tablePages, onTablePag
                     <th>Khu vực</th>
                     <th>Doanh số</th>
                     <th>Đã thu</th>
-                    <th>Biến động</th>
                     <th>Công nợ hiện tại</th>
                   </tr>
                 </thead>
@@ -444,9 +443,6 @@ function ManagerAnalyticsCharts({ report, debtPagination, tablePages, onTablePag
                       <td>{row.area}</td>
                       <td>{money(row.period_sales)}</td>
                       <td>{money(row.period_paid)}</td>
-                      <td className={Number(row.net_debt_change) > 0 ? "is-warning" : "is-positive"}>
-                        {money(row.net_debt_change)}
-                      </td>
                       <td>{money(row.current_debt)}</td>
                     </tr>
                   ))}

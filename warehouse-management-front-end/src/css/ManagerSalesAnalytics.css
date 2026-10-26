@@ -42,7 +42,8 @@
 .manager-chart-table td strong { color: #183f68; }
 .manager-chart-table td small { display: block; margin-top: 3px; color: #8093aa; }
 .manager-chart-table tbody tr:last-child td { border-bottom: 0; }
-.manager-chart-pagination { padding: 0 0 4px; }
+.manager-chart-pagination { padding: 0 0 16px; }
+.manager-analytics-chart-card > .warehouse-pagination-controls { margin-bottom: 16px; }
 .manager-analytics-card { margin-bottom: 18px; overflow: hidden; }
 .manager-analytics-card-heading { display:flex; justify-content:space-between; align-items:center; padding: 18px 20px; border-bottom: 1px solid #e4ebf3; }
 .manager-analytics-card-heading h2 { margin: 0; font-size: 20px; }
