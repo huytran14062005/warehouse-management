@@ -4,7 +4,13 @@ from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy.exc import IntegrityError
 from web import app, db
-from web.models import Customer, CustomerPayment, InvoiceStatus, SalesInvoice
+from web.models import (
+    Customer,
+    CustomerPayment,
+    InvoiceStatus,
+    SalesInvoice,
+    SalesInvoiceItem,
+)
 
 
 def apply_pagination(query, page, page_size=None):
@@ -56,7 +62,7 @@ def get_all_customers(
     debt_max=None,
 ):
        
-    query = Customer.query.options(selectinload(Customer.sales_area_ref))
+    query = Customer.query
 
                           
     if has_debt:
@@ -80,14 +86,104 @@ def get_all_customers(
         )
 
                                                
-    query = query.order_by(Customer.id.desc())
+    # Keep the filtered customer ids separate from the paged result so the
+    # summary cards describe the whole filtered set, not only the current page.
+    filtered_customer_ids = [
+        row[0]
+        for row in query.order_by(None).with_entities(Customer.id).all()
+    ]
+    total = len(filtered_customer_ids)
 
-                      
-    query, total = apply_pagination(query, page, page_size=per_page)
+    query = query.options(selectinload(Customer.sales_area_ref)).order_by(Customer.id.desc())
+    page_query, _ = apply_pagination(query, page, page_size=per_page)
+    customers = page_query.all()
 
-    customers = query.all()
+    page_customer_ids = [customer.id for customer in customers]
 
-    return customers, total
+    def payment_totals(customer_ids):
+        if not customer_ids:
+            return {}
+        return {
+            row.customer_id: float(row.total_paid or 0)
+            for row in db.session.query(
+                CustomerPayment.customer_id,
+                func.coalesce(func.sum(CustomerPayment.amount), 0).label("total_paid"),
+            )
+            .filter(CustomerPayment.customer_id.in_(customer_ids))
+            .group_by(CustomerPayment.customer_id)
+            .all()
+        }
+
+    def sales_totals(customer_ids):
+        if not customer_ids:
+            return {}
+        completed_invoice_totals = (
+            db.session.query(
+                SalesInvoice.id.label("invoice_id"),
+                SalesInvoice.customer_id.label("customer_id"),
+                (
+                    func.sum(
+                        SalesInvoiceItem.quantity * SalesInvoiceItem.unit_price
+                    )
+                    - SalesInvoice.discount_amount
+                ).label("final_amount"),
+            )
+            .join(
+                SalesInvoiceItem,
+                SalesInvoiceItem.sales_invoice_id == SalesInvoice.id,
+            )
+            .filter(
+                SalesInvoice.customer_id.in_(customer_ids),
+                SalesInvoice.status == InvoiceStatus.COMPLETED,
+            )
+            .group_by(
+                SalesInvoice.id,
+                SalesInvoice.customer_id,
+                SalesInvoice.discount_amount,
+            )
+            .subquery()
+        )
+        return {
+            row.customer_id: float(row.total_sales or 0)
+            for row in db.session.query(
+                completed_invoice_totals.c.customer_id,
+                func.coalesce(
+                    func.sum(completed_invoice_totals.c.final_amount), 0
+                ).label("total_sales"),
+            )
+            .group_by(completed_invoice_totals.c.customer_id)
+            .all()
+        }
+
+    page_paid = payment_totals(page_customer_ids)
+    page_sales = sales_totals(page_customer_ids)
+    for customer in customers:
+        # Transient attributes keep the API serializer reusable for detail and
+        # update responses without changing the database model.
+        customer._total_paid_amount = page_paid.get(customer.id, 0.0)
+        customer._total_sales_amount = page_sales.get(customer.id, 0.0)
+
+    all_paid = payment_totals(filtered_customer_ids)
+    all_sales = sales_totals(filtered_customer_ids)
+    total_debt = 0.0
+    if filtered_customer_ids:
+        total_debt = float(
+            db.session.query(
+                func.coalesce(func.sum(Customer.debt_amount), 0)
+            )
+            .filter(Customer.id.in_(filtered_customer_ids))
+            .scalar()
+            or 0
+        )
+
+    summary = {
+        "total_customers": total,
+        "total_collected": sum(all_paid.values()),
+        "total_sales": sum(all_sales.values()),
+        "total_debt": total_debt,
+    }
+
+    return customers, total, summary
 
 
 def add_customer(full_name, phone, address, sales_area_id=None):

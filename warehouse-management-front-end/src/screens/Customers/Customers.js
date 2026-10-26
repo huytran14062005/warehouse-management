@@ -140,6 +140,12 @@ function Customers() {
   const [hasDebt, setHasDebt] = useState(false);
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ total: 0, totalPages: 1 });
+  const [customerSummary, setCustomerSummary] = useState({
+    total_customers: 0,
+    total_collected: 0,
+    total_sales: 0,
+    total_debt: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useNotificationState();
   const [showDetail, setShowDetail] = useState(false);
@@ -182,6 +188,7 @@ function Customers() {
     }
   })();
   const canReceivePayment = ["kế toán", "quản lý"].includes(currentUser.role);
+  const canViewCustomerFinancial = ["kế toán", "quản lý"].includes(currentUser.role);
   const canEditCustomer = currentUser.role === "quản lý";
 
   const fetchCustomers = useCallback(async () => {
@@ -214,6 +221,12 @@ function Customers() {
       setPagination({
         total: Number(responsePagination.total || 0),
         totalPages: Number(responsePagination.total_pages || 1),
+      });
+      setCustomerSummary({
+        total_customers: Number(data.summary?.total_customers || 0),
+        total_collected: Number(data.summary?.total_collected || 0),
+        total_sales: Number(data.summary?.total_sales || 0),
+        total_debt: Number(data.summary?.total_debt || 0),
       });
     } catch (requestError) {
       setError(getApiError(requestError));
@@ -529,9 +542,28 @@ function Customers() {
 
       <AutoDismissMessage message={error} className="customers-alert" />
 
+      <div className="customers-summary" aria-label="Tổng quan khách hàng">
+        <div className="customers-summary-card">
+          <span>Tổng số khách hàng</span>
+          <strong>{customerSummary.total_customers.toLocaleString("vi-VN")}</strong>
+        </div>
+        {canViewCustomerFinancial && (
+          <>
+            <div className="customers-summary-card customers-summary-card--paid">
+              <span>Tổng tiền đã thu</span>
+              <strong>{formatCurrency(customerSummary.total_collected)}</strong>
+            </div>
+            <div className="customers-summary-card customers-summary-card--debt">
+              <span>Tổng công nợ hiện tại</span>
+              <strong>{formatCurrency(customerSummary.total_debt)}</strong>
+            </div>
+          </>
+        )}
+      </div>
+
       <div className="customers-card">
         {loading ? (
-          <Skeleton rows={6} columns={4} />
+          <Skeleton rows={6} columns={6} />
         ) : customers.length === 0 ? (
           <div className="customers-state">Không có khách hàng phù hợp.</div>
         ) : (
@@ -542,7 +574,13 @@ function Customers() {
                   <th>Họ và tên</th>
                   <th>Số điện thoại</th>
                   <th>Địa chỉ</th>
-                  <th className="customers-money">Công nợ</th>
+                  {canViewCustomerFinancial && (
+                    <>
+                      <th className="customers-money">Tổng đã mua</th>
+                      <th className="customers-money">Đã thanh toán</th>
+                      <th className="customers-money">Công nợ</th>
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -562,9 +600,13 @@ function Customers() {
                     <td className="customers-name">{customer.full_name}</td>
                     <td>{customer.phone}</td>
                     <td>{customer.address}</td>
-                    <td className="customers-money">
-                      {formatCurrency(customer.debt_amount)}
-                    </td>
+                    {canViewCustomerFinancial && (
+                      <>
+                        <td className="customers-money">{formatCurrency(customer.total_sales_amount)}</td>
+                        <td className="customers-money">{formatCurrency(customer.total_paid_amount)}</td>
+                        <td className="customers-money">{formatCurrency(customer.debt_amount)}</td>
+                      </>
+                    )}
                   </tr>
                 ))}
               </tbody>

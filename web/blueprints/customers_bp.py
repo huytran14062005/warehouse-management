@@ -22,7 +22,7 @@ customers_bp = Blueprint("customers", __name__, url_prefix="/api/customers")
 @handle_api_errors
 def get_customers_list():
        
-    customers, total, page, per_page = get_customers_list_service(
+    customers, total, page, per_page, summary = get_customers_list_service(
         page_value=request.args.get('page'),
         per_page_value=request.args.get('per_page'),
         keyword=request.args.get('keyword'),
@@ -36,7 +36,10 @@ def get_customers_list():
 
     return jsonify({
         'customers': customers_data,
-        'pagination': build_pagination(page, per_page, total)
+        'pagination': build_pagination(page, per_page, total),
+        'summary': summary if include_financial else {
+            'total_customers': summary['total_customers']
+        },
     }), 200
 
 

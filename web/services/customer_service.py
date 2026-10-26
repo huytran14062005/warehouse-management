@@ -57,6 +57,9 @@ def serialize_customer(customer, include_financial=True):
         "sales_area_id": customer.sales_area_id,
     }
     data["debt_amount"] = float(customer.debt_amount) if include_financial else None
+    if include_financial and hasattr(customer, "_total_paid_amount"):
+        data["total_paid_amount"] = float(customer._total_paid_amount or 0)
+        data["total_sales_amount"] = float(customer._total_sales_amount or 0)
     return data
 
 
@@ -82,7 +85,7 @@ def get_customers_list_service(
     if clean_debt_min is not None and clean_debt_max is not None and clean_debt_min > clean_debt_max:
         raise ValidationError("Mức công nợ từ không được lớn hơn mức công nợ đến")
 
-    customers, total = dao.get_all_customers(
+    customers, total, summary = dao.get_all_customers(
         page=page,
         per_page=per_page,
         keyword=keyword or None,
@@ -91,7 +94,7 @@ def get_customers_list_service(
         debt_max=clean_debt_max,
     )
 
-    return customers, total, page, per_page
+    return customers, total, page, per_page, summary
 
 
 def create_customer_service(full_name, phone, address, sales_area_id=None):
