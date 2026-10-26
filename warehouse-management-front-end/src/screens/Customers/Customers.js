@@ -93,7 +93,7 @@ function CustomerEditModal({ customer, onClose, onSaved }) {
   };
 
   return createPortal(
-    <div className="customer-modal-overlay" onClick={() => !saving && onClose()}>
+    <div className="customer-modal-overlay">
       <form className="customer-modal customer-edit-modal" onSubmit={submit} onClick={(event) => event.stopPropagation()}>
         <div className="customer-modal-header">
           <h2>Chỉnh sửa thông tin khách hàng</h2>
@@ -569,7 +569,7 @@ function Customers() {
       <Pagination page={page} totalPages={pagination.totalPages} onPageChange={handlePageChange} disabled={loading} />
 
       {showDetail && createPortal(
-        <div className="customer-modal-overlay" onClick={closeDetail}>
+        <div className="customer-modal-overlay">
           <section
             className="customer-modal"
             role="dialog"

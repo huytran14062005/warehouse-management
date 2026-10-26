@@ -86,7 +86,7 @@ function PromotionForm({ promotion, onClose, onSaved }) {
   };
 
   return createPortal(
-    <div className="promotion-modal-overlay" onClick={onClose}>
+    <div className="promotion-modal-overlay">
       <div
         className="promotion-modal"
         role="dialog"

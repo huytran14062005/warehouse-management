@@ -33,7 +33,7 @@ function ConfirmDialog({
   if (!open) return null;
 
   return createPortal(
-    <div className="confirm-dialog-overlay" onClick={() => !loading && onCancel()}>
+    <div className="confirm-dialog-overlay">
       <div
         className="confirm-dialog"
         role="dialog"

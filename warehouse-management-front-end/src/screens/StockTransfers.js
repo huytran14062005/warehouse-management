@@ -201,7 +201,6 @@ function StockTransfers() {
       {editorOpen && (
         <div
           className="warehouse-modal-overlay"
-          onClick={closeEditor}
         >
           <div
             className="warehouse-modal stock-transfers-modal"

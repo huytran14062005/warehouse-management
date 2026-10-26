@@ -35,7 +35,7 @@ function ProductRequestModal({ initialName = "", onClose, onSaved }) {
   };
 
   return createPortal(
-    <div className="warehouse-modal-overlay" onClick={onClose}>
+    <div className="warehouse-modal-overlay">
       <div className="warehouse-modal warehouse-editor-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
         <div className="warehouse-modal-header">
           <h2>Yêu cầu thêm sản phẩm</h2>

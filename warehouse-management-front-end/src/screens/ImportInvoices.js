@@ -38,7 +38,7 @@ function formatDate(value) {
 
 function ImportDetail({ invoice, onClose, onEdit, onDelete, canEdit, canDelete }) {
   return createPortal(
-    <div className="warehouse-modal-overlay" onClick={onClose}>
+    <div className="warehouse-modal-overlay">
       <div
         className="warehouse-modal"
         role="dialog"
@@ -291,7 +291,7 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = true }) {
   };
 
   return createPortal(
-    <div className="warehouse-modal-overlay" onClick={onClose}>
+    <div className="warehouse-modal-overlay">
       <div
         className="warehouse-modal warehouse-editor-modal"
         role="dialog"

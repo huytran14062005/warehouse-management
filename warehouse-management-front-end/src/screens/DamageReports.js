@@ -36,7 +36,7 @@ function statusLabel(value) {
 
 function DamageDetail({ report, onClose, canReview, onReview }) {
   return createPortal(
-    <div className="warehouse-modal-overlay" onClick={onClose}>
+    <div className="warehouse-modal-overlay">
       <div
         className="warehouse-modal"
         role="dialog"
@@ -200,7 +200,7 @@ function DamageEditor({ onClose, onSaved }) {
     }
   };
   return createPortal(
-    <div className="warehouse-modal-overlay" onClick={onClose}>
+    <div className="warehouse-modal-overlay">
       <div
         className="warehouse-modal warehouse-editor-modal"
         role="dialog"

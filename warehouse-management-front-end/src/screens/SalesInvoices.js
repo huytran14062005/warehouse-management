@@ -211,7 +211,7 @@ function SalesInvoiceDetail({
         ? "Khách đã thanh toán một phần; số còn lại là khoản cần thu của riêng đơn này."
         : "Đơn này đã được thanh toán đủ.";
   return createPortal(
-    <div className="sales-detail-overlay" onClick={onClose}>
+    <div className="sales-detail-overlay">
       <div
         className="sales-detail-modal"
         role="dialog"
@@ -924,7 +924,7 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
   };
 
   return createPortal(
-    <div className="sales-editor-overlay" onClick={onClose}>
+    <div className="sales-editor-overlay">
       <div
         className="sales-editor-modal"
         role="dialog"
@@ -2067,7 +2067,7 @@ function SalesInvoices() {
           )
         ) : detailError ? (
           createPortal(
-            <div className="sales-detail-overlay" onClick={closeDetail}>
+            <div className="sales-detail-overlay">
               <div
                 className="sales-detail-modal"
                 onClick={(event) => event.stopPropagation()}

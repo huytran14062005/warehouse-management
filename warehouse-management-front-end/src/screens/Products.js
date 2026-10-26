@@ -90,7 +90,7 @@ function ProductEditor({ request, product, onClose, onSaved }) {
   };
 
   return createPortal(
-    <div className="warehouse-modal-overlay" onClick={onClose}>
+    <div className="warehouse-modal-overlay">
       <div className="warehouse-modal warehouse-editor-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
         <div className="warehouse-modal-header">
           <div>
@@ -130,7 +130,7 @@ function ProductEditor({ request, product, onClose, onSaved }) {
 
 function ProductDetail({ product, canEdit, onClose, onEdit }) {
   return createPortal(
-    <div className="warehouse-modal-overlay" onClick={onClose}>
+    <div className="warehouse-modal-overlay">
       <div className="warehouse-modal product-detail-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
         <div className="warehouse-modal-header">
           <div>
