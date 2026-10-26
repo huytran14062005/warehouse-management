@@ -4,7 +4,7 @@ from web import app, dao, db
 from web.dao import import_invoice_dao, product_dao
 from web.models import Employee, Product, Supplier, Warehouse
 from web.services.exceptions import NotFoundError, ValidationError
-from web.services.validators import require_text
+from web.services.validators import require_text, validate_money_amount
 from web.services.authorization import ensure_bounded_items, ensure_warehouse_access
 
 
@@ -95,9 +95,10 @@ def _validate_import_items(items):
                 item.get("quantity"),
                 f"Số lượng (item {index})",
             ),
-            "unit_price": validate_positive_number(
+            "unit_price": validate_money_amount(
                 item.get("unit_price"),
                 f"Đơn giá (item {index})",
+                allow_zero=False,
             ),
         })
 

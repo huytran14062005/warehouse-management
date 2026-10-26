@@ -7,6 +7,7 @@ from sqlalchemy import func
 from web import db
 from web.models import Promotion
 from web.services.exceptions import NotFoundError, ValidationError
+from web.services.validators import MIN_MONEY_AMOUNT, validate_money_amount
 
 
 CONDITION_MIN_QUANTITY = "min_quantity"
@@ -25,16 +26,10 @@ CONDITION_TYPES = {
 DISCOUNT_TYPES = {DISCOUNT_FIXED_AMOUNT, DISCOUNT_PERCENTAGE}
 
 
-def _money(value, field_name, allow_none=False):
+def _money(value, field_name, allow_none=False, minimum=MIN_MONEY_AMOUNT):
     if allow_none and value in (None, ""):
         return None
-    try:
-        amount = Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    except (InvalidOperation, TypeError, ValueError):
-        raise ValidationError(f"{field_name} không hợp lệ")
-    if not amount.is_finite() or amount < 0:
-        raise ValidationError(f"{field_name} không được âm")
-    return amount
+    return validate_money_amount(value, field_name, minimum=minimum)
 
 
 def _positive_integer(value, field_name, allow_none=False):
@@ -149,6 +144,7 @@ def _normalize_payload(data, current=None):
     discount_value = _money(
         data.get("discount_value", current.discount_value if current else None),
         "Mức khuyến mãi",
+        minimum=Decimal("0.01") if discount_type == DISCOUNT_PERCENTAGE else MIN_MONEY_AMOUNT,
     )
     max_discount_amount = _money(
         data.get(
@@ -207,7 +203,7 @@ def evaluate_promotion(
     allow_inactive=False,
     ignore_validity_period=False,
 ):
-    subtotal = _money(subtotal, "Tiền hàng")
+    subtotal = _money(subtotal, "Tiền hàng", minimum=None)
     try:
         total_quantity = int(total_quantity or 0)
         if total_quantity < 0:

@@ -6,6 +6,7 @@ import { getApiError } from "../../utils/apiError";
 import useNotificationState from "../../utils/useNotificationState";
 import { digitsOnly, formatMoneyInput } from "../../utils/money";
 import AutoDismissMessage from "../../components/AutoDismissMessage";
+import MoneyInput from "../../components/MoneyInput";
 import Pagination from "../../components/Pagination";
 import Skeleton from "../../components/Skeleton";
 import "../../css/Customers.css";
@@ -56,7 +57,7 @@ function CustomerEditModal({ customer, onClose, onSaved }) {
   const [salesAreaId, setSalesAreaId] = useState(String(customer.sales_area_id || ""));
   const [salesAreas, setSalesAreas] = useState([]);
   const [debtAmount, setDebtAmount] = useState(
-    formatMoneyInput(String(Math.round(Number(customer.debt_amount || 0)))),
+    String(Math.round(Number(customer.debt_amount || 0))),
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useNotificationState();
@@ -108,7 +109,13 @@ function CustomerEditModal({ customer, onClose, onSaved }) {
           <label className="customer-edit-field"><span>Khu vực bán hàng</span><select value={salesAreaId} onChange={(event) => setSalesAreaId(event.target.value)}><option value="">Chọn khu vực</option>{salesAreas.map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}</select></label>
           <label className="customer-edit-field">
             <span>Công nợ</span>
-            <input value={debtAmount} onChange={(event) => setDebtAmount(formatMoneyInput(event.target.value))} inputMode="numeric" required />
+            <MoneyInput
+              value={debtAmount}
+              onChange={setDebtAmount}
+              label="Công nợ"
+              allowZero
+              required
+            />
           </label>
           <div className="customer-edit-actions">
             <button type="button" onClick={onClose} disabled={saving}>Hủy</button>
@@ -675,12 +682,11 @@ function Customers() {
                         <form className="customer-payment-form" onSubmit={handleOldDebtPayment}>
                           <h4>Ghi nhận trả nợ cũ</h4>
                           <AutoDismissMessage message={paymentError} className="customers-alert" />
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            value={formatMoneyInput(paymentAmount)}
-                            onChange={(event) => setPaymentAmount(digitsOnly(event.target.value))}
-                            placeholder="Số tiền khách trả"
+                          <MoneyInput
+                            value={paymentAmount}
+                            onChange={setPaymentAmount}
+                            label="Số tiền khách trả"
+                            placeholder="Từ 500 đ"
                             required
                           />
                           <input

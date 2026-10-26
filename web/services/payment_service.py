@@ -3,16 +3,11 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from web import db
 from web.models import Customer, CustomerPayment, Employee, PaymentType
 from web.services.exceptions import NotFoundError, ValidationError
+from web.services.validators import validate_money_amount
 
 
 def validate_payment_amount(value, field_name="Số tiền thanh toán"):
-    try:
-        amount = Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    except (InvalidOperation, TypeError, ValueError):
-        raise ValidationError(f"{field_name} không hợp lệ")
-    if not amount.is_finite() or amount < 0:
-        raise ValidationError(f"{field_name} không được âm")
-    return amount
+    return validate_money_amount(value, field_name)
 
 
 def record_old_debt_payment_service(customer_id, employee_id, amount, note=""):

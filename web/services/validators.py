@@ -1,4 +1,5 @@
 import re
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from web.services.exceptions import ValidationError
 
@@ -12,6 +13,23 @@ class Limits:
     PHONE_MIN = 10
     PHONE_MAX = 11
     OTP_LENGTH = 6
+
+
+MIN_MONEY_AMOUNT = Decimal("500")
+
+
+def validate_money_amount(value, field_name="Số tiền", allow_zero=True, minimum=MIN_MONEY_AMOUNT):
+    try:
+        amount = Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except (InvalidOperation, ValueError, TypeError):
+        raise ValidationError(f"{field_name} không hợp lệ")
+    if not amount.is_finite() or amount < 0:
+        raise ValidationError(f"{field_name} không được âm")
+    if not allow_zero and amount == 0:
+        raise ValidationError(f"{field_name} phải lớn hơn 0")
+    if minimum is not None and amount != 0 and amount < minimum:
+        raise ValidationError(f"{field_name} phải từ {minimum:,.0f} đồng trở lên")
+    return amount
 
 
 def require_text(value, label, max_length=None):

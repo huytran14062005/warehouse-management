@@ -2,7 +2,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from web import app, dao
 from web.services.exceptions import NotFoundError, ValidationError
-from web.services.validators import require_text, validate_phone
+from web.services.validators import require_text, validate_money_amount, validate_phone
 from web.services.sales_area_service import resolve_sales_area_id
 
 
@@ -34,15 +34,13 @@ def parse_paging_args(page_value, per_page_value):
     return parse_page(page_value), parse_per_page(per_page_value, default_size)
 
 
-def validate_debt_amount(value):
-                             
-    try:
-        debt = Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        if not debt.is_finite() or debt < 0:
-            raise ValidationError("Số tiền nợ không được âm")
-        return debt
-    except (InvalidOperation, ValueError, TypeError):
-        raise ValidationError("Số tiền nợ không hợp lệ")
+def validate_debt_amount(value, enforce_minimum=False):
+    return validate_money_amount(
+        value,
+        "Số tiền nợ",
+        allow_zero=True,
+        minimum=Decimal("500") if enforce_minimum else None,
+    )
 
 
 def serialize_customer(customer, include_financial=True):
@@ -158,7 +156,7 @@ def update_customer_service(
                                        
     clean_debt_amount = None
     if debt_amount is not None:
-        clean_debt_amount = validate_debt_amount(debt_amount)
+        clean_debt_amount = validate_debt_amount(debt_amount, enforce_minimum=True)
 
     updated_customer = dao.update_customer(
         customer_id=customer_id,
@@ -184,9 +182,11 @@ def customer_payment_service(customer_id, payment_amount, note):
         raise ValidationError("Số tiền thanh toán không được để trống")
     
     try:
-        clean_payment_amount = float(payment_amount)
-        if clean_payment_amount <= 0:
-            raise ValidationError("Số tiền thanh toán phải lớn hơn 0")
+        clean_payment_amount = validate_money_amount(
+            payment_amount,
+            "Số tiền thanh toán",
+            allow_zero=False,
+        )
     except (ValueError, TypeError):
         raise ValidationError("Số tiền thanh toán không hợp lệ")
     
@@ -194,7 +194,7 @@ def customer_payment_service(customer_id, payment_amount, note):
     try:
         updated_customer, old_debt, new_debt = dao.reduce_customer_debt(
             customer_id=customer_id,
-            payment_amount=clean_payment_amount
+            payment_amount=float(clean_payment_amount)
         )
         
         return updated_customer, old_debt, new_debt, clean_payment_amount

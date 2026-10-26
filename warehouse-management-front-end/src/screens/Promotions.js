@@ -4,9 +4,9 @@ import { authApis, endpoints } from "../configs/Apis";
 import { getApiError } from "../utils/apiError";
 import useNotificationState from "../utils/useNotificationState";
 import AutoDismissMessage from "../components/AutoDismissMessage";
+import MoneyInput from "../components/MoneyInput";
 import ConfirmDialog from "../components/ConfirmDialog";
 import Skeleton from "../components/Skeleton";
-import { digitsOnly, formatMoneyInput } from "../utils/money";
 import "../css/Promotions.css";
 
 
@@ -146,13 +146,10 @@ function PromotionForm({ promotion, onClose, onSaved }) {
           {form.condition_type === "min_order_amount" && (
             <label className="promotion-field">
               <span>Giá trị đơn tối thiểu</span>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={formatMoneyInput(form.min_order_amount)}
-                onChange={(event) =>
-                  update("min_order_amount", digitsOnly(event.target.value))
-                }
+              <MoneyInput
+                value={form.min_order_amount}
+                onChange={(value) => update("min_order_amount", value)}
+                label="Giá trị đơn tối thiểu"
                 placeholder="Ví dụ: 5.000.000"
                 required
               />
@@ -194,40 +191,37 @@ function PromotionForm({ promotion, onClose, onSaved }) {
                 ? "Phần trăm giảm"
                 : "Số tiền giảm"}
             </span>
-            <input
-              type={form.discount_type === "percentage" ? "number" : "text"}
-              inputMode={form.discount_type === "percentage" ? "decimal" : "numeric"}
-              min={form.discount_type === "percentage" ? "0.01" : undefined}
-              max={form.discount_type === "percentage" ? "100" : undefined}
-              step={form.discount_type === "percentage" ? "0.01" : undefined}
-              value={
-                form.discount_type === "percentage"
-                  ? form.discount_value
-                  : formatMoneyInput(form.discount_value)
-              }
-              onChange={(event) =>
-                update(
-                  "discount_value",
-                  form.discount_type === "percentage"
-                    ? event.target.value
-                    : digitsOnly(event.target.value),
-                )
-              }
-              placeholder={form.discount_type === "percentage" ? "Ví dụ: 10" : "Ví dụ: 100.000"}
-              required
-            />
+            {form.discount_type === "percentage" ? (
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0.01"
+                max="100"
+                step="0.01"
+                value={form.discount_value}
+                onChange={(event) => update("discount_value", event.target.value)}
+                placeholder="Ví dụ: 10"
+                required
+              />
+            ) : (
+              <MoneyInput
+                value={form.discount_value}
+                onChange={(value) => update("discount_value", value)}
+                label="Số tiền giảm"
+                placeholder="Ví dụ: 100.000"
+                required
+              />
+            )}
           </label>
 
           {form.discount_type === "percentage" && (
             <label className="promotion-field promotion-field-wide">
               <span>Mức giảm tối đa (không bắt buộc)</span>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={formatMoneyInput(form.max_discount_amount)}
-                onChange={(event) =>
-                  update("max_discount_amount", digitsOnly(event.target.value))
-                }
+              <MoneyInput
+                value={form.max_discount_amount}
+                onChange={(value) => update("max_discount_amount", value)}
+                label="Mức giảm tối đa"
+                allowEmpty
                 placeholder="Để trống nếu không giới hạn"
               />
             </label>

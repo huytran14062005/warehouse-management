@@ -6,7 +6,7 @@ from sqlalchemy import func
 from web import app, dao, db
 from web.models import Employee, EmployeeRole, Product, ProductRequest, ProductRequestStatus
 from web.services.exceptions import NotFoundError, ValidationError
-from web.services.validators import require_text
+from web.services.validators import require_text, validate_money_amount
 
 
 def parse_page(value):
@@ -212,12 +212,11 @@ def get_product_requests_service(status=ProductRequestStatus.PENDING.value):
 def create_product_service(name, unit, default_sale_price=0, request_id=None):
     name = require_text(name, "Tên sản phẩm", max_length=255)
     unit = require_text(unit, "Đơn vị tính", max_length=50)
-    try:
-        price = Decimal(str(default_sale_price if default_sale_price not in (None, "") else 0))
-    except (InvalidOperation, ValueError, TypeError):
-        raise ValidationError("Giá bán mặc định không hợp lệ")
-    if not price.is_finite() or price < 0:
-        raise ValidationError("Giá bán mặc định không được âm")
+    price = validate_money_amount(
+        default_sale_price if default_sale_price not in (None, "") else 0,
+        "Giá bán mặc định",
+        allow_zero=False,
+    )
 
     if Product.query.filter(func.lower(Product.name) == name.lower()).first():
         raise ValidationError("Tên sản phẩm đã tồn tại")
@@ -257,12 +256,11 @@ def update_product_service(product_id, name, unit, default_sale_price=0):
 
     name = require_text(name, "Tên sản phẩm", max_length=255)
     unit = require_text(unit, "Đơn vị tính", max_length=50)
-    try:
-        price = Decimal(str(default_sale_price if default_sale_price not in (None, "") else 0))
-    except (InvalidOperation, ValueError, TypeError):
-        raise ValidationError("Giá bán mặc định không hợp lệ")
-    if not price.is_finite() or price < 0:
-        raise ValidationError("Giá bán mặc định không được âm")
+    price = validate_money_amount(
+        default_sale_price if default_sale_price not in (None, "") else 0,
+        "Giá bán mặc định",
+        allow_zero=False,
+    )
 
     duplicate = Product.query.filter(
         func.lower(Product.name) == name.lower(),

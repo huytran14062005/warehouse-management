@@ -1,0 +1,17 @@
+.money-input { display: grid; gap: 4px; min-width: 0; }
+.money-input input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 10px;
+  color: #1b2d40;
+  border: 1px solid #cbd7e2;
+  border-radius: 5px;
+  background: #fff;
+  outline: none;
+  font: inherit;
+  font-size: 13px;
+}
+.money-input input:focus { border-color: #0b3158; box-shadow: 0 0 0 2px rgba(11, 49, 88, .1); }
+.money-input-warning { color: #b42318; font-size: 12px; line-height: 1.35; }
+.money-input input[aria-invalid="true"] { border-color: #d92d20; background: #fff8f7; }

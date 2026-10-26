@@ -21,7 +21,7 @@ from web.models import (
 )
 from web.services.exceptions import AppError, NotFoundError, ValidationError
 from web.services.authorization import ensure_bounded_items, ensure_warehouse_access
-from web.services.validators import require_text, validate_phone
+from web.services.validators import require_text, validate_money_amount, validate_phone
 from web.services.sales_area_service import resolve_sales_area_id
 from web.services.promotion_service import (
     append_approval_note,
@@ -78,14 +78,8 @@ def validate_positive_integer(value, field_name):
         raise ValidationError(f"{field_name} không hợp lệ")
 
 
-def validate_money(value, field_name):
-    try:
-        amount = Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    except (InvalidOperation, ValueError, TypeError):
-        raise ValidationError(f"{field_name} không hợp lệ")
-    if not amount.is_finite() or amount < 0:
-        raise ValidationError(f"{field_name} không được âm")
-    return amount
+def validate_money(value, field_name, allow_zero=True):
+    return validate_money_amount(value, field_name, allow_zero=allow_zero)
 
 
 def resolve_sales_warehouse(warehouse_id):
@@ -136,6 +130,7 @@ def _validate_sales_items(items):
             "unit_price": validate_money(
                 item.get("unit_price"),
                 f"ÄÆ¡n giÃ¡ (item {index})",
+                allow_zero=False,
             ),
         })
 

@@ -8,6 +8,7 @@ import { getInventoryStatus } from "../utils/inventoryStatus";
 import { INVENTORY_CHANGED_EVENT } from "../utils/inventoryEvents";
 import { digitsOnly, formatMoneyInput } from "../utils/money";
 import AutoDismissMessage from "../components/AutoDismissMessage";
+import MoneyInput from "../components/MoneyInput";
 import SharedSearchableDropdown from "../components/SearchableDropdown";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
@@ -111,7 +112,13 @@ function ProductEditor({ request, product, onClose, onSaved }) {
           </label>
           <label className="warehouse-field">
             <span>Giá bán mặc định</span>
-            <input type="text" inputMode="numeric" value={formatMoneyInput(price)} onChange={(event) => setPrice(digitsOnly(event.target.value))} placeholder="0" />
+            <MoneyInput
+              value={price}
+              onChange={setPrice}
+              label="Giá bán mặc định"
+              placeholder="Từ 500 đ"
+              required
+            />
           </label>
           {!editing && <label className="warehouse-field">
             <span>Ghi chú</span>

@@ -5,8 +5,8 @@ import { authApis, endpoints } from "../configs/Apis";
 import { getApiError } from "../utils/apiError";
 import useNotificationState from "../utils/useNotificationState";
 import { notifyInventoryChanged } from "../utils/inventoryEvents";
-import { digitsOnly, formatMoneyInput } from "../utils/money";
 import AutoDismissMessage from "../components/AutoDismissMessage";
+import MoneyInput from "../components/MoneyInput";
 import Pagination from "../components/Pagination";
 import ConfirmDialog from "../components/ConfirmDialog";
 import SharedSearchableDropdown from "../components/SearchableDropdown";
@@ -453,15 +453,13 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = true }) {
                         placeholder="Số lượng"
                         aria-label="Số lượng nhập"
                       />
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={formatMoneyInput(item.unit_price)}
-                        onChange={(event) =>
-                          updateItem(index, "unit_price", digitsOnly(event.target.value))
-                        }
-                        placeholder="Đơn giá"
+                      <MoneyInput
+                        value={item.unit_price}
+                        onChange={(value) => updateItem(index, "unit_price", value)}
+                        label="Đơn giá"
+                        placeholder="Đơn giá từ 500 đ"
                         aria-label="Đơn giá nhập"
+                        required
                       />
                       <button
                         type="button"

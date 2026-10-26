@@ -5,9 +5,9 @@ import { authApis, endpoints } from "../configs/Apis";
 import { getApiError } from "../utils/apiError";
 import useNotificationState from "../utils/useNotificationState";
 import { notifyInventoryChanged } from "../utils/inventoryEvents";
-import { digitsOnly, formatMoneyInput } from "../utils/money";
 import ConfirmDialog from "../components/ConfirmDialog";
 import AutoDismissMessage from "../components/AutoDismissMessage";
+import MoneyInput from "../components/MoneyInput";
 import ProductRequestModal from "../components/ProductRequestModal";
 import SharedSearchableDropdown from "../components/SearchableDropdown";
 import Pagination from "../components/Pagination";
@@ -460,14 +460,13 @@ function SalesInvoiceDetail({
           )}
           {canManageStatus && invoice.status === "đang giao" && (
             <div className="sales-detail-actions sales-complete-actions">
-              <input
-                type="text"
-                inputMode="numeric"
-                value={formatMoneyInput(completionPayment)}
-                onChange={(event) =>
-                  setCompletionPayment(digitsOnly(event.target.value))
-                }
-                placeholder="Khách thanh toán"
+              <MoneyInput
+                value={completionPayment}
+                onChange={setCompletionPayment}
+                label="Số tiền khách thanh toán"
+                allowZero
+                allowEmpty
+                placeholder="Khách thanh toán từ 500 đ"
                 aria-label="Số tiền khách thanh toán"
               />
               <button
@@ -1211,18 +1210,11 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                         aria-label="Số lượng"
                         required
                       />
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={formatMoneyInput(item.unitPrice)}
-                        onChange={(event) =>
-                          updateItem(
-                            index,
-                            "unitPrice",
-                            digitsOnly(event.target.value),
-                          )
-                        }
-                        placeholder="Giá bán"
+                      <MoneyInput
+                        value={item.unitPrice}
+                        onChange={(value) => updateItem(index, "unitPrice", value)}
+                        label="Giá bán"
+                        placeholder="Giá bán từ 500 đ"
                         aria-label="Giá bán"
                         required
                       />
@@ -1332,14 +1324,13 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                 {saleSource === "employee_stock" && (
                   <label className="sales-editor-field">
                     <span>Khách thanh toán</span>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={formatMoneyInput(paymentAmount)}
-                      onChange={(event) =>
-                        setPaymentAmount(digitsOnly(event.target.value))
-                      }
-                      placeholder="0"
+                    <MoneyInput
+                      value={paymentAmount}
+                      onChange={setPaymentAmount}
+                      label="Khách thanh toán"
+                      allowZero
+                      allowEmpty
+                      placeholder="0 hoặc từ 500 đ"
                     />
                   </label>
                 )}
