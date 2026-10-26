@@ -40,8 +40,18 @@ const money = (value) => `${Number(value || 0).toLocaleString("vi-VN")} đ`;
 const quantity = (value) => Number(value || 0).toLocaleString("vi-VN");
 const chartMoney = (value) => `${Number(value || 0).toLocaleString("vi-VN")} đ`;
 const CHART_COLORS = [
-  "#0d3863", "#2f73b7", "#53a2d8", "#f0a43c", "#68b684", "#9b8bd4",
-  "#e76f51", "#2a9d8f", "#e9c46a", "#6d597a", "#ef476f", "#118ab2",
+  "#000000", // Black
+  "#FF0000", // Red
+  "#00FF00", // Lime
+  "#0000FF", // Blue
+  "#FFFF00", // Yellow
+  "#00FFFF", // Cyan / Aqua
+  "#FF00FF", // Magenta / Fuchsia
+  "#C0C0C0", // Silver
+  "#808080", // Gray
+  "#800000", // Maroon
+  "#808000", // Olive
+  "#008000", // Green
 ];
 const shortChartLabel = (value, maxLength = 16) => {
   const label = String(value || "");
