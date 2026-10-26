@@ -25,7 +25,9 @@ function MoneyInput({
   className = "",
   ...inputProps
 }) {
-  const [touched, setTouched] = useState(false);
+  // Do not warn just because the user focused an empty field. Show the
+  // warning after the first actual edit (including typing and deleting).
+  const [hasEdited, setHasEdited] = useState(false);
   const warning = useMemo(
     () => getMoneyWarning(value, label, { allowZero, allowEmpty }),
     [allowEmpty, allowZero, label, value],
@@ -38,15 +40,13 @@ function MoneyInput({
         type="text"
         inputMode="numeric"
         value={formatMoneyInput(value)}
-        onFocus={() => setTouched(true)}
-        onBlur={() => setTouched(true)}
         onChange={(event) => {
-          setTouched(true);
+          setHasEdited(true);
           onChange(digitsOnly(event.target.value));
         }}
-        aria-invalid={Boolean(touched && warning)}
+        aria-invalid={Boolean(hasEdited && warning)}
       />
-      {touched && warning && <small className="money-input-warning">{warning}</small>}
+      {hasEdited && warning && <small className="money-input-warning">{warning}</small>}
     </div>
   );
 }

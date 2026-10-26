@@ -13,5 +13,13 @@
   font-size: 13px;
 }
 .money-input input:focus { border-color: #0b3158; box-shadow: 0 0 0 2px rgba(11, 49, 88, .1); }
-.money-input-warning { color: #b42318; font-size: 12px; line-height: 1.35; }
-.money-input input[aria-invalid="true"] { border-color: #d92d20; background: #fff8f7; }
+.money-input-warning {
+  padding: 4px 8px;
+  color: #8a5a12;
+  border: 1px solid #ecd39e;
+  border-radius: 4px;
+  background: #fff8e8;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.money-input input[aria-invalid="true"] { border-color: #d6a84f; background: #fffdf5; }

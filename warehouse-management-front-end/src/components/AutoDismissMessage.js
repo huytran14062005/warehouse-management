@@ -11,7 +11,7 @@ function AutoDismissMessage({ message, type = "error", role = "alert", className
 
     const timeout = window.setTimeout(
       () => setVisibleMessage(""),
-      type === "success" ? 5000 : 10000,
+      type === "error" ? 6000 : type === "success" ? 5000 : 8000,
     );
     return () => window.clearTimeout(timeout);
   }, [message, type]);
