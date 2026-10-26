@@ -2063,7 +2063,10 @@ function SalesInvoices() {
                 className="sales-detail-modal"
                 onClick={(event) => event.stopPropagation()}
               >
-                <div className="sales-state">{detailError}</div>
+                <AutoDismissMessage
+                  message={detailError}
+                  className="sales-alert"
+                />
                 <button
                   type="button"
                   className="sales-detail-error-close"

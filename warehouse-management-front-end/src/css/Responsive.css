@@ -362,6 +362,22 @@
   .sales-date-range { gap: 20px; }
   .sales-date-separator { display: none; }
   .sales-date-field { flex: none; width: 100%; }
+  .sales-date-field {
+    display: grid;
+    align-items: stretch;
+    gap: 6px;
+    height: auto;
+  }
+  .sales-date-field span {
+    position: static;
+    display: block;
+    line-height: 1.3;
+  }
+  .sales-date-field input {
+    height: 44px;
+    min-height: 44px;
+    padding: 10px 12px;
+  }
 
   .manager-analytics-summary,
   .sales-status-board-grid,

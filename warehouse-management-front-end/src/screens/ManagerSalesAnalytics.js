@@ -193,7 +193,8 @@ function ManagerAnalyticsCharts({ report, debtPagination, page, setPage }) {
         datasets: [{
           label: "Công nợ hiện tại",
           data: debtRows.map((row) => row.current_debt),
-          backgroundColor: "#2f73b7",
+          backgroundColor: debtRows.map((_, index) => CHART_COLORS[index % CHART_COLORS.length]),
+          borderColor: debtRows.map((_, index) => CHART_COLORS[index % CHART_COLORS.length]),
           borderRadius: 5,
           borderSkipped: false,
           barThickness: 22,
