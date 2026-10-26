@@ -69,8 +69,8 @@ function compactRevenueRows(rows) {
   return top;
 }
 
-function compactQuantityRows(rows) {
-  const sorted = (rows || [])
+function normalizeQuantityRows(rows) {
+  return (rows || [])
     .map((row) => ({
       product_id: row.product_id,
       product_name: row.product_name || "Chưa xác định",
@@ -79,6 +79,10 @@ function compactQuantityRows(rows) {
     }))
     .filter((row) => row.quantity > 0)
     .sort((a, b) => b.quantity - a.quantity || a.product_name.localeCompare(b.product_name));
+}
+
+function compactQuantityRows(rows) {
+  const sorted = normalizeQuantityRows(rows);
   const top = sorted.slice(0, 8);
   const otherQuantity = sorted.slice(8).reduce((sum, row) => sum + row.quantity, 0);
   if (otherQuantity > 0) {
@@ -89,13 +93,16 @@ function compactQuantityRows(rows) {
 
 const percentage = (value, total) => (total ? `${((value / total) * 100).toFixed(1)}%` : "0%");
 
-function QuantityPieChartCard({ id, title, subtitle, rows, emptyMessage }) {
+function QuantityPieChartCard({ id, title, subtitle, rows, emptyMessage, showChart = true, showAllRows = false }) {
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
-  const chartRows = useMemo(() => compactQuantityRows(rows), [rows]);
+  const chartRows = useMemo(
+    () => (showAllRows ? normalizeQuantityRows(rows) : compactQuantityRows(rows)),
+    [rows, showAllRows],
+  );
 
   useEffect(() => {
-    if (!canvasRef.current || chartRows.length === 0) return undefined;
+    if (!showChart || !canvasRef.current || chartRows.length === 0) return undefined;
     chartRef.current?.destroy();
     const total = chartRows.reduce((sum, row) => sum + row.quantity, 0);
     chartRef.current = new Chart(canvasRef.current, {
@@ -129,7 +136,7 @@ function QuantityPieChartCard({ id, title, subtitle, rows, emptyMessage }) {
       chartRef.current?.destroy();
       chartRef.current = null;
     };
-  }, [chartRows]);
+  }, [chartRows, showChart]);
 
   const total = chartRows.reduce((sum, row) => sum + row.quantity, 0);
   return (
@@ -143,7 +150,9 @@ function QuantityPieChartCard({ id, title, subtitle, rows, emptyMessage }) {
       </div>
       {chartRows.length ? (
         <>
-          <div className="manager-chart-box manager-quantity-chart-box"><canvas ref={canvasRef} /></div>
+          {showChart && (
+            <div className="manager-chart-box manager-quantity-chart-box"><canvas ref={canvasRef} /></div>
+          )}
           <div className="manager-chart-table-wrap">
             <table className="manager-chart-table">
               <thead>
@@ -378,6 +387,8 @@ function ManagerAnalyticsCharts({ report, debtPagination, page, setPage }) {
         subtitle="Số lượng hàng còn lại trong kho hiện tại"
         rows={report?.inventory_chart}
         emptyMessage="Chưa có sản phẩm còn tồn kho."
+        showChart={false}
+        showAllRows
       />
       <QuantityPieChartCard
         id="manager-sold-chart"
