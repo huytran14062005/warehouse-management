@@ -26,6 +26,14 @@
 .manager-debt-chart-box { height: 390px; }
 .manager-monthly-chart-box { height: 360px; }
 .manager-revenue-chart-box { height: 390px; max-width: 520px; margin: 0 auto; }
+.manager-analytics-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); align-items: stretch; }
+.manager-analytics-split-chart { min-width: 0; display: flex; flex-direction: column; justify-content: center; border-right: 1px solid #e4ebf3; }
+.manager-analytics-split-chart .manager-chart-box { max-width: none; margin: 0; }
+.manager-analytics-split-table { min-width: 0; display: flex; flex-direction: column; }
+.manager-analytics-split-table .manager-chart-table-wrap { flex: 1; }
+.manager-analytics-split-table > .warehouse-pagination-controls { margin-bottom: 16px; }
+.manager-analytics-single-column { display: block; }
+.manager-analytics-single-column .manager-analytics-split-table { display: block; }
 .manager-quantity-chart-card { grid-column: span 1; }
 .manager-quantity-chart-box { height: 390px; max-width: 520px; margin: 0 auto; }
 .manager-chart-empty { min-height: 260px; display: grid; place-items: center; padding: 24px; color: #7186a1; text-align: center; }
@@ -59,4 +67,8 @@
 .manager-analytics-empty, .manager-analytics-state { padding: 28px; text-align:center; color:#7186a1; }
 @media (max-width: 1200px) { .manager-analytics-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 900px) { .manager-analytics-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .manager-analytics-filter { flex-wrap: wrap; } }
-@media (max-width: 900px) { .manager-debt-chart-box, .manager-monthly-chart-box, .manager-revenue-chart-box, .manager-quantity-chart-box { height: 320px; } }
+@media (max-width: 900px) {
+  .manager-analytics-split { display: block; }
+  .manager-analytics-split-chart { border-right: 0; border-bottom: 1px solid #e4ebf3; }
+  .manager-debt-chart-box, .manager-monthly-chart-box, .manager-revenue-chart-box, .manager-quantity-chart-box { height: 320px; }
+}

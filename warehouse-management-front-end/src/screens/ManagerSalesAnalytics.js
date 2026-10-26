@@ -40,18 +40,18 @@ const money = (value) => `${Number(value || 0).toLocaleString("vi-VN")} đ`;
 const quantity = (value) => Number(value || 0).toLocaleString("vi-VN");
 const chartMoney = (value) => `${Number(value || 0).toLocaleString("vi-VN")} đ`;
 const CHART_COLORS = [
-  "#000000", // Black
-  "#FF0000", // Red
-  "#00FF00", // Lime
-  "#0000FF", // Blue
-  "#FFFF00", // Yellow
-  "#00FFFF", // Cyan / Aqua
-  "#FF00FF", // Magenta / Fuchsia
-  "#C0C0C0", // Silver
-  "#808080", // Gray
-  "#800000", // Maroon
-  "#808000", // Olive
-  "#008000", // Green
+  "#557A95", // Muted blue
+  "#6B8E7B", // Sage green
+  "#B9786A", // Dusty terracotta
+  "#8176A5", // Muted purple
+  "#B89A55", // Soft ochre
+  "#4F8884", // Deep pastel teal
+  "#9A7488", // Dusty mauve
+  "#718096", // Slate
+  "#A47C5B", // Warm tan
+  "#78864D", // Olive sage
+  "#6D7FA3", // Periwinkle
+  "#9A6E76", // Dusty rose
 ];
 const shortChartLabel = (value, maxLength = 16) => {
   const label = String(value || "");
@@ -168,11 +168,14 @@ function QuantityPieChartCard({
         <span>{total ? `${quantity(total)} đơn vị hàng` : "Chưa có dữ liệu"}</span>
       </div>
       {chartRows.length ? (
-        <>
+        <div className={`manager-analytics-split ${showChart ? "" : "manager-analytics-single-column"}`}>
           {showChart && (
-            <div className="manager-chart-box manager-quantity-chart-box"><canvas ref={canvasRef} /></div>
+            <div className="manager-analytics-split-chart">
+              <div className="manager-chart-box manager-quantity-chart-box"><canvas ref={canvasRef} /></div>
+            </div>
           )}
-          <div className="manager-chart-table-wrap">
+          <div className="manager-analytics-split-table">
+            <div className="manager-chart-table-wrap">
             <table className="manager-chart-table">
               <thead>
                 <tr><th>Sản phẩm</th><th>Đơn vị</th><th>Số lượng</th><th>Tỷ trọng</th></tr>
@@ -188,7 +191,7 @@ function QuantityPieChartCard({
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
           {Number(tablePagination?.total_pages || 1) > 1 && (
             <div className="manager-chart-pagination">
               <Pagination
@@ -199,7 +202,8 @@ function QuantityPieChartCard({
               />
             </div>
           )}
-        </>
+          </div>
+        </div>
       ) : (
         <div className="manager-chart-empty">{emptyMessage}</div>
       )}
@@ -377,8 +381,11 @@ function ManagerAnalyticsCharts({ report, debtPagination, tablePages, onTablePag
           </span>
         </div>
         {monthlyRows.length ? (
-          <>
-            <div className="manager-chart-box manager-monthly-chart-box"><canvas ref={monthlyCanvasRef} /></div>
+          <div className="manager-analytics-split">
+            <div className="manager-analytics-split-chart">
+              <div className="manager-chart-box manager-monthly-chart-box"><canvas ref={monthlyCanvasRef} /></div>
+            </div>
+            <div className="manager-analytics-split-table">
             <div className="manager-chart-table-wrap">
               <table className="manager-chart-table">
                 <thead>
@@ -406,7 +413,8 @@ function ManagerAnalyticsCharts({ report, debtPagination, tablePages, onTablePag
                 disabled={tableLoading.monthly}
               />
             )}
-          </>
+            </div>
+          </div>
         ) : (
           <div className="manager-chart-empty">Chưa có dữ liệu doanh thu trong khoảng thời gian đã chọn.</div>
         )}
@@ -420,8 +428,11 @@ function ManagerAnalyticsCharts({ report, debtPagination, tablePages, onTablePag
           <span>{debtRows.length ? "Đơn vị: VND" : "Chưa có dữ liệu"}</span>
         </div>
         {debtRows.length ? (
-          <>
-            <div className="manager-chart-box manager-debt-chart-box"><canvas ref={debtCanvasRef} /></div>
+          <div className="manager-analytics-split">
+            <div className="manager-analytics-split-chart">
+              <div className="manager-chart-box manager-debt-chart-box"><canvas ref={debtCanvasRef} /></div>
+            </div>
+            <div className="manager-analytics-split-table">
             <div className="manager-chart-table-wrap">
               <table className="manager-chart-table">
                 <thead>
@@ -450,17 +461,18 @@ function ManagerAnalyticsCharts({ report, debtPagination, tablePages, onTablePag
               </table>
               {!report.debts?.length && <div className="manager-analytics-empty">Không có dữ liệu công nợ.</div>}
             </div>
-          </>
+            {Number(debtPagination.total_pages || 1) > 1 && (
+              <Pagination
+                page={Number(debtPagination.page || tablePages.debt)}
+                totalPages={Number(debtPagination.total_pages)}
+                onPageChange={(nextPage) => onTablePageChange("debt", nextPage)}
+                disabled={tableLoading.debt}
+              />
+            )}
+            </div>
+          </div>
         ) : (
           <div className="manager-chart-empty">Chưa có khách hàng phát sinh công nợ.</div>
-        )}
-        {Number(debtPagination.total_pages || 1) > 1 && (
-          <Pagination
-            page={Number(debtPagination.page || tablePages.debt)}
-            totalPages={Number(debtPagination.total_pages)}
-            onPageChange={(nextPage) => onTablePageChange("debt", nextPage)}
-            disabled={tableLoading.debt}
-          />
         )}
       </section>
 
@@ -473,7 +485,8 @@ function ManagerAnalyticsCharts({ report, debtPagination, tablePages, onTablePag
           <span>{revenueRows.length ? "Đơn vị: VND" : "Chưa có dữ liệu"}</span>
         </div>
         {revenueRows.length ? (
-          <>
+          <div className="manager-analytics-split">
+            <div className="manager-analytics-split-chart">
             <div className="manager-chart-box manager-revenue-chart-box"><canvas ref={revenueCanvasRef} /></div>
             <div className="manager-chart-legend">
               {revenueRows.map((row, index) => (
@@ -484,6 +497,8 @@ function ManagerAnalyticsCharts({ report, debtPagination, tablePages, onTablePag
                 </div>
               ))}
             </div>
+            </div>
+            <div className="manager-analytics-split-table">
             <div className="manager-chart-table-wrap">
               <table className="manager-chart-table">
                 <thead><tr><th>Khu vực</th><th>Số đơn</th><th>Số lượng</th><th>Doanh thu</th></tr></thead>
@@ -507,7 +522,8 @@ function ManagerAnalyticsCharts({ report, debtPagination, tablePages, onTablePag
                 disabled={tableLoading.revenue}
               />
             )}
-          </>
+            </div>
+          </div>
         ) : (
           <div className="manager-chart-empty">Chưa có doanh thu trong kỳ đã chọn.</div>
         )}
