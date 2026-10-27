@@ -60,6 +60,16 @@ class Config:
     COMPANY_ADDRESS = os.getenv("COMPANY_ADDRESS", "")
     COMPANY_PHONE = os.getenv("COMPANY_PHONE", "")
     COMPANY_EMAIL = os.getenv("COMPANY_EMAIL", os.getenv("SMTP_USER", ""))
+    OVERDUE_REPORT_RECIPIENTS = tuple(
+        email.strip()
+        for email in os.getenv(
+            "OVERDUE_REPORT_RECIPIENTS",
+            "2004laminhtri@gmail.com",
+        ).split(",")
+        if email.strip()
+    )
+    CRON_SECRET = os.getenv("CRON_SECRET", "").strip()
+    OVERDUE_REPORT_DAY = int(os.getenv("OVERDUE_REPORT_DAY", 15))
     REPORT_LOGO_PATH = os.getenv("REPORT_LOGO_PATH", "")
     REPORT_FONT_PATH = os.getenv("REPORT_FONT_PATH", "")
     REPORT_MAX_ITEMS = int(os.getenv("REPORT_MAX_ITEMS", 5000))

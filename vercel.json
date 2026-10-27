@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/reports/internal/overdue-debt-email",
+      "schedule": "0 2 15 * *"
+    }
+  ]
+}

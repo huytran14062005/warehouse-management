@@ -1,3 +1,5 @@
+import hmac
+
 from flask import Blueprint, jsonify, request
 from web import app
 
@@ -10,11 +12,36 @@ from web.services.reports_service import (
     get_movements_report_service,
 )
 from web.services.manager_reports_service import get_manager_sales_analytics_service
+from web.services.overdue_debt_report_service import send_overdue_debt_report
+from web.services.sales_invoice_service import business_today
 from web.services.authorization import scoped_warehouse_id
 from web.utils.pagination import build_pagination
 
 
 reports_bp = Blueprint("reports", __name__, url_prefix="/api/reports")
+
+
+@reports_bp.route("/internal/overdue-debt-email", methods=["GET"])
+@handle_api_errors
+def send_overdue_debt_email_report():
+    """Vercel Cron entrypoint; it sends only on the configured monthly day."""
+    configured_secret = str(app.config.get("CRON_SECRET") or "")
+    authorization = request.headers.get("Authorization", "")
+    provided_secret = authorization.removeprefix("Bearer ").strip()
+    if not configured_secret or not hmac.compare_digest(provided_secret, configured_secret):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    today = business_today()
+    report_day = max(1, min(28, int(app.config.get("OVERDUE_REPORT_DAY", 15))))
+    if today.day != report_day:
+        return jsonify({
+            "sent": False,
+            "message": f"Báo cáo được lập vào ngày {report_day} hàng tháng.",
+            "report_date": today.isoformat(),
+        }), 200
+
+    result = send_overdue_debt_report(today)
+    return jsonify({"sent": True, **result}), 200
 
 
 @reports_bp.route("/manager-sales", methods=["GET"])
