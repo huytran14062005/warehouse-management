@@ -91,7 +91,7 @@ def get_stock_transfer_detail(transfer_id):
     if not transfer:
         raise NotFoundError("Phiếu điều chuyển không tồn tại")
     ensure_warehouse_access(request.employee_id, transfer.warehouse_id)
-    transfer, items, total, all_items_count, total_quantity, remaining_by_product, page, per_page = get_stock_transfer_detail_service(
+    transfer, items, total, all_items_count, total_quantity, remaining_by_item, page, per_page = get_stock_transfer_detail_service(
         transfer_id,
         page_value=request.args.get("page"),
         per_page_value=request.args.get("per_page"),
@@ -103,7 +103,7 @@ def get_stock_transfer_detail(transfer_id):
             items=items,
             items_count=all_items_count,
             total_quantity=total_quantity,
-            remaining_by_product=remaining_by_product,
+            remaining_by_item=remaining_by_item,
         ),
         "pagination": build_pagination(page, per_page, total),
         "total_items_count": all_items_count,

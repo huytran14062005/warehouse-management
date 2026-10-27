@@ -444,13 +444,13 @@ function StockTransfers() {
                 </div>
               </form>
               <AutoDismissMessage message={detailError} className="stock-transfers-alert" />
-              {detailLoading ? <Skeleton rows={6} columns={5} /> : detailItems.length === 0 ? <div className="stock-transfers-state">Không tìm thấy mặt hàng phù hợp.</div> : (
+              {detailLoading ? <Skeleton rows={6} columns={6} /> : detailItems.length === 0 ? <div className="stock-transfers-state">Không tìm thấy mặt hàng phù hợp.</div> : (
                 <div className="stock-transfer-detail-table-wrap">
                   <table className="stock-transfer-detail-table">
-                    <thead><tr><th>#</th><th>Sản phẩm</th><th>Đơn vị</th><th>Số lượng cấp</th><th>Còn lại hiện tại</th></tr></thead>
+                    <thead><tr><th>#</th><th>Sản phẩm</th><th>Đơn vị</th><th>Số lượng cấp</th><th>Đã bán từ phiếu</th><th>Còn lại</th></tr></thead>
                     <tbody>{detailItems.map((item, index) => (
                       <tr key={`${item.product_id}-${index}`}>
-                        <td>{(detailPage - 1) * 10 + index + 1}</td><td><strong>{item.product_name}</strong></td><td>{item.unit || "—"}</td><td>{item.transferred_quantity ?? item.quantity}</td><td><strong>{item.remaining_quantity ?? 0}</strong></td>
+                        <td>{(detailPage - 1) * 10 + index + 1}</td><td><strong>{item.product_name}</strong></td><td>{item.unit || "—"}</td><td>{item.transferred_quantity ?? item.quantity}</td><td>{item.sold_quantity ?? 0}</td><td><strong>{item.remaining_quantity ?? 0}</strong></td>
                       </tr>
                     ))}</tbody>
                   </table>
