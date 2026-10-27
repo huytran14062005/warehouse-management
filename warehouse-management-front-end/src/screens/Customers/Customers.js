@@ -772,7 +772,15 @@ function Customers() {
                       {detail.payments.map((payment) => (
                         <div className="customer-payment-history-item" key={payment.id}>
                           <div>
-                            <strong>{formatCurrency(payment.amount)} · {payment.payment_type}</strong>
+                            <strong>
+                              {formatCurrency(payment.amount)} · {payment.payment_type} · {
+                                payment.payment_method === "cash"
+                                  ? "Tiền mặt"
+                                  : payment.payment_method === "bank_transfer"
+                                    ? "Chuyển khoản"
+                                    : "Chưa xác định"
+                              }
+                            </strong>
                             <span>{payment.note || "Không có ghi chú"}</span>
                           </div>
                           <small>

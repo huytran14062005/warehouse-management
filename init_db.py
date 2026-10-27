@@ -11,6 +11,7 @@ from web.models import (
     ImportInvoice,
     ImportInvoiceItem,
     InvoiceStatus,
+    PaymentMethod,
     PaymentStatus,
     PaymentType,
     Product,
@@ -19,6 +20,7 @@ from web.models import (
     SalesInvoiceItem,
     SalesArea,
     SaleSource,
+    SupplierPayment,
     StockTransfer,
     StockTransferItem,
     Supplier,
@@ -350,17 +352,27 @@ if __name__ == "__main__":
         ]
         db.session.add_all(sales_invoices)
         db.session.flush()
-        db.session.add(
-            CustomerPayment(
-                customer=customers[5],
-                sales_invoice=sales_invoices[-1],
-                collected_by_employee=sales_employee,
-                amount=240_000,
-                payment_type=PaymentType.INVOICE,
-                paid_at=datetime(2026, 9, 3, 10, 15),
-                note="Khách thanh toán đủ khi nhận hàng",
+
+        # Keep seed invoice balances and payment records consistent. Every
+        # completed invoice marked as paid must have a corresponding payment
+        # record with an explicit method so reports can reconcile revenue,
+        # collected money, cash, and bank transfer totals.
+        for index, invoice in enumerate(sales_invoices):
+            if invoice.status != InvoiceStatus.COMPLETED or invoice.payment_status != PaymentStatus.PAID:
+                continue
+            payment_method = PaymentMethod.CASH if index % 2 == 0 else PaymentMethod.BANK_TRANSFER
+            db.session.add(
+                CustomerPayment(
+                    customer=invoice.customer,
+                    sales_invoice=invoice,
+                    collected_by_employee=sales_employee,
+                    amount=invoice.paid_amount,
+                    payment_type=PaymentType.INVOICE,
+                    payment_method=payment_method,
+                    paid_at=invoice.sold_at,
+                    note="Thanh toán mẫu theo phiếu bán",
+                )
             )
-        )
         db.session.commit()
 
         print("Database tables and diverse sample data created successfully.")

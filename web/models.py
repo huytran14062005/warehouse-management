@@ -248,6 +248,7 @@ class SupplierPayment(BaseModel):
     __tablename__ = "supplier_payments"
     __table_args__ = (
         CheckConstraint("amount >= 500", name="ck_supplier_payment_amount"),
+        CheckConstraint("payment_method IN ('cash', 'bank_transfer')", name="ck_supplier_payment_method"),
         Index("ix_supplier_payments_supplier_date", "supplier_id", "paid_at"),
         Index("ix_supplier_payments_invoice_date", "import_invoice_id", "paid_at"),
         Index("ix_supplier_payments_method_date", "payment_method", "paid_at"),
@@ -458,14 +459,16 @@ class CustomerPayment(BaseModel):
     __tablename__ = "customer_payments"
     __table_args__ = (
         CheckConstraint("amount > 0", name="ck_customer_payment_amount"),
+        CheckConstraint("payment_method IN ('cash', 'bank_transfer')", name="ck_customer_payment_method"),
         Index("ix_customer_payments_customer_date", "customer_id", "paid_at"),
+        Index("ix_customer_payments_method_date", "payment_method", "paid_at"),
     )
 
     amount = Column(Numeric(14, 2), nullable=False)
     payment_type = Column(Enum(PaymentType), nullable=False)
     payment_method = Column(
         Enum(PaymentMethod, values_callable=lambda enum_cls: [item.value for item in enum_cls]),
-        nullable=True,
+        nullable=False,
     )
     paid_at = Column(DateTime, nullable=False, default=datetime.now)
     note = Column(Text, nullable=True)
