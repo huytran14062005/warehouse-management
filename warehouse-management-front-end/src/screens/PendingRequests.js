@@ -58,15 +58,32 @@ function PendingRequests({ pendingRequests }) {
       path: "/sales-invoices?cancel_requested=pending",
       action: "Mở đơn bán hàng",
     },
+    {
+      key: "debt_reminders",
+      title: "Công nợ cần nhắc",
+      description: `${Number(counts.overdue_debts || 0)} đơn quá hạn · ${Number(counts.due_today_debts || 0)} đơn đến hạn hôm nay · ${Number(counts.due_soon_debts || 0)} đơn sắp đến hạn.`,
+      count:
+        Number(counts.overdue_debts || 0) +
+        Number(counts.due_today_debts || 0) +
+        Number(counts.due_soon_debts || 0),
+      path: `/sales-invoices?debt_status=${
+        Number(counts.overdue_debts || 0) > 0
+          ? "overdue"
+          : Number(counts.due_today_debts || 0) > 0
+            ? "due_today"
+            : "due_soon"
+      }`,
+      action: "Xem các đơn cần thu nợ",
+    },
   ];
 
   return (
     <div className="pending-requests-page">
       <div className="pending-requests-header">
         <div>
-          <h1>Yêu cầu cần duyệt</h1>
+          <h1>Việc cần xử lý</h1>
         </div>
-        <strong>{Number(pendingRequests?.total || 0)} yêu cầu</strong>
+        <strong>{Number(pendingRequests?.total || 0)} việc</strong>
       </div>
       <div className="pending-requests-grid">
         {requests.map((request) => (

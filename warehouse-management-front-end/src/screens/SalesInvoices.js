@@ -49,6 +49,13 @@ const CANCEL_REQUEST_OPTIONS = [
   { value: "pending", label: "Chờ duyệt hủy" },
 ];
 
+const DEBT_STATUS_OPTIONS = [
+  { value: "", label: "Tất cả hạn thanh toán" },
+  { value: "overdue", label: "Đã quá hạn" },
+  { value: "due_today", label: "Đến hạn hôm nay" },
+  { value: "due_soon", label: "Sắp đến hạn (7 ngày)" },
+];
+
 function formatCurrency(value) {
   return new Intl.NumberFormat("vi-VN", {
     style: "currency",
@@ -63,6 +70,24 @@ function formatDateTime(value) {
   if (Number.isNaN(date.getTime())) return "—";
   const pad = (number) => String(number).padStart(2, "0");
   return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function formatDate(value) {
+  if (!value) return "—";
+  const [year, month, day] = String(value).split("-");
+  return year && month && day ? `${day}/${month}/${year}` : "—";
+}
+
+function getPaymentDueLabel(invoice) {
+  if (invoice.payment_due_status === "overdue") {
+    return `Quá hạn ${Number(invoice.days_overdue || 0)} ngày`;
+  }
+  if (invoice.payment_due_status === "due_today") return "Đến hạn hôm nay";
+  if (invoice.payment_due_status === "due_soon") {
+    return `Còn ${Number(invoice.days_until_due || 0)} ngày`;
+  }
+  if (invoice.payment_due_status === "not_due") return "Chưa đến hạn";
+  return invoice.payment_due_date ? "Đã có hạn thanh toán" : "Chưa đặt hạn";
 }
 
 function getStatusClass(status) {
@@ -185,6 +210,7 @@ function SalesInvoiceDetail({
   canCancelDirect,
   canManageStatus,
   canApproveCancel,
+  canManageDueDate,
   actionLoading,
   actionError,
   onEdit,
@@ -194,9 +220,13 @@ function SalesInvoiceDetail({
   onAdvanceStatus,
   onComplete,
   onApproveCancel,
+  onUpdateDueDate,
 }) {
   const [completionPayment, setCompletionPayment] = useState(
     String(invoice.paid_amount || ""),
+  );
+  const [paymentDueDate, setPaymentDueDate] = useState(
+    invoice.payment_due_date || "",
   );
   const discountAmount = Number(invoice.discount?.amount || 0);
   const paidAmount = Number(invoice.paid_amount || 0);
@@ -373,9 +403,40 @@ function SalesInvoiceDetail({
                   <strong>{formatCurrency(remainingAmount)}</strong>
                 </div>
               )}
+              {!cancelled && remainingAmount > 0 && (
+                <div className="sales-payment-due-summary">
+                  <span>Hạn thanh toán</span>
+                  <strong>{formatDate(invoice.payment_due_date)}</strong>
+                </div>
+              )}
+              {!cancelled && remainingAmount > 0 && invoice.payment_due_date && (
+                <div className={`sales-payment-due-status is-${invoice.payment_due_status}`}>
+                  <span>Nhắc nợ</span>
+                  <strong>{getPaymentDueLabel(invoice)}</strong>
+                </div>
+              )}
             </div>
             <p className="sales-payment-help">{paymentMessage}</p>
           </section>
+          {canManageDueDate && isCompletedStatus(invoice.status) && remainingAmount > 0 && (
+            <div className="sales-due-date-editor">
+              <label>
+                <span>Hạn thanh toán</span>
+                <input
+                  type="date"
+                  value={paymentDueDate}
+                  onChange={(event) => setPaymentDueDate(event.target.value)}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => onUpdateDueDate(paymentDueDate)}
+                disabled={actionLoading || !paymentDueDate || paymentDueDate === invoice.payment_due_date}
+              >
+                Lưu hạn thanh toán
+              </button>
+            </div>
+          )}
           {invoice.cancel_note && (
             <div className="sales-detail-cancel-note">
               <span>Lý do hủy</span>
@@ -469,9 +530,21 @@ function SalesInvoiceDetail({
                 placeholder="Khách thanh toán từ 500 đ"
                 aria-label="Số tiền khách thanh toán"
               />
+              {(Number(invoice.final_amount || 0) - (Number(completionPayment) || 0)) > 0 && (
+                <label className="sales-completion-due-date">
+                  <span>Hạn thanh toán</span>
+                  <input
+                    type="date"
+                    min={new Date().toLocaleDateString("en-CA")}
+                    value={paymentDueDate}
+                    onChange={(event) => setPaymentDueDate(event.target.value)}
+                    required
+                  />
+                </label>
+              )}
               <button
                 type="button"
-                onClick={() => onComplete(Number(completionPayment) || 0)}
+                onClick={() => onComplete(Number(completionPayment) || 0, paymentDueDate)}
                 disabled={actionLoading}
               >
                 Hoàn thành đơn
@@ -548,6 +621,9 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
   const [employeeStockLoading, setEmployeeStockLoading] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState(
     String(invoice?.paid_amount || ""),
+  );
+  const [paymentDueDate, setPaymentDueDate] = useState(
+    invoice?.payment_due_date || "",
   );
   const [newCustomer, setNewCustomer] = useState({
     full_name: "",
@@ -879,6 +955,14 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
       );
       return;
     }
+    if (
+      saleSource === "employee_stock" &&
+      enteredPayment < finalAmount &&
+      !paymentDueDate
+    ) {
+      setFormError("Vui lòng chọn hạn thanh toán cho phần tiền khách còn nợ.");
+      return;
+    }
 
     try {
       setSaving(true);
@@ -902,6 +986,7 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
         promotion_id: selectedPromotion?.id || null,
         sale_source: saleSource,
         payment_amount: saleSource === "employee_stock" ? enteredPayment : 0,
+        payment_due_date: paymentDueDate || null,
         items: items.map((item) => ({
           product_id: Number(item.productId),
           quantity: Number(item.quantity),
@@ -1334,6 +1419,19 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                     />
                   </label>
                 )}
+                {saleSource === "employee_stock" &&
+                  (Number(paymentAmount) || 0) < Math.max(0, subtotal - discount) && (
+                    <label className="sales-editor-field">
+                      <span>Hạn thanh toán</span>
+                      <input
+                        type="date"
+                        min={new Date().toLocaleDateString("en-CA")}
+                        value={paymentDueDate}
+                        onChange={(event) => setPaymentDueDate(event.target.value)}
+                        required
+                      />
+                    </label>
+                  )}
                 <div className="sales-editor-total">
                   <span>Tiền hàng</span>
                   <strong>{formatCurrency(subtotal)}</strong>
@@ -1400,6 +1498,9 @@ function SalesInvoices() {
   const [searchParams] = useSearchParams();
   const initialCancelRequestFilter =
     searchParams.get("cancel_requested") === "pending" ? "pending" : "";
+  const initialDebtStatus = ["overdue", "due_today", "due_soon"].includes(
+    searchParams.get("debt_status"),
+  ) ? searchParams.get("debt_status") : "";
   const [invoices, setInvoices] = useState([]);
   const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
@@ -1407,6 +1508,7 @@ function SalesInvoices() {
   const [cancelRequestFilter, setCancelRequestFilter] = useState(
     initialCancelRequestFilter,
   );
+  const [debtStatus, setDebtStatus] = useState(initialDebtStatus);
   const [fromDateInput, setFromDateInput] = useState("");
   const [toDateInput, setToDateInput] = useState("");
   const [fromDate, setFromDate] = useState("");
@@ -1463,6 +1565,8 @@ function SalesInvoices() {
 
   const canApproveCancel = ["kế toán", "quản lý"].includes(currentUser.role);
   const canViewStatusBoard = currentUser.role === "quản lý";
+
+  const canManageDueDate = canApproveCancel;
 
   const fetchStatusBoard = useCallback(async () => {
     if (!canViewStatusBoard) return;
@@ -1531,6 +1635,7 @@ function SalesInvoices() {
           to_date: toDate || undefined,
           cancel_requested:
             cancelRequestFilter === "pending" ? "true" : undefined,
+          debt_status: debtStatus || undefined,
         },
       });
       const data = response.data || {};
@@ -1544,7 +1649,7 @@ function SalesInvoices() {
     } finally {
       setLoading(false);
     }
-  }, [cancelRequestFilter, fromDate, keyword, navigate, page, status, toDate]);
+  }, [cancelRequestFilter, debtStatus, fromDate, keyword, navigate, page, status, toDate]);
 
   useEffect(() => {
     fetchInvoices();
@@ -1666,19 +1771,39 @@ function SalesInvoices() {
     }
   };
 
-  const completeInvoice = async (paymentAmount) => {
+  const completeInvoice = async (paymentAmount, paymentDueDate) => {
     if (!selectedInvoice) return;
     try {
       setActionLoading(true);
       setActionError("");
       const response = await authApis().put(
         endpoints.completeSalesInvoice(selectedInvoice.id),
-        { payment_amount: paymentAmount },
+        { payment_amount: paymentAmount, payment_due_date: paymentDueDate || null },
       );
       notifyInventoryChanged();
       setSelectedInvoice(response.data?.invoice || selectedInvoice);
       await fetchInvoices();
       await fetchStatusBoard();
+      window.dispatchEvent(new Event("pending-requests:refresh"));
+    } catch (requestError) {
+      setActionError(getApiError(requestError));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const updatePaymentDueDate = async (paymentDueDate) => {
+    if (!selectedInvoice || !paymentDueDate) return;
+    try {
+      setActionLoading(true);
+      setActionError("");
+      const response = await authApis().put(
+        endpoints.salesInvoicePaymentDueDate(selectedInvoice.id),
+        { payment_due_date: paymentDueDate },
+      );
+      setSelectedInvoice(response.data?.invoice || selectedInvoice);
+      await fetchInvoices();
+      window.dispatchEvent(new Event("pending-requests:refresh"));
     } catch (requestError) {
       setActionError(getApiError(requestError));
     } finally {
@@ -1946,6 +2071,18 @@ function SalesInvoices() {
             ariaLabel="Lọc theo yêu cầu hủy đơn"
           />
         </div>
+        <div className="sales-debt-dropdown">
+          <SharedSearchableDropdown
+            value={debtStatus}
+            options={DEBT_STATUS_OPTIONS}
+            placeholder="Tất cả hạn thanh toán"
+            onChange={(value) => {
+              setPage(1);
+              setDebtStatus(String(value));
+            }}
+            ariaLabel="Lọc theo hạn thanh toán"
+          />
+        </div>
         <div className="sales-date-range" role="group" aria-label="Lọc theo ngày bán">
           <label className="sales-date-field">
             <span>Từ ngày</span>
@@ -2019,6 +2156,11 @@ function SalesInvoices() {
                             Chờ duyệt hủy
                           </span>
                         )}
+                        {["overdue", "due_today", "due_soon"].includes(invoice.payment_due_status) && (
+                          <span className={`sales-due-badge is-${invoice.payment_due_status}`}>
+                            {getPaymentDueLabel(invoice)}
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td>{invoice.items_count || 0}</td>
@@ -2088,6 +2230,7 @@ function SalesInvoices() {
             canCancelDirect={canCancelDirect}
             canManageStatus={canManageStatus}
             canApproveCancel={canApproveCancel}
+            canManageDueDate={canManageDueDate}
             actionLoading={actionLoading}
             actionError={actionError}
             onEdit={openEditEditor}
@@ -2096,6 +2239,7 @@ function SalesInvoices() {
             onCancelDirect={handleCancelDirect}
             onAdvanceStatus={advanceInvoiceStatus}
             onComplete={completeInvoice}
+            onUpdateDueDate={updatePaymentDueDate}
             onApproveCancel={(approved) =>
               setConfirmAction(approved ? "approve-cancel" : "reject-cancel")
             }

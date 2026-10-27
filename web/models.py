@@ -350,6 +350,12 @@ class SalesInvoice(BaseModel):
         CheckConstraint("paid_amount >= 0", name="ck_sales_invoice_paid_amount"),
         Index("ix_sales_invoices_customer_date", "customer_id", "sold_at"),
         Index("ix_sales_invoices_status_date", "status", "sold_at"),
+        Index(
+            "ix_sales_invoices_payment_due",
+            "status",
+            "payment_status",
+            "payment_due_date",
+        ),
     )
 
     sold_at = Column(DateTime, nullable=False, default=datetime.now)
@@ -367,6 +373,7 @@ class SalesInvoice(BaseModel):
     sale_source = Column(Enum(SaleSource), nullable=False, default=SaleSource.CENTRAL_WAREHOUSE, index=True)
     payment_status = Column(Enum(PaymentStatus), nullable=False, default=PaymentStatus.UNPAID, index=True)
     paid_amount = Column(Numeric(14, 2), nullable=False, default=0)
+    payment_due_date = Column(Date, nullable=True)
 
     warehouse_id = Column(Integer, ForeignKey("warehouses.id", ondelete="RESTRICT"), nullable=False, index=True)
     customer_id = Column(Integer, ForeignKey("customers.id", ondelete="RESTRICT"), nullable=False, index=True)

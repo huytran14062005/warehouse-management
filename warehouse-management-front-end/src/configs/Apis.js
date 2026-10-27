@@ -24,6 +24,7 @@ export const endpoints = {
   salesInvoiceCancelRequest: (invoiceId) => `/sales-invoices/${invoiceId}/cancel-request`,
   salesInvoiceStatus: (invoiceId) => `/sales-invoices/${invoiceId}/status`,
   completeSalesInvoice: (invoiceId) => `/sales-invoices/${invoiceId}/complete`,
+  salesInvoicePaymentDueDate: (invoiceId) => `/sales-invoices/${invoiceId}/payment-due-date`,
   promotions: "/promotions",
   promotionDetail: (promotionId) => `/promotions/${promotionId}`,
   salesEmployees: "/sales-employees",

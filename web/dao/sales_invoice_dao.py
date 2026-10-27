@@ -1,8 +1,10 @@
+from datetime import timedelta
+
 from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError
 
 from web import db
-from web.models import InvoiceStatus, SalesInvoice, SalesInvoiceItem
+from web.models import InvoiceStatus, PaymentStatus, SalesInvoice, SalesInvoiceItem
 
 
 def _invoice_load_options():
@@ -29,6 +31,7 @@ def create_sales_invoice(
     paid_amount=0,
     status=None,
     sales_area_id=None,
+    payment_due_date=None,
     commit=True,
 ):
        
@@ -49,6 +52,7 @@ def create_sales_invoice(
             payment_status=payment_status,
             paid_amount=paid_amount,
             sales_area_id=sales_area_id,
+            payment_due_date=payment_due_date,
         )
         db.session.add(invoice)
         db.session.flush()                    
@@ -78,7 +82,7 @@ def create_sales_invoice(
 
 
 
-def update_sales_invoice(invoice_id, warehouse_id, customer_id, note, items, discount_amount=0, discount_status=None, discount_note=None, sales_area_id=None):
+def update_sales_invoice(invoice_id, warehouse_id, customer_id, note, items, discount_amount=0, discount_status=None, discount_note=None, sales_area_id=None, payment_due_date=None):
        
     try:
         from web.models import DiscountStatus
@@ -98,6 +102,7 @@ def update_sales_invoice(invoice_id, warehouse_id, customer_id, note, items, dis
         invoice.discount_status = discount_status or DiscountStatus.NO_DISCOUNT
         invoice.discount_note = discount_note
         invoice.sales_area_id = sales_area_id
+        invoice.payment_due_date = payment_due_date
 
                        
         for item_data in items:
@@ -131,6 +136,9 @@ def get_sales_invoices_list(
     to_date=None,
     cancel_requested=None,
     warehouse_id=None,
+    debt_status=None,
+    today=None,
+    due_soon_days=7,
 ):
        
     from web import app
@@ -144,6 +152,23 @@ def get_sales_invoices_list(
         query = query.filter(SalesInvoice.status == status)
     if warehouse_id:
         query = query.filter(SalesInvoice.warehouse_id == warehouse_id)
+
+    if debt_status:
+        open_debt_filters = (
+            SalesInvoice.status == InvoiceStatus.COMPLETED,
+            SalesInvoice.payment_status != PaymentStatus.PAID,
+            SalesInvoice.payment_due_date.isnot(None),
+        )
+        query = query.filter(*open_debt_filters)
+        if debt_status == "overdue":
+            query = query.filter(SalesInvoice.payment_due_date < today)
+        elif debt_status == "due_today":
+            query = query.filter(SalesInvoice.payment_due_date == today)
+        elif debt_status == "due_soon":
+            query = query.filter(
+                SalesInvoice.payment_due_date > today,
+                SalesInvoice.payment_due_date <= today + timedelta(days=due_soon_days),
+            )
     
                                  
     if discount_status:

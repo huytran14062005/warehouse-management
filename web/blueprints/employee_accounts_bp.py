@@ -1,7 +1,9 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, jsonify, request
+from sqlalchemy import func, select
 
+from web import db
 from web.blueprints.api_errors import handle_api_errors
 from web.config import Config
 from web.middleware.auth_middleware import verify_role, verify_token
@@ -12,10 +14,12 @@ from web.models import (
     Employee,
     EmployeeRole,
     InvoiceStatus,
+    PaymentStatus,
     ProductRequest,
     ProductRequestStatus,
     SalesInvoice,
 )
+from web.services.sales_invoice_service import PAYMENT_DUE_SOON_DAYS, business_today
 from web.services.employee_account_service import (
     approve_employee_service,
     list_employee_accounts_service,
@@ -83,26 +87,69 @@ def get_employee_accounts():
 @verify_role(EmployeeRole.QUAN_LY)
 @handle_api_errors
 def get_pending_requests_summary():
-    counts = {
-        "accounts": Employee.query.filter(
+    today = business_today()
+    due_soon_through = today + timedelta(days=PAYMENT_DUE_SOON_DAYS)
+
+    def count_of(model, *filters):
+        return select(func.count(model.id)).where(*filters).scalar_subquery()
+
+    row = db.session.query(
+        count_of(
+            Employee,
             Employee.role != EmployeeRole.QUAN_LY,
             Employee.is_approved.is_(False),
-        ).count(),
-        "damage_reports": DamageReport.query.filter(
+        ).label("accounts"),
+        count_of(
+            DamageReport,
             DamageReport.status == DamageReportStatus.PENDING,
-        ).count(),
-        "discount_invoices": SalesInvoice.query.filter(
+        ).label("damage_reports"),
+        count_of(
+            SalesInvoice,
             SalesInvoice.discount_status == DiscountStatus.PENDING_APPROVAL,
-        ).count(),
-        "cancel_requests": SalesInvoice.query.filter(
+        ).label("discount_invoices"),
+        count_of(
+            SalesInvoice,
             SalesInvoice.cancel_requested.is_(True),
             SalesInvoice.status.in_(
                 [InvoiceStatus.PROCESSING, InvoiceStatus.DELIVERING]
             ),
-        ).count(),
-        "product_requests": ProductRequest.query.filter(
+        ).label("cancel_requests"),
+        count_of(
+            ProductRequest,
             ProductRequest.status == ProductRequestStatus.PENDING.value,
-        ).count(),
+        ).label("product_requests"),
+        count_of(
+            SalesInvoice,
+            SalesInvoice.status == InvoiceStatus.COMPLETED,
+            SalesInvoice.payment_status != PaymentStatus.PAID,
+            SalesInvoice.payment_due_date < today,
+        ).label("overdue_debts"),
+        count_of(
+            SalesInvoice,
+            SalesInvoice.status == InvoiceStatus.COMPLETED,
+            SalesInvoice.payment_status != PaymentStatus.PAID,
+            SalesInvoice.payment_due_date == today,
+        ).label("due_today_debts"),
+        count_of(
+            SalesInvoice,
+            SalesInvoice.status == InvoiceStatus.COMPLETED,
+            SalesInvoice.payment_status != PaymentStatus.PAID,
+            SalesInvoice.payment_due_date > today,
+            SalesInvoice.payment_due_date <= due_soon_through,
+        ).label("due_soon_debts"),
+    ).one()
+    counts = {
+        key: int(getattr(row, key) or 0)
+        for key in (
+            "accounts",
+            "damage_reports",
+            "discount_invoices",
+            "cancel_requests",
+            "product_requests",
+            "overdue_debts",
+            "due_today_debts",
+            "due_soon_debts",
+        )
     }
     return jsonify({
         "counts": counts,

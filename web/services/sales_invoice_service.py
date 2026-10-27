@@ -1,7 +1,8 @@
 import math
-from datetime import datetime, time
+from datetime import date, datetime, time
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from sqlalchemy import func
+from zoneinfo import ZoneInfo
 
 from web import dao, db
 from web.models import (
@@ -35,6 +36,57 @@ from web.services.promotion_service import (
 ACTIVE_CANCEL_REQUEST_STATUSES = frozenset(
     {InvoiceStatus.PROCESSING, InvoiceStatus.DELIVERING}
 )
+
+PAYMENT_DUE_SOON_DAYS = 7
+BUSINESS_TIMEZONE = ZoneInfo("Asia/Bangkok")
+
+
+def business_today():
+    return datetime.now(BUSINESS_TIMEZONE).date()
+
+
+def parse_payment_due_date(value, required=False, allow_past=False):
+    if value in (None, ""):
+        if required:
+            raise ValidationError("Vui lòng chọn hạn thanh toán cho khoản công nợ")
+        return None
+    try:
+        due_date = date.fromisoformat(str(value).strip())
+    except (TypeError, ValueError):
+        raise ValidationError("Hạn thanh toán không hợp lệ. Định dạng đúng: YYYY-MM-DD")
+    if not allow_past and due_date < business_today():
+        raise ValidationError("Hạn thanh toán không được nhỏ hơn ngày hiện tại")
+    return due_date
+
+
+def get_payment_due_info(invoice, remaining_amount):
+    due_date = invoice.payment_due_date
+    is_open_debt = (
+        invoice.status == InvoiceStatus.COMPLETED
+        and invoice.payment_status != PaymentStatus.PAID
+        and Decimal(str(remaining_amount or 0)) > 0
+    )
+    if not is_open_debt or not due_date:
+        return {
+            "status": "paid" if invoice.payment_status == PaymentStatus.PAID else "not_set",
+            "days_until_due": None,
+            "days_overdue": 0,
+        }
+
+    delta = (due_date - business_today()).days
+    if delta < 0:
+        status = "overdue"
+    elif delta == 0:
+        status = "due_today"
+    elif delta <= PAYMENT_DUE_SOON_DAYS:
+        status = "due_soon"
+    else:
+        status = "not_due"
+    return {
+        "status": status,
+        "days_until_due": max(0, delta),
+        "days_overdue": max(0, -delta),
+    }
 
 
 def has_active_cancel_request(invoice):
@@ -320,6 +372,8 @@ def serialize_sales_invoice(invoice):
                             
     discount = float(invoice.discount_amount)
     final_amount = total_amount - discount
+    remaining_amount = max(0, final_amount - float(invoice.paid_amount))
+    payment_due = get_payment_due_info(invoice, remaining_amount)
     promotion_snapshot = promotion_snapshot_from_note(invoice.discount_note)
 
     return {
@@ -329,7 +383,11 @@ def serialize_sales_invoice(invoice):
         "sale_source": invoice.sale_source.value,
         "payment_status": invoice.payment_status.value,
         "paid_amount": float(invoice.paid_amount),
-        "remaining_amount": max(0, final_amount - float(invoice.paid_amount)),
+        "remaining_amount": remaining_amount,
+        "payment_due_date": invoice.payment_due_date.isoformat() if invoice.payment_due_date else None,
+        "payment_due_status": payment_due["status"],
+        "days_until_due": payment_due["days_until_due"],
+        "days_overdue": payment_due["days_overdue"],
         "cancel_requested": has_active_cancel_request(invoice),
         "cancel_note": invoice.cancel_note,
         "note": invoice.note,
@@ -379,6 +437,7 @@ def create_sales_invoice_service(
     promotion_id=None,
     sale_source=None,
     payment_amount=0,
+    payment_due_date=None,
     stock_employee_id=None,
 ):
        
@@ -445,6 +504,7 @@ def create_sales_invoice_service(
         is_promotion=promotion_id not in (None, ""),
     )
     final_amount = total_amount - discount_amount
+    clean_payment_due_date = parse_payment_due_date(payment_due_date)
 
     if sale_source == SaleSource.EMPLOYEE_STOCK:
         if employee.role != EmployeeRole.NHAN_VIEN_BAN_HANG:
@@ -455,6 +515,9 @@ def create_sales_invoice_service(
         payment_amount = validate_money(payment_amount, "Số tiền khách thanh toán")
         if payment_amount > final_amount:
             raise ValidationError("Số tiền khách thanh toán không được lớn hơn tổng tiền đơn")
+
+        if payment_amount < final_amount and clean_payment_due_date is None:
+            raise ValidationError("Vui lòng chọn hạn thanh toán cho phần tiền còn nợ")
 
     if customer_id in (None, ""):
         db.session.add(customer)
@@ -480,6 +543,7 @@ def create_sales_invoice_service(
                 sale_source=sale_source,
                 status=InvoiceStatus.COMPLETED,
                 sales_area_id=customer.sales_area_id,
+                payment_due_date=clean_payment_due_date if payment_amount < final_amount else None,
                 commit=False,
             )
             _apply_invoice_payment(invoice, employee_id, payment_amount, final_amount)
@@ -502,11 +566,12 @@ def create_sales_invoice_service(
         payment_status=PaymentStatus.UNPAID,
         paid_amount=0,
         sales_area_id=customer.sales_area_id,
+        payment_due_date=clean_payment_due_date,
     )
 
 
 
-def update_sales_invoice_service(invoice_id, employee_id, warehouse_id, customer_id, note, items, discount_amount=0, discount_note="", promotion_id=None):
+def update_sales_invoice_service(invoice_id, employee_id, warehouse_id, customer_id, note, items, discount_amount=0, discount_note="", promotion_id=None, payment_due_date=None):
        
                               
     invoice = SalesInvoice.query.get(invoice_id)
@@ -608,12 +673,13 @@ def update_sales_invoice_service(invoice_id, employee_id, warehouse_id, customer
         discount_status=discount_status,
         discount_note=discount_note,
         sales_area_id=customer.sales_area_id,
+        payment_due_date=parse_payment_due_date(payment_due_date),
     )
 
     return updated_invoice
 
 
-def complete_sales_invoice_service(invoice_id, employee_id, payment_amount=0):
+def complete_sales_invoice_service(invoice_id, employee_id, payment_amount=0, payment_due_date=None):
        
                               
     invoice = dao.get_sales_invoice_by_id(invoice_id)
@@ -667,8 +733,18 @@ def complete_sales_invoice_service(invoice_id, employee_id, payment_amount=0):
             for item in invoice.items
         )
         final_amount = total_amount - Decimal(str(invoice.discount_amount))
+        clean_payment_amount = validate_money(payment_amount, "Số tiền khách thanh toán")
+        remaining_amount = final_amount - clean_payment_amount
+        requested_due_date = payment_due_date or (
+            invoice.payment_due_date.isoformat() if invoice.payment_due_date else None
+        )
+        clean_payment_due_date = parse_payment_due_date(
+            requested_due_date,
+            required=remaining_amount > 0,
+        )
         invoice.status = InvoiceStatus.COMPLETED
-        _apply_invoice_payment(invoice, employee_id, payment_amount, final_amount)
+        invoice.payment_due_date = clean_payment_due_date if remaining_amount > 0 else None
+        _apply_invoice_payment(invoice, employee_id, clean_payment_amount, final_amount)
         db.session.commit()
         return dao.get_sales_invoice_by_id(invoice.id)
     except AppError:
@@ -738,6 +814,8 @@ def serialize_invoice_summary(invoice):
     
     discount = float(invoice.discount_amount)
     final_amount = total_amount - discount
+    remaining_amount = max(0, final_amount - float(invoice.paid_amount))
+    payment_due = get_payment_due_info(invoice, remaining_amount)
     promotion_snapshot = promotion_snapshot_from_note(invoice.discount_note)
     
     return {
@@ -748,7 +826,11 @@ def serialize_invoice_summary(invoice):
         "sale_source": invoice.sale_source.value,
         "payment_status": invoice.payment_status.value,
         "paid_amount": float(invoice.paid_amount),
-        "remaining_amount": max(0, final_amount - float(invoice.paid_amount)),
+        "remaining_amount": remaining_amount,
+        "payment_due_date": invoice.payment_due_date.isoformat() if invoice.payment_due_date else None,
+        "payment_due_status": payment_due["status"],
+        "days_until_due": payment_due["days_until_due"],
+        "days_overdue": payment_due["days_overdue"],
         "customer": {
             "id": invoice.customer.id,
             "full_name": invoice.customer.full_name,
@@ -785,6 +867,7 @@ def get_sales_invoices_list_service(
     to_date_value=None,
     cancel_requested=None,
     warehouse_id=None,
+    debt_status=None,
 ):
        
     from web.services.customer_service import parse_page, parse_per_page
@@ -797,6 +880,9 @@ def get_sales_invoices_list_service(
     status = parse_invoice_status_filter(status_value)
     from_date, to_date = parse_invoice_date_range(from_date_value, to_date_value)
     keyword = str(keyword or '').strip()
+    debt_status = str(debt_status or "").strip().lower() or None
+    if debt_status not in {None, "overdue", "due_today", "due_soon"}:
+        raise ValidationError("Trạng thái hạn thanh toán không hợp lệ")
     
     invoices, total = dao.get_sales_invoices_list(
         page=page,
@@ -807,6 +893,9 @@ def get_sales_invoices_list_service(
         from_date=from_date,
         to_date=to_date,
         cancel_requested=cancel_requested,
+        debt_status=debt_status,
+        today=business_today(),
+        due_soon_days=PAYMENT_DUE_SOON_DAYS,
     )
     
     pages = math.ceil(total / per_page) if per_page > 0 else 0
@@ -853,6 +942,35 @@ def get_sales_invoice_detail_service(invoice_id):
         raise NotFoundError("Đơn hàng không tồn tại")
     
     return invoice
+
+
+def update_payment_due_date_service(invoice_id, employee_id, payment_due_date):
+    invoice = dao.get_sales_invoice_by_id(invoice_id)
+    if not invoice:
+        raise NotFoundError("Đơn hàng không tồn tại")
+    ensure_warehouse_access(employee_id, invoice.warehouse_id)
+    if invoice.status != InvoiceStatus.COMPLETED:
+        raise ValidationError("Chỉ đặt hạn thanh toán cho đơn đã hoàn thành")
+
+    total_amount = sum(
+        Decimal(str(item.quantity)) * Decimal(str(item.unit_price))
+        for item in invoice.items
+    )
+    final_amount = total_amount - Decimal(str(invoice.discount_amount or 0))
+    remaining_amount = max(
+        Decimal("0"),
+        final_amount - Decimal(str(invoice.paid_amount or 0)),
+    )
+    if remaining_amount <= 0:
+        raise ValidationError("Đơn hàng đã thanh toán đủ nên không cần hạn thanh toán")
+
+    invoice.payment_due_date = parse_payment_due_date(
+        payment_due_date,
+        required=True,
+        allow_past=True,
+    )
+    db.session.commit()
+    return dao.get_sales_invoice_by_id(invoice.id)
 
 
 

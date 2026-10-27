@@ -32,7 +32,12 @@ function Sidebar({ user, pendingRequests, isMobileOpen = false, onMobileClose = 
   const canManageEmployeeAccounts = user?.role === "quản lý";
   const pendingCounts = pendingRequests?.counts || {};
   const pendingTotal = Number(pendingRequests?.total || 0);
-  const salesPendingCount = Number(pendingCounts.discount_invoices || 0) + Number(pendingCounts.cancel_requests || 0);
+  const salesPendingCount =
+    Number(pendingCounts.discount_invoices || 0) +
+    Number(pendingCounts.cancel_requests || 0) +
+    Number(pendingCounts.overdue_debts || 0) +
+    Number(pendingCounts.due_today_debts || 0) +
+    Number(pendingCounts.due_soon_debts || 0);
 
   const handleConfirmLogout = async () => {
     setShowLogoutConfirm(false);
@@ -99,7 +104,7 @@ function Sidebar({ user, pendingRequests, isMobileOpen = false, onMobileClose = 
                   `internal-sidebar-link${isActive ? " is-active" : ""}`
                 }
               >
-                <span>Yêu cầu cần duyệt</span>
+                <span>Việc cần xử lý</span>
                 {pendingTotal > 0 && <span className="internal-sidebar-badge">{pendingTotal}</span>}
               </NavLink>
             )}

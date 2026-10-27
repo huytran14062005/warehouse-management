@@ -470,6 +470,7 @@ function Customers() {
       setPaymentNote("");
       setShowPaymentForm(false);
       await fetchCustomers();
+      window.dispatchEvent(new Event("pending-requests:refresh"));
     } catch (requestError) {
       setPaymentError(getApiError(requestError));
     } finally {

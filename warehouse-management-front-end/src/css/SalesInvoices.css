@@ -47,6 +47,7 @@
 .sales-toolbar > input { flex: 1 1 360px; min-width: 260px; }
 .sales-status-dropdown { position: relative; flex: 0 1 260px; min-width: 220px; }
 .sales-cancel-dropdown { position: relative; flex: 0 1 230px; min-width: 210px; }
+.sales-debt-dropdown { position: relative; flex: 0 1 230px; min-width: 210px; }
 .sales-date-range { display: flex; align-items: center; gap: 7px; flex: 0 1 330px; min-width: 300px; }
 .sales-date-field { position: relative; display: flex; flex: 1 1 0; align-items: center; height: 40px; color: #52657a; font-size: 11px; font-weight: 600; }
 .sales-date-field span { position: absolute; bottom: calc(100% + 4px); left: 0; white-space: nowrap; }
@@ -70,6 +71,10 @@
 .sales-status-badge { display: inline-block; padding: 4px 8px; border: 1px solid; border-radius: 4px; font-size: 11px; font-weight: 600; white-space: nowrap; }
 .sales-status-cell { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .sales-cancel-request-badge { display: inline-block; padding: 4px 8px; color: #8a5a12; border: 1px solid #e6c58e; border-radius: 4px; background: #fff8e9; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.sales-due-badge { display: inline-block; padding: 4px 8px; border: 1px solid; border-radius: 4px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.sales-due-badge.is-overdue, .sales-payment-due-status.is-overdue { color: #9f2d2d; border-color: #efb6b6; background: #fff1f1; }
+.sales-due-badge.is-due_today, .sales-payment-due-status.is-due_today { color: #8a5a12; border-color: #e6c58e; background: #fff8e9; }
+.sales-due-badge.is-due_soon, .sales-payment-due-status.is-due_soon { color: #245b8f; border-color: #a9c7e3; background: #eef6fd; }
 .sales-status-draft { color: #52657a; border-color: #b8c4d1; background: #f4f6f8; }
 .sales-status-processing { color: #245b8f; border-color: #a9c7e3; background: #eef6fd; }
 .sales-status-delivering { color: #956016; border-color: #e6c58e; background: #fff8e9; }
@@ -134,6 +139,12 @@
 .sales-payment-breakdown .sales-payment-total strong { color: #0b3158; font-size: 17px; }
 .sales-payment-breakdown .sales-payment-remaining { color: #9f3d3d; font-weight: 700; }
 .sales-payment-breakdown .sales-payment-remaining strong { color: #9f3d3d; font-size: 15px; }
+.sales-payment-breakdown .sales-payment-due-status { margin-top: 2px; padding: 7px 8px; border: 1px solid; border-radius: 5px; }
+.sales-due-date-editor { display: flex; align-items: flex-end; justify-content: flex-end; gap: 10px; margin-top: 12px; padding: 12px; border: 1px solid #d9e2ec; border-radius: 6px; background: #f9fbfc; }
+.sales-due-date-editor label, .sales-completion-due-date { display: grid; gap: 5px; color: #52657a; font-size: 11px; font-weight: 600; }
+.sales-due-date-editor input, .sales-completion-due-date input { min-height: 36px; padding: 7px 9px; color: #1b2d40; border: 1px solid #b7c8d8; border-radius: 5px; background: #fff; font: inherit; }
+.sales-due-date-editor button { min-height: 36px; padding: 8px 12px; color: #fff; border: 1px solid #0b3158; border-radius: 5px; background: #0b3158; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.sales-due-date-editor button:disabled { opacity: .55; cursor: not-allowed; }
 .sales-payment-help { grid-column: 1 / -1; margin: 0; padding-top: 11px; color: #52657a; border-top: 1px solid #e1e8ef; font-size: 11px; line-height: 1.5; }
 .sales-detail-total { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; padding-top: 16px; }
 .sales-detail-total div { min-width: 180px; text-align: right; }
@@ -221,7 +232,7 @@
   .sales-page { width: min(100% - 32px, 560px); padding-top: 26px; }
   .sales-header { align-items: flex-start; flex-direction: column; }
   .sales-toolbar { align-items: stretch; flex-direction: column; }
-  .sales-toolbar > input, .sales-status-dropdown, .sales-cancel-dropdown, .sales-date-range { width: 100%; }
+  .sales-toolbar > input, .sales-status-dropdown, .sales-cancel-dropdown, .sales-debt-dropdown, .sales-date-range { width: 100%; }
   .sales-date-range { align-items: flex-end; }
   .sales-status-board-header { align-items: stretch; flex-direction: column; }
   .sales-status-board-total { white-space: normal; }
@@ -234,6 +245,7 @@
   .sales-detail-header-tools { align-items: flex-end; flex-direction: column-reverse; }
   .sales-detail-body { padding: 16px; }
   .sales-detail-overview, .sales-payment-card { grid-template-columns: 1fr; }
+  .sales-due-date-editor { align-items: stretch; flex-direction: column; }
   .sales-detail-card dl { grid-template-columns: 1fr; }
   .sales-detail-card .sales-detail-card-wide { grid-column: auto; }
   .sales-detail-items { min-width: 610px; }

@@ -16,6 +16,7 @@ from web.services.sales_invoice_service import (
     serialize_invoice_summary,
     serialize_sales_invoice,
     update_invoice_status_service,
+    update_payment_due_date_service,
     update_sales_invoice_service,
 )
 from web.models import EmployeeRole, SalesInvoice
@@ -60,6 +61,7 @@ def get_sales_invoices_list():
         from_date_value=request.args.get('from_date'),
         to_date_value=request.args.get('to_date'),
         cancel_requested=cancel_requested,
+        debt_status=request.args.get('debt_status'),
         warehouse_id=scoped_warehouse_id(request.employee_id, request.args.get('warehouse_id')),
     )
     
@@ -107,6 +109,7 @@ def create_sales_invoice():
         promotion_id=data.get("promotion_id"),
         sale_source=data.get("sale_source"),
         payment_amount=data.get("payment_amount", 0),
+        payment_due_date=data.get("payment_due_date"),
         stock_employee_id=data.get("stock_employee_id"),
     )
 
@@ -134,6 +137,7 @@ def update_sales_invoice(invoice_id):
         discount_amount=data.get("discount_amount", 0),
         discount_note=data.get("discount_note", ""),
         promotion_id=data.get("promotion_id"),
+        payment_due_date=data.get("payment_due_date"),
     )
 
     return jsonify({
@@ -222,10 +226,28 @@ def complete_sales_invoice(invoice_id):
         invoice_id=invoice_id,
         employee_id=request.employee_id,
         payment_amount=data.get("payment_amount", 0),
+        payment_due_date=data.get("payment_due_date"),
     )
 
     return jsonify({
         "message": "Đã đánh dấu đơn hàng hoàn thành",
+        "invoice": serialize_sales_invoice(invoice),
+    }), 200
+
+
+@sales_invoices_bp.route("/<int:invoice_id>/payment-due-date", methods=["PUT"])
+@verify_token
+@verify_role(EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY)
+@handle_api_errors
+def update_payment_due_date(invoice_id):
+    data = request.get_json(silent=True) or {}
+    invoice = update_payment_due_date_service(
+        invoice_id=invoice_id,
+        employee_id=request.employee_id,
+        payment_due_date=data.get("payment_due_date"),
+    )
+    return jsonify({
+        "message": "Đã cập nhật hạn thanh toán",
         "invoice": serialize_sales_invoice(invoice),
     }), 200
 
