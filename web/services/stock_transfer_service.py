@@ -306,7 +306,21 @@ def create_stock_transfer_service(created_by_employee_id, employee_id, warehouse
     if recipient.role != EmployeeRole.NHAN_VIEN_BAN_HANG:
         raise ValidationError("Chỉ được cấp hàng cho nhân viên bán hàng")
 
-    warehouse = Warehouse.query.order_by(Warehouse.id.asc()).first() if warehouse_id in (None, "") else Warehouse.query.get(_positive_integer(warehouse_id, "Mã kho"))
+    if warehouse_id in (None, ""):
+        # A warehouse-scoped keeper must always operate on the warehouse
+        # assigned to their account.  Falling back to the first warehouse
+        # here can make the UI show stock from one warehouse while the
+        # validation checks a different one.
+        creator = Employee.query.get(created_by_employee_id)
+        if not creator:
+            raise NotFoundError("Nhân viên cấp hàng không tồn tại")
+        warehouse = (
+            Warehouse.query.get(creator.warehouse_id)
+            if creator.warehouse_id is not None
+            else Warehouse.query.order_by(Warehouse.id.asc()).first()
+        )
+    else:
+        warehouse = Warehouse.query.get(_positive_integer(warehouse_id, "Mã kho"))
     if not warehouse:
         raise NotFoundError("Kho không tồn tại")
 
