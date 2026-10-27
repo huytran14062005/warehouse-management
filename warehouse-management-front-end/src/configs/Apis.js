@@ -35,6 +35,7 @@ export const endpoints = {
   suppliers: "/suppliers",
   importInvoices: "/import-invoices",
   importInvoiceDetail: (invoiceId) => `/import-invoices/${invoiceId}`,
+  importInvoicePayments: (invoiceId) => `/import-invoices/${invoiceId}/payments`,
   importInvoiceDelete: (invoiceId) => `/import-invoices/${invoiceId}`,
   damageReports: "/damage-reports",
   damageReportDetail: (reportId) => `/damage-reports/${reportId}`,

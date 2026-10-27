@@ -36,7 +36,36 @@ function formatDate(value) {
   return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
 }
 
-function ImportDetail({ invoice, onClose, onEdit, onDelete, canEdit, canDelete }) {
+function ImportDetail({ invoice, onClose, onEdit, onDelete, canEdit, canDelete, canPay, onPaymentSaved }) {
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("");
+  const [paymentNote, setPaymentNote] = useState("");
+  const [paymentError, setPaymentError] = useState("");
+  const [paymentSaving, setPaymentSaving] = useState(false);
+  const recordPayment = async (event) => {
+    event.preventDefault();
+    const amount = Number(paymentAmount || 0);
+    if (!Number.isFinite(amount) || amount < 500) return setPaymentError("Số tiền thanh toán tối thiểu là 500 đ.");
+    if (amount > Number(invoice.remaining_amount || 0)) return setPaymentError("Số tiền thanh toán không được vượt quá số còn nợ nhà cung cấp.");
+    if (!paymentMethod) return setPaymentError("Vui lòng chọn phương thức thanh toán.");
+    try {
+      setPaymentSaving(true);
+      setPaymentError("");
+      const response = await authApis().post(endpoints.importInvoicePayments(invoice.id), {
+        amount,
+        payment_method: paymentMethod,
+        note: paymentNote.trim(),
+      });
+      setPaymentAmount("");
+      setPaymentMethod("");
+      setPaymentNote("");
+      onPaymentSaved(response.data?.invoice);
+    } catch (requestError) {
+      setPaymentError(getApiError(requestError));
+    } finally {
+      setPaymentSaving(false);
+    }
+  };
   return createPortal(
     <div className="warehouse-modal-overlay">
       <div
@@ -76,6 +105,36 @@ function ImportDetail({ invoice, onClose, onEdit, onDelete, canEdit, canDelete }
             </div>
           </div>
           <h3 className="warehouse-section-title">Sản phẩm nhập</h3>
+          <div className="warehouse-payment-summary">
+            <div><span>{"Đã trả nhà cung cấp"}</span><strong>{formatCurrency(invoice.paid_amount)}</strong></div>
+            <div><span>{"Còn phải trả"}</span><strong>{formatCurrency(invoice.remaining_amount)}</strong></div>
+            <div><span>{"Trạng thái thanh toán"}</span><strong>{invoice.payment_status === "paid" ? "Đã thanh toán" : invoice.payment_status === "partial" ? "Thanh toán một phần" : "Chưa thanh toán"}</strong></div>
+          </div>
+          {canPay && Number(invoice.remaining_amount || 0) > 0 && (
+            <form className="warehouse-payment-form" onSubmit={recordPayment}>
+              <h3>{"Ghi nhận trả tiền nhà cung cấp"}</h3>
+              <AutoDismissMessage message={paymentError} className="warehouse-error" />
+              <MoneyInput value={paymentAmount} onChange={setPaymentAmount} label="Số tiền thanh toán" allowEmpty placeholder="Từ 500 đ" />
+              <select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)} required>
+                <option value="">{"Chọn phương thức thanh toán"}</option>
+                <option value="cash">{"Tiền mặt"}</option>
+                <option value="bank_transfer">{"Chuyển khoản"}</option>
+              </select>
+              <input value={paymentNote} onChange={(event) => setPaymentNote(event.target.value)} placeholder="Ghi chú (không bắt buộc)" />
+              <button type="submit" className="warehouse-primary-button" disabled={paymentSaving}>{paymentSaving ? "Đang lưu..." : "Lưu thanh toán"}</button>
+            </form>
+          )}
+          {invoice.payments?.length > 0 && (
+            <div className="warehouse-payment-history">
+              <h3>{"Lịch sử thanh toán nhà cung cấp"}</h3>
+              {invoice.payments.map((payment) => (
+                <div key={payment.id} className="warehouse-payment-history-item">
+                  <strong>{formatCurrency(payment.amount)} · {payment.payment_method === "cash" ? "Tiền mặt" : "Chuyển khoản"}</strong>
+                  <span>{formatDate(payment.paid_at)}{payment.note ? ` · ${payment.note}` : ""}</span>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="warehouse-table-wrap">
             <table className="warehouse-table">
               <thead>
@@ -154,6 +213,8 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = true }) {
     })),
   );
   const [note, setNote] = useState(invoice?.note || "");
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useNotificationState();
@@ -257,6 +318,19 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = true }) {
         );
       productIds.add(item.product_id);
     }
+    const invoiceTotal = items.reduce(
+      (sum, item) => sum + Number(item.quantity) * Number(item.unit_price),
+      0,
+    );
+    const initialPayment = Number(paymentAmount || 0);
+    if (initialPayment > 0) {
+      if (initialPayment < 500)
+        return setError("Số tiền trả nhà cung cấp tối thiểu là 500 đ.");
+      if (initialPayment > invoiceTotal)
+        return setError("Số tiền trả không được vượt quá tổng tiền phiếu nhập.");
+      if (!paymentMethod)
+        return setError("Vui lòng chọn phương thức thanh toán.");
+    }
     try {
       setSaving(true);
       const payload = {
@@ -275,6 +349,8 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = true }) {
           quantity: Number(item.quantity),
           unit_price: Number(item.unit_price),
         })),
+        payment_amount: initialPayment,
+        payment_method: initialPayment > 0 ? paymentMethod : undefined,
       };
       const response = invoice?.id
         ? await authApis().put(
@@ -406,6 +482,32 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = true }) {
                   required
                 />
               </label>
+              {!invoice && (
+                <div className="warehouse-payment-fields">
+                  <label className="warehouse-field">
+                    <span>{"Số tiền trả ngay cho nhà cung cấp (tùy chọn)"}</span>
+                    <MoneyInput
+                      value={paymentAmount}
+                      onChange={setPaymentAmount}
+                      allowZero
+                      allowEmpty
+                      placeholder="0"
+                    />
+                  </label>
+                  <label className="warehouse-field">
+                    <span>{"Phương thức thanh toán"}</span>
+                    <select
+                      value={paymentMethod}
+                      onChange={(event) => setPaymentMethod(event.target.value)}
+                      disabled={!paymentAmount || Number(paymentAmount) <= 0}
+                    >
+                      <option value="">{"Chọn phương thức"}</option>
+                      <option value="cash">{"Tiền mặt"}</option>
+                      <option value="bank_transfer">{"Chuyển khoản"}</option>
+                    </select>
+                  </label>
+                </div>
+              )}
               <div className="warehouse-section-heading">
                 <h3>Sản phẩm nhập</h3>
                 <button type="button" onClick={addItem}>
@@ -528,6 +630,7 @@ function ImportInvoices() {
   const canCreateImports = ["thủ kho", "quản lý"].includes(currentUser.role);
   const canEditImports = ["thủ kho", "kế toán", "quản lý"].includes(currentUser.role);
   const canDeleteImports = currentUser.role === "quản lý";
+  const canPayImports = ["kế toán", "quản lý"].includes(currentUser.role);
 
   const fetchInvoices = useCallback(async () => {
     if (!localStorage.getItem("token"))
@@ -680,6 +783,7 @@ function ImportInvoices() {
           invoice={selected}
           canEdit={canEditImports}
           canDelete={canDeleteImports}
+          canPay={canPayImports}
           onClose={() => setSelected(null)}
           onEdit={(invoice) => {
             setSelected(null);
@@ -688,6 +792,10 @@ function ImportInvoices() {
           onDelete={(invoice) => {
             setDeleteError("");
             setDeletingInvoice(invoice);
+          }}
+          onPaymentSaved={(invoice) => {
+            setSelected(invoice);
+            fetchInvoices();
           }}
         />
       )}

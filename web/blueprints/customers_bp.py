@@ -64,6 +64,7 @@ def get_customer_detail(customer_id):
                 "id": payment.id,
                 "amount": float(payment.amount),
                 "payment_type": payment.payment_type.value,
+                "payment_method": payment.payment_method.value if payment.payment_method else None,
                 "paid_at": payment.paid_at.isoformat(),
                 "note": payment.note,
                 "employee": {
@@ -113,6 +114,7 @@ def customer_payment(customer_id):
         customer_id=customer_id,
         employee_id=request.employee_id,
         amount=data.get("amount"),
+        payment_method=data.get("payment_method"),
         note=data.get("note", "")
     )
 
@@ -127,5 +129,6 @@ def customer_payment(customer_id):
             "debt_amount_new": float(new_debt),
             "payment_amount": float(payment.amount),
             "payment_type": payment.payment_type.value,
+            "payment_method": payment.payment_method.value if payment.payment_method else None,
         }
     }), 200

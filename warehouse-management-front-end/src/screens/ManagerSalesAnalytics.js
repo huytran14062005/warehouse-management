@@ -389,7 +389,7 @@ function ManagerAnalyticsCharts({ report, debtPagination, tablePages, onTablePag
             <div className="manager-chart-table-wrap">
               <table className="manager-chart-table">
                 <thead>
-                  <tr><th>Tháng</th><th>Số đơn</th><th>Số lượng bán</th><th>Doanh thu</th><th>Đã thu</th><th>Doanh thu TB/đơn</th></tr>
+                  <tr><th>Tháng</th><th>Số đơn</th><th>Số lượng bán</th><th>Doanh thu</th><th>Đã thu</th><th>Tiền mặt</th><th>Chuyển khoản</th><th>Chi nhà cung cấp</th><th>Doanh thu TB/đơn</th></tr>
                 </thead>
                 <tbody>
                   {(report.monthly_table || monthlyRows).map((row) => (
@@ -399,6 +399,9 @@ function ManagerAnalyticsCharts({ report, debtPagination, tablePages, onTablePag
                       <td>{quantity(row.sold_quantity)}</td>
                       <td>{money(row.revenue)}</td>
                       <td>{money(row.paid)}</td>
+                      <td>{money(row.cash_paid)}</td>
+                      <td>{money(row.bank_paid)}</td>
+                      <td>{money(row.supplier_paid)}</td>
                       <td>{money(row.average_order_value)}</td>
                     </tr>
                   ))}
@@ -684,6 +687,21 @@ function ManagerSalesAnalytics() {
                 label="Đã thu"
                 value={money(summary.period_paid_total)}
                 onClick={() => scrollToSection("manager-revenue-chart")}
+              />
+              <SummaryCard
+                label="Thu tiền mặt"
+                value={money(summary.customer_cash_paid_total)}
+                onClick={() => scrollToSection("manager-monthly-chart")}
+              />
+              <SummaryCard
+                label="Thu chuyển khoản"
+                value={money(summary.customer_bank_paid_total)}
+                onClick={() => scrollToSection("manager-monthly-chart")}
+              />
+              <SummaryCard
+                label="Đã trả nhà cung cấp"
+                value={money(summary.supplier_paid_total)}
+                onClick={() => scrollToSection("manager-monthly-chart")}
               />
               <SummaryCard
                 label="Biến động công nợ"

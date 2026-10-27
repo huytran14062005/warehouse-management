@@ -47,6 +47,11 @@ class PaymentType(UserEnum):
     OLD_DEBT = "trả nợ cũ"
 
 
+class PaymentMethod(UserEnum):
+    CASH = "cash"
+    BANK_TRANSFER = "bank_transfer"
+
+
 class DamageReportStatus(UserEnum):
     PENDING = "pending"
     APPROVED = "approved"
@@ -88,6 +93,7 @@ class Supplier(BaseModel):
     address = Column(Text, nullable=False)
 
     import_invoices = relationship("ImportInvoice", backref="supplier", lazy=True)
+    supplier_payments = relationship("SupplierPayment", backref="supplier", lazy=True)
 
 
 class Employee(BaseModel):
@@ -229,6 +235,37 @@ class ImportInvoice(BaseModel):
         cascade="all, delete-orphan",
         lazy=True,
     )
+
+    payments = relationship(
+        "SupplierPayment",
+        backref="import_invoice",
+        cascade="all, delete-orphan",
+        lazy=True,
+    )
+
+
+class SupplierPayment(BaseModel):
+    __tablename__ = "supplier_payments"
+    __table_args__ = (
+        CheckConstraint("amount >= 500", name="ck_supplier_payment_amount"),
+        Index("ix_supplier_payments_supplier_date", "supplier_id", "paid_at"),
+        Index("ix_supplier_payments_invoice_date", "import_invoice_id", "paid_at"),
+        Index("ix_supplier_payments_method_date", "payment_method", "paid_at"),
+    )
+
+    amount = Column(Numeric(14, 2), nullable=False)
+    payment_method = Column(
+        Enum(PaymentMethod, values_callable=lambda enum_cls: [item.value for item in enum_cls]),
+        nullable=False,
+    )
+    paid_at = Column(DateTime, nullable=False, default=datetime.now)
+    note = Column(Text, nullable=True)
+
+    supplier_id = Column(Integer, ForeignKey("suppliers.id", ondelete="RESTRICT"), nullable=False, index=True)
+    import_invoice_id = Column(Integer, ForeignKey("import_invoices.id", ondelete="RESTRICT"), nullable=False, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False, index=True)
+
+    employee = relationship("Employee", backref="supplier_payment_records", lazy=True)
 
 
 class ImportInvoiceItem(BaseModel):
@@ -426,6 +463,10 @@ class CustomerPayment(BaseModel):
 
     amount = Column(Numeric(14, 2), nullable=False)
     payment_type = Column(Enum(PaymentType), nullable=False)
+    payment_method = Column(
+        Enum(PaymentMethod, values_callable=lambda enum_cls: [item.value for item in enum_cls]),
+        nullable=True,
+    )
     paid_at = Column(DateTime, nullable=False, default=datetime.now)
     note = Column(Text, nullable=True)
 

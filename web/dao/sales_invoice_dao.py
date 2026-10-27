@@ -15,6 +15,7 @@ def _invoice_load_options():
         selectinload(SalesInvoice.warehouse),
         selectinload(SalesInvoice.created_by_employee),
         selectinload(SalesInvoice.discount_approved_by_employee),
+        selectinload(SalesInvoice.payments),
     )
 
 

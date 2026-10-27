@@ -175,6 +175,7 @@ function Customers() {
   const [paymentsLoading, setPaymentsLoading] = useState(false);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("");
   const [paymentNote, setPaymentNote] = useState("");
   const [paymentError, setPaymentError] = useNotificationState();
   const [paymentSaving, setPaymentSaving] = useState(false);
@@ -440,6 +441,7 @@ function Customers() {
     setDetailError("");
     setShowPaymentForm(false);
     setPaymentError("");
+    setPaymentMethod("");
   }, []);
 
   const handleOldDebtPayment = async (event) => {
@@ -448,6 +450,14 @@ function Customers() {
     const amount = Number(paymentAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
       setPaymentError("Số tiền trả nợ phải lớn hơn 0.");
+      return;
+    }
+    if (amount < 500) {
+      setPaymentError("Số tiền trả nợ tối thiểu là 500 đ.");
+      return;
+    }
+    if (!paymentMethod) {
+      setPaymentError("Vui lòng chọn phương thức thanh toán.");
       return;
     }
     if (amount > Number(detail.customer.debt_amount || 0)) {
@@ -459,6 +469,7 @@ function Customers() {
       setPaymentError("");
       const response = await authApis().post(endpoints.customerPayment(customerId), {
         amount,
+        payment_method: paymentMethod,
         note: paymentNote.trim(),
       });
       const paymentCustomer = response.data?.customer;
@@ -468,6 +479,7 @@ function Customers() {
       } : current);
       setPaymentAmount("");
       setPaymentNote("");
+      setPaymentMethod("");
       setShowPaymentForm(false);
       await fetchCustomers();
       window.dispatchEvent(new Event("pending-requests:refresh"));
@@ -732,13 +744,22 @@ function Customers() {
                             placeholder="Từ 500 đ"
                             required
                           />
+                          <select
+                            value={paymentMethod}
+                            onChange={(event) => setPaymentMethod(event.target.value)}
+                            required
+                          >
+                            <option value="">{"Chọn phương thức thanh toán"}</option>
+                            <option value="cash">{"Tiền mặt"}</option>
+                            <option value="bank_transfer">{"Chuyển khoản"}</option>
+                          </select>
                           <input
                             value={paymentNote}
                             onChange={(event) => setPaymentNote(event.target.value)}
                             placeholder="Ghi chú (không bắt buộc)"
                           />
                           <div className="customer-payment-actions">
-                            <button type="button" onClick={() => { setShowPaymentForm(false); setPaymentError(""); }} disabled={paymentSaving}>Hủy</button>
+                            <button type="button" onClick={() => { setShowPaymentForm(false); setPaymentError(""); setPaymentMethod(""); }} disabled={paymentSaving}>Hủy</button>
                             <button type="submit" disabled={paymentSaving}>{paymentSaving ? "Đang lưu..." : "Lưu thanh toán"}</button>
                           </div>
                         </form>

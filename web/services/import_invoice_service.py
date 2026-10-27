@@ -1,11 +1,13 @@
 from datetime import datetime, time
 import math
+from decimal import Decimal
 from web import app, dao, db
 from web.dao import import_invoice_dao, product_dao
-from web.models import Employee, Product, Supplier, Warehouse
+from web.models import Employee, EmployeeRole, ImportInvoice, PaymentMethod, Product, Supplier, SupplierPayment, Warehouse
 from web.services.exceptions import NotFoundError, ValidationError
 from web.services.validators import require_text, validate_money_amount
 from web.services.authorization import ensure_bounded_items, ensure_warehouse_access
+from web.services.payment_service import parse_payment_method
 
 
 def validate_positive_number(value, field_name):
@@ -134,14 +136,36 @@ def _resolve_supplier(supplier_id, supplier_data=None):
     return supplier
 
 
+def _calculate_import_total(invoice):
+    return sum(
+        Decimal(str(item.quantity)) * Decimal(str(item.unit_price))
+        for item in invoice.items
+    )
+
+
+def _supplier_paid_total(invoice):
+    return sum(Decimal(str(payment.amount)) for payment in invoice.payments)
+
+
+def _validate_supplier_payment(invoice_total, amount, payment_method):
+    amount = validate_money_amount(amount, "Sá»‘ tiá»n tráº£ nhÃ  cung cáº¥p")
+    if amount <= 0:
+        return None
+    payment_method = parse_payment_method(payment_method)
+    if amount > invoice_total:
+        raise ValidationError("Sá»‘ tiá»n tráº£ khÃ´ng Ä‘Æ°á»£c vÆ°á»£t quÃ¡ tá»•ng tiá»n phiáº¿u nháº­p")
+    return {"amount": amount, "payment_method": payment_method, "note": None}
+
+
 def serialize_import_invoice(invoice):
                                                        
     items_data = []
-    total_amount = 0
+    total_decimal = Decimal("0")
 
     for item in invoice.items:
-        item_total = float(item.quantity) * float(item.unit_price)
-        total_amount += item_total
+        item_total_decimal = Decimal(str(item.quantity)) * Decimal(str(item.unit_price))
+        total_decimal += item_total_decimal
+        item_total = float(item_total_decimal)
 
         items_data.append({
             "id": item.id,
@@ -153,6 +177,8 @@ def serialize_import_invoice(invoice):
             "total": item_total
         })
 
+    paid_amount = _supplier_paid_total(invoice)
+    remaining_amount = max(Decimal("0"), total_decimal - paid_amount)
     return {
         "id": invoice.id,
         "imported_at": invoice.imported_at.isoformat() if invoice.imported_at else None,
@@ -173,17 +199,32 @@ def serialize_import_invoice(invoice):
             "role": invoice.created_by_employee.role.value
         },
         "items": items_data,
-        "total_amount": total_amount
+        "total_amount": float(total_decimal),
+        "paid_amount": float(paid_amount),
+        "remaining_amount": float(remaining_amount),
+        "payment_status": "paid" if remaining_amount <= 0 else ("partial" if paid_amount > 0 else "unpaid"),
+        "payments": [
+            {
+                "id": payment.id,
+                "amount": float(payment.amount),
+                "payment_method": payment.payment_method.value,
+                "paid_at": payment.paid_at.isoformat() if payment.paid_at else None,
+                "note": payment.note,
+                "employee_id": payment.employee_id,
+            }
+            for payment in invoice.payments
+        ]
     }
 
 
 def serialize_import_invoice_summary(invoice):
                                                         
-    total_amount = sum(
-        float(item.quantity) * float(item.unit_price) 
+    total_decimal = sum(
+        (Decimal(str(item.quantity)) * Decimal(str(item.unit_price)))
         for item in invoice.items
     )
-    
+    paid_amount = _supplier_paid_total(invoice)
+    remaining_amount = max(Decimal("0"), total_decimal - paid_amount)
     return {
         "id": invoice.id,
         "imported_at": invoice.imported_at.isoformat() if invoice.imported_at else None,
@@ -200,7 +241,10 @@ def serialize_import_invoice_summary(invoice):
             "full_name": invoice.created_by_employee.full_name
         },
         "items_count": len(invoice.items),
-        "total_amount": total_amount,
+        "total_amount": float(total_decimal),
+        "paid_amount": float(paid_amount),
+        "remaining_amount": float(remaining_amount),
+        "payment_status": "paid" if remaining_amount <= 0 else ("partial" if paid_amount > 0 else "unpaid"),
         "note": invoice.note
     }
 
@@ -240,7 +284,7 @@ def get_import_invoice_detail_service(invoice_id):
     return invoice
 
 
-def create_import_invoice_service(employee_id, warehouse_id, supplier_id, supplier_data=None, note="", items=None, is_return=False, imported_at=None):
+def create_import_invoice_service(employee_id, warehouse_id, supplier_id, supplier_data=None, note="", items=None, is_return=False, imported_at=None, payment_amount=0, payment_method=None):
        
                     
     if not items or len(items) == 0:
@@ -267,6 +311,18 @@ def create_import_invoice_service(employee_id, warehouse_id, supplier_id, suppli
     supplier = _resolve_supplier(supplier_id, supplier_data)
     supplier_id = supplier.id
 
+    invoice_total = sum(
+        Decimal(str(item["quantity"])) * Decimal(str(item["unit_price"]))
+        for item in validated_items
+    )
+    payment = _validate_supplier_payment(invoice_total, payment_amount, payment_method)
+    if payment:
+        if is_return:
+            raise ValidationError("Phiếu trả hàng không được ghi nhận khoản trả tiền cho nhà cung cấp")
+        if employee.role not in {EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY}:
+            raise ValidationError("Chá»‰ káº¿ toÃ¡n hoáº·c quáº£n lÃ½ má»›i Ä‘Æ°á»£c ghi nháº­n thanh toÃ¡n nhÃ  cung cáº¥p")
+        payment["note"] = "Thanh toÃ¡n khi nháº­p hÃ ng"
+
                                 
     final_note = note.strip() if note else ""
     if is_return:
@@ -279,10 +335,38 @@ def create_import_invoice_service(employee_id, warehouse_id, supplier_id, suppli
         employee_id=employee_id,
         imported_at=imported_at,
         note=final_note,
-        items=validated_items
+        items=validated_items,
+        payment=payment,
     )
 
     return invoice
+
+
+def record_supplier_payment_service(invoice_id, employee_id, amount, payment_method, note=""):
+    # Serialize concurrent payments for the same invoice so two requests cannot
+    # both observe the same remaining balance and overpay the supplier.
+    invoice = ImportInvoice.query.with_for_update().filter_by(id=invoice_id).first()
+    if not invoice:
+        raise NotFoundError("Phiáº¿u nháº­p khÃ´ng tá»“n táº¡i")
+
+    invoice_total = _calculate_import_total(invoice)
+    paid_amount = _supplier_paid_total(invoice)
+    remaining_amount = invoice_total - paid_amount
+    payment = _validate_supplier_payment(remaining_amount, amount, payment_method)
+    if not payment:
+        raise ValidationError("Sá»‘ tiá»n tráº£ nhÃ  cung cáº¥p pháº£i lá»›n hÆ¡n hoáº·c báº±ng 500")
+    payment["note"] = str(note or "").strip() or None
+    payment_record = SupplierPayment(
+        supplier_id=invoice.supplier_id,
+        import_invoice_id=invoice.id,
+        employee_id=employee_id,
+        amount=payment["amount"],
+        payment_method=payment["payment_method"],
+        note=payment["note"],
+    )
+    db.session.add(payment_record)
+    db.session.commit()
+    return import_invoice_dao.get_import_invoice_by_id(invoice.id), payment_record
 
 
 def update_import_invoice_service(invoice_id, employee_id, warehouse_id, supplier_id, supplier_data=None, note="", items=None, is_return=False, imported_at=None):
@@ -291,6 +375,9 @@ def update_import_invoice_service(invoice_id, employee_id, warehouse_id, supplie
     invoice = import_invoice_dao.get_import_invoice_by_id(invoice_id)
     if not invoice:
         raise NotFoundError("Phiếu nhập không tồn tại")
+
+    if invoice.payments:
+        raise ValidationError("KhÃ´ng thá»ƒ sá»­a phiáº¿u nháº­p Ä‘Ã£ phÃ¡t sinh thanh toÃ¡n cho nhÃ  cung cáº¥p")
 
     # Authorize the existing document before accepting a client-supplied
     # warehouse_id. Otherwise a warehouse-scoped employee could edit a
@@ -390,6 +477,9 @@ def delete_import_invoice_service(invoice_id):
         raise NotFoundError("Phiếu nhập không tồn tại")
 
                                                           
+    if invoice.payments:
+        raise ValidationError("KhÃ´ng thá»ƒ xÃ³a phiáº¿u nháº­p Ä‘Ã£ phÃ¡t sinh thanh toÃ¡n cho nhÃ  cung cáº¥p")
+
     stock_by_product = product_dao.calculate_stock_for_items_at_warehouse(
         [item.product_id for item in invoice.items],
         invoice.warehouse_id,

@@ -109,6 +109,7 @@ def create_sales_invoice():
         promotion_id=data.get("promotion_id"),
         sale_source=data.get("sale_source"),
         payment_amount=data.get("payment_amount", 0),
+        payment_method=data.get("payment_method"),
         payment_due_date=data.get("payment_due_date"),
         stock_employee_id=data.get("stock_employee_id"),
     )
@@ -226,6 +227,7 @@ def complete_sales_invoice(invoice_id):
         invoice_id=invoice_id,
         employee_id=request.employee_id,
         payment_amount=data.get("payment_amount", 0),
+        payment_method=data.get("payment_method"),
         payment_due_date=data.get("payment_due_date"),
     )
 

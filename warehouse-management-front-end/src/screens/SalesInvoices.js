@@ -225,6 +225,7 @@ function SalesInvoiceDetail({
   const [completionPayment, setCompletionPayment] = useState(
     String(invoice.paid_amount || ""),
   );
+  const [completionPaymentMethod, setCompletionPaymentMethod] = useState("");
   const [paymentDueDate, setPaymentDueDate] = useState(
     invoice.payment_due_date || "",
   );
@@ -417,6 +418,16 @@ function SalesInvoiceDetail({
               )}
             </div>
             <p className="sales-payment-help">{paymentMessage}</p>
+            {invoice.payments?.length > 0 && (
+              <div className="sales-payment-history">
+                {invoice.payments.map((payment) => (
+                  <div key={payment.id}>
+                    <span>{formatCurrency(payment.amount)} · {payment.payment_method === "cash" ? "Tiền mặt" : payment.payment_method === "bank_transfer" ? "Chuyển khoản" : "Chưa xác định"}</span>
+                    <small>{formatDateTime(payment.paid_at)}</small>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
           {canManageDueDate && isCompletedStatus(invoice.status) && remainingAmount > 0 && (
             <div className="sales-due-date-editor">
@@ -530,6 +541,15 @@ function SalesInvoiceDetail({
                 placeholder="Khách thanh toán từ 500 đ"
                 aria-label="Số tiền khách thanh toán"
               />
+              <select
+                value={completionPaymentMethod}
+                onChange={(event) => setCompletionPaymentMethod(event.target.value)}
+                required={Number(completionPayment) > 0}
+              >
+                <option value="">{"Phương thức thanh toán"}</option>
+                <option value="cash">{"Tiền mặt"}</option>
+                <option value="bank_transfer">{"Chuyển khoản"}</option>
+              </select>
               {(Number(invoice.final_amount || 0) - (Number(completionPayment) || 0)) > 0 && (
                 <label className="sales-completion-due-date">
                   <span>Hạn thanh toán</span>
@@ -544,7 +564,7 @@ function SalesInvoiceDetail({
               )}
               <button
                 type="button"
-                onClick={() => onComplete(Number(completionPayment) || 0, paymentDueDate)}
+                onClick={() => onComplete(Number(completionPayment) || 0, paymentDueDate, completionPaymentMethod)}
                 disabled={actionLoading}
               >
                 Hoàn thành đơn
@@ -622,6 +642,7 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
   const [paymentAmount, setPaymentAmount] = useState(
     String(invoice?.paid_amount || ""),
   );
+  const [paymentMethod, setPaymentMethod] = useState("");
   const [paymentDueDate, setPaymentDueDate] = useState(
     invoice?.payment_due_date || "",
   );
@@ -963,6 +984,10 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
       setFormError("Vui lòng chọn hạn thanh toán cho phần tiền khách còn nợ.");
       return;
     }
+    if (saleSource === "employee_stock" && enteredPayment > 0 && !paymentMethod) {
+      setFormError("Vui lòng chọn phương thức thanh toán.");
+      return;
+    }
 
     try {
       setSaving(true);
@@ -986,6 +1011,7 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
         promotion_id: selectedPromotion?.id || null,
         sale_source: saleSource,
         payment_amount: saleSource === "employee_stock" ? enteredPayment : 0,
+        payment_method: saleSource === "employee_stock" && enteredPayment > 0 ? paymentMethod : null,
         payment_due_date: paymentDueDate || null,
         items: items.map((item) => ({
           product_id: Number(item.productId),
@@ -1419,6 +1445,20 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                     />
                   </label>
                 )}
+                {saleSource === "employee_stock" && (
+                  <label className="sales-editor-field">
+                    <span>{"Phương thức thanh toán"}</span>
+                    <select
+                      value={paymentMethod}
+                      onChange={(event) => setPaymentMethod(event.target.value)}
+                      required={Number(paymentAmount) > 0}
+                    >
+                      <option value="">{"Chọn phương thức"}</option>
+                      <option value="cash">{"Tiền mặt"}</option>
+                      <option value="bank_transfer">{"Chuyển khoản"}</option>
+                    </select>
+                  </label>
+                )}
                 {saleSource === "employee_stock" &&
                   (Number(paymentAmount) || 0) < Math.max(0, subtotal - discount) && (
                     <label className="sales-editor-field">
@@ -1771,14 +1811,18 @@ function SalesInvoices() {
     }
   };
 
-  const completeInvoice = async (paymentAmount, paymentDueDate) => {
+  const completeInvoice = async (paymentAmount, paymentDueDate, paymentMethod) => {
     if (!selectedInvoice) return;
     try {
       setActionLoading(true);
       setActionError("");
       const response = await authApis().put(
         endpoints.completeSalesInvoice(selectedInvoice.id),
-        { payment_amount: paymentAmount, payment_due_date: paymentDueDate || null },
+        {
+          payment_amount: paymentAmount,
+          payment_method: paymentMethod || null,
+          payment_due_date: paymentDueDate || null,
+        },
       );
       notifyInventoryChanged();
       setSelectedInvoice(response.data?.invoice || selectedInvoice);

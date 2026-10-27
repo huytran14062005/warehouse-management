@@ -1,5 +1,5 @@
 from datetime import date
-from sqlalchemy import func, literal
+from sqlalchemy import case, func, literal
 from sqlalchemy.orm import selectinload
 
 from web import db, app
@@ -12,6 +12,8 @@ from web.models import (
     SalesInvoice,
     SalesInvoiceItem,
     SalesArea,
+    SupplierPayment,
+    PaymentMethod,
 )
 from web.services.exceptions import ValidationError
 from web.services.reports_service import parse_date
@@ -95,9 +97,30 @@ def _build_monthly_trend(from_date, to_date):
             payment_year.label("year"),
             payment_month.label("month"),
             func.coalesce(func.sum(CustomerPayment.amount), 0).label("paid"),
+            func.coalesce(func.sum(case((CustomerPayment.payment_method == PaymentMethod.CASH, CustomerPayment.amount), else_=0)), 0).label("cash_paid"),
+            func.coalesce(func.sum(case((CustomerPayment.payment_method == PaymentMethod.BANK_TRANSFER, CustomerPayment.amount), else_=0)), 0).label("bank_paid"),
         )
         .filter(*payment_filters)
         .group_by(payment_year, payment_month)
+        .all()
+    )
+    supplier_payment_year = func.year(SupplierPayment.paid_at)
+    supplier_payment_month = func.month(SupplierPayment.paid_at)
+    supplier_payment_filters = []
+    if from_date:
+        supplier_payment_filters.append(SupplierPayment.paid_at >= from_date)
+    if to_date:
+        supplier_payment_filters.append(SupplierPayment.paid_at <= to_date)
+    supplier_payment_rows = (
+        db.session.query(
+            supplier_payment_year.label("year"),
+            supplier_payment_month.label("month"),
+            func.coalesce(func.sum(SupplierPayment.amount), 0).label("paid"),
+            func.coalesce(func.sum(case((SupplierPayment.payment_method == PaymentMethod.CASH, SupplierPayment.amount), else_=0)), 0).label("cash_paid"),
+            func.coalesce(func.sum(case((SupplierPayment.payment_method == PaymentMethod.BANK_TRANSFER, SupplierPayment.amount), else_=0)), 0).label("bank_paid"),
+        )
+        .filter(*supplier_payment_filters)
+        .group_by(supplier_payment_year, supplier_payment_month)
         .all()
     )
 
@@ -116,6 +139,26 @@ def _build_monthly_trend(from_date, to_date):
         f"{int(row.year):04d}-{int(row.month):02d}": float(row.paid or 0)
         for row in payment_rows
     }
+    cash_paid_by_month = {
+        f"{int(row.year):04d}-{int(row.month):02d}": float(row.cash_paid or 0)
+        for row in payment_rows
+    }
+    bank_paid_by_month = {
+        f"{int(row.year):04d}-{int(row.month):02d}": float(row.bank_paid or 0)
+        for row in payment_rows
+    }
+    supplier_paid_by_month = {
+        f"{int(row.year):04d}-{int(row.month):02d}": float(row.paid or 0)
+        for row in supplier_payment_rows
+    }
+    supplier_cash_paid_by_month = {
+        f"{int(row.year):04d}-{int(row.month):02d}": float(row.cash_paid or 0)
+        for row in supplier_payment_rows
+    }
+    supplier_bank_paid_by_month = {
+        f"{int(row.year):04d}-{int(row.month):02d}": float(row.bank_paid or 0)
+        for row in supplier_payment_rows
+    }
 
     def to_month_start(value):
         if not value:
@@ -125,7 +168,12 @@ def _build_monthly_trend(from_date, to_date):
 
     start = to_month_start(from_date)
     end = to_month_start(to_date)
-    observed_keys = set(revenue_by_month) | set(quantity_by_month) | set(paid_by_month)
+    observed_keys = (
+        set(revenue_by_month)
+        | set(quantity_by_month)
+        | set(paid_by_month)
+        | set(supplier_paid_by_month)
+    )
     if not start and observed_keys:
         start = date.fromisoformat(min(observed_keys) + "-01")
     if not end and observed_keys:
@@ -151,6 +199,11 @@ def _build_monthly_trend(from_date, to_date):
             "sold_quantity": quantity_by_month.get(month_key, 0),
             "revenue": revenue_value,
             "paid": paid_by_month.get(month_key, 0.0),
+            "cash_paid": cash_paid_by_month.get(month_key, 0.0),
+            "bank_paid": bank_paid_by_month.get(month_key, 0.0),
+            "supplier_paid": supplier_paid_by_month.get(month_key, 0.0),
+            "supplier_cash_paid": supplier_cash_paid_by_month.get(month_key, 0.0),
+            "supplier_bank_paid": supplier_bank_paid_by_month.get(month_key, 0.0),
             "average_order_value": revenue_value / orders if orders else 0,
         })
     peak = max(rows, key=lambda row: row["revenue"], default=None)
@@ -554,6 +607,11 @@ def get_manager_sales_analytics_service(
             "net_debt_change": total_period_sales - total_period_paid,
             "current_stock_total": total_current_stock,
             "period_sold_quantity": total_period_sold,
+            "customer_cash_paid_total": sum(row.get("cash_paid", 0) for row in monthly_trend),
+            "customer_bank_paid_total": sum(row.get("bank_paid", 0) for row in monthly_trend),
+            "supplier_paid_total": sum(row.get("supplier_paid", 0) for row in monthly_trend),
+            "supplier_cash_paid_total": sum(row.get("supplier_cash_paid", 0) for row in monthly_trend),
+            "supplier_bank_paid_total": sum(row.get("supplier_bank_paid", 0) for row in monthly_trend),
         },
         "debts": paged_debts,
         "debt_chart": debt_chart_rows,

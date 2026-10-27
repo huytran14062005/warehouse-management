@@ -23,6 +23,7 @@ from web.models import (
 from web.services.exceptions import AppError, NotFoundError, ValidationError
 from web.services.authorization import ensure_bounded_items, ensure_warehouse_access
 from web.services.validators import require_text, validate_money_amount, validate_phone
+from web.services.payment_service import parse_payment_method
 from web.services.sales_area_service import resolve_sales_area_id
 from web.services.promotion_service import (
     append_approval_note,
@@ -308,7 +309,7 @@ def _consume_employee_stock(employee_id, items):
         )
 
 
-def _apply_invoice_payment(invoice, employee_id, payment_amount, final_amount):
+def _apply_invoice_payment(invoice, employee_id, payment_amount, final_amount, payment_method=None):
     payment_amount = validate_money(payment_amount, "Số tiền khách thanh toán")
     already_paid = Decimal(str(invoice.paid_amount or 0))
     if already_paid > 0:
@@ -319,6 +320,7 @@ def _apply_invoice_payment(invoice, employee_id, payment_amount, final_amount):
     if payment_amount > remaining_before_payment:
         raise ValidationError("Số tiền thanh toán vượt quá số tiền còn lại của đơn")
 
+    payment_method = parse_payment_method(payment_method, required=payment_amount > 0)
     customer = (
         Customer.query
         .filter(Customer.id == invoice.customer_id)
@@ -343,6 +345,7 @@ def _apply_invoice_payment(invoice, employee_id, payment_amount, final_amount):
                 employee_id=employee_id,
                 amount=payment_amount,
                 payment_type=PaymentType.INVOICE,
+                payment_method=payment_method,
                 note="Thanh toán khi hoàn thành đơn hàng",
             )
         )
@@ -420,7 +423,18 @@ def serialize_sales_invoice(invoice):
         },
         "items": items_data,
         "total_amount": total_amount,
-        "final_amount": final_amount
+        "final_amount": final_amount,
+        "payments": [
+            {
+                "id": payment.id,
+                "amount": float(payment.amount),
+                "payment_type": payment.payment_type.value,
+                "payment_method": payment.payment_method.value if payment.payment_method else None,
+                "paid_at": payment.paid_at.isoformat() if payment.paid_at else None,
+                "note": payment.note,
+            }
+            for payment in invoice.payments
+        ],
     }
 
 
@@ -436,6 +450,7 @@ def create_sales_invoice_service(
     promotion_id=None,
     sale_source=None,
     payment_amount=0,
+    payment_method=None,
     payment_due_date=None,
     stock_employee_id=None,
 ):
@@ -545,7 +560,7 @@ def create_sales_invoice_service(
                 payment_due_date=clean_payment_due_date if payment_amount < final_amount else None,
                 commit=False,
             )
-            _apply_invoice_payment(invoice, employee_id, payment_amount, final_amount)
+            _apply_invoice_payment(invoice, employee_id, payment_amount, final_amount, payment_method)
             db.session.commit()
             return dao.get_sales_invoice_by_id(invoice.id)
         except Exception:
@@ -678,7 +693,7 @@ def update_sales_invoice_service(invoice_id, employee_id, warehouse_id, customer
     return updated_invoice
 
 
-def complete_sales_invoice_service(invoice_id, employee_id, payment_amount=0, payment_due_date=None):
+def complete_sales_invoice_service(invoice_id, employee_id, payment_amount=0, payment_method=None, payment_due_date=None):
        
                               
     invoice = dao.get_sales_invoice_by_id(invoice_id)
@@ -743,7 +758,7 @@ def complete_sales_invoice_service(invoice_id, employee_id, payment_amount=0, pa
         )
         invoice.status = InvoiceStatus.COMPLETED
         invoice.payment_due_date = clean_payment_due_date if remaining_amount > 0 else None
-        _apply_invoice_payment(invoice, employee_id, clean_payment_amount, final_amount)
+        _apply_invoice_payment(invoice, employee_id, clean_payment_amount, final_amount, payment_method)
         db.session.commit()
         return dao.get_sales_invoice_by_id(invoice.id)
     except AppError:

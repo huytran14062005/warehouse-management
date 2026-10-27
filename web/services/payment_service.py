@@ -8,6 +8,7 @@ from web.models import (
     Employee,
     InvoiceStatus,
     PaymentStatus,
+    PaymentMethod,
     PaymentType,
     SalesInvoice,
 )
@@ -17,6 +18,17 @@ from web.services.validators import validate_money_amount
 
 def validate_payment_amount(value, field_name="Số tiền thanh toán"):
     return validate_money_amount(value, field_name)
+
+
+def parse_payment_method(value, required=True):
+    if value in (None, ""):
+        if required:
+            raise ValidationError("Vui lÃ²ng chá»n phÆ°Æ¡ng thá»©c thanh toÃ¡n")
+        return None
+    try:
+        return value if isinstance(value, PaymentMethod) else PaymentMethod(str(value).strip().lower())
+    except ValueError:
+        raise ValidationError("PhÆ°Æ¡ng thá»©c thanh toÃ¡n khÃ´ng há»£p lá»‡")
 
 
 def _allocate_payment_to_open_invoices(customer_id, payment_amount):
@@ -65,7 +77,7 @@ def _allocate_payment_to_open_invoices(customer_id, payment_amount):
             break
 
 
-def record_old_debt_payment_service(customer_id, employee_id, amount, note=""):
+def record_old_debt_payment_service(customer_id, employee_id, amount, payment_method=None, note=""):
     payment_amount = validate_payment_amount(amount)
     if payment_amount <= 0:
         raise ValidationError("Số tiền trả nợ phải lớn hơn 0")
@@ -81,6 +93,7 @@ def record_old_debt_payment_service(customer_id, employee_id, amount, note=""):
     if payment_amount > Decimal(str(customer.debt_amount)):
         raise ValidationError("Số tiền trả vượt quá công nợ hiện tại")
 
+    payment_method = parse_payment_method(payment_method)
     collector = Employee.query.get(employee_id)
     if not collector:
         raise NotFoundError("Nhân viên không tồn tại")
@@ -94,6 +107,7 @@ def record_old_debt_payment_service(customer_id, employee_id, amount, note=""):
             employee_id=collector.id,
             amount=payment_amount,
             payment_type=PaymentType.OLD_DEBT,
+            payment_method=payment_method,
             note=str(note or "").strip() or None,
         )
         db.session.add(payment)

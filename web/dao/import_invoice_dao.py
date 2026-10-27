@@ -4,7 +4,7 @@ from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from web import app, db
-from web.models import ImportInvoice, ImportInvoiceItem, Supplier
+from web.models import ImportInvoice, ImportInvoiceItem, Supplier, SupplierPayment
 
 
 def _invoice_load_options():
@@ -13,6 +13,7 @@ def _invoice_load_options():
         selectinload(ImportInvoice.warehouse),
         selectinload(ImportInvoice.supplier),
         selectinload(ImportInvoice.created_by_employee),
+        selectinload(ImportInvoice.payments),
     )
 
 
@@ -81,7 +82,7 @@ def get_import_invoice_by_id(invoice_id):
     )
 
 
-def create_import_invoice(warehouse_id, supplier_id, employee_id, note, items, imported_at=None):
+def create_import_invoice(warehouse_id, supplier_id, employee_id, note, items, imported_at=None, payment=None):
        
     try:
                      
@@ -104,6 +105,16 @@ def create_import_invoice(warehouse_id, supplier_id, employee_id, note, items, i
                 unit_price=item_data["unit_price"]
             )
             db.session.add(item)
+
+        if payment:
+            db.session.add(SupplierPayment(
+                supplier_id=supplier_id,
+                import_invoice_id=invoice.id,
+                employee_id=employee_id,
+                amount=payment["amount"],
+                payment_method=payment["payment_method"],
+                note=payment.get("note"),
+            ))
 
         db.session.commit()
 
