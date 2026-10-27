@@ -2,16 +2,19 @@ from flask import Blueprint, jsonify, request
 
 from web.blueprints.api_errors import handle_api_errors
 from web.middleware.auth_middleware import verify_role, verify_token
-from web.models import Employee, EmployeeRole
+from web.models import Employee, EmployeeRole, StockTransfer
+from web.services.authorization import ensure_warehouse_access, scoped_warehouse_id
+from web.services.exceptions import NotFoundError
 from web.services.stock_transfer_service import (
     create_stock_transfer_service,
+    get_stock_transfer_detail_service,
     get_stock_transfers_list_service,
     get_sales_employees_service,
     serialize_employee_stock,
     serialize_stock_transfer,
+    serialize_stock_transfer_summary,
 )
 from web.utils.pagination import build_pagination
-from web.services.authorization import scoped_warehouse_id
 
 
 stock_transfers_bp = Blueprint("stock_transfers", __name__)
@@ -71,8 +74,38 @@ def get_stock_transfers_list():
         warehouse_id=scoped_warehouse_id(request.employee_id, request.args.get("warehouse_id")),
     )
     return jsonify({
-        "transfers": [serialize_stock_transfer(transfer) for transfer in transfers],
+        "transfers": [
+            serialize_stock_transfer_summary(transfer, items_count, total_quantity)
+            for transfer, items_count, total_quantity in transfers
+        ],
         "pagination": build_pagination(page, per_page, total),
+    }), 200
+
+
+@stock_transfers_bp.route("/api/stock-transfers/<int:transfer_id>", methods=["GET"])
+@verify_token
+@verify_role(EmployeeRole.THU_KHO, EmployeeRole.QUAN_LY)
+@handle_api_errors
+def get_stock_transfer_detail(transfer_id):
+    transfer = StockTransfer.query.get(transfer_id)
+    if not transfer:
+        raise NotFoundError("Phiếu điều chuyển không tồn tại")
+    ensure_warehouse_access(request.employee_id, transfer.warehouse_id)
+    transfer, items, total, all_items_count, total_quantity, page, per_page = get_stock_transfer_detail_service(
+        transfer_id,
+        page_value=request.args.get("page"),
+        per_page_value=request.args.get("per_page"),
+        keyword=request.args.get("keyword"),
+    )
+    return jsonify({
+        "transfer": serialize_stock_transfer(
+            transfer,
+            items=items,
+            items_count=all_items_count,
+            total_quantity=total_quantity,
+        ),
+        "pagination": build_pagination(page, per_page, total),
+        "total_items_count": all_items_count,
     }), 200
 
 

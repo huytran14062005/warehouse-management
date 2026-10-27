@@ -31,6 +31,7 @@ export const endpoints = {
   employeeStock: "/employee-stock/me",
   employeeStockById: (employeeId) => `/employee-stock/${employeeId}`,
   stockTransfers: "/stock-transfers",
+  stockTransferDetail: (transferId) => `/stock-transfers/${transferId}`,
   suppliers: "/suppliers",
   importInvoices: "/import-invoices",
   importInvoiceDetail: (invoiceId) => `/import-invoices/${invoiceId}`,

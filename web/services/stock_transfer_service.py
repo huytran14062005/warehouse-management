@@ -1,5 +1,6 @@
 import math
 
+from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 
 from web import app, dao, db
@@ -22,29 +23,96 @@ def get_stock_transfers_list_service(page_value=None, per_page_value=None, wareh
         per_page_value,
         app.config.get("APPLICATION_SIZE", 10),
     ), app.config.get("MAX_PAGE_SIZE", 100))
-    query = (
-        StockTransfer.query
+    filters = []
+    if warehouse_id:
+        filters.append(StockTransfer.warehouse_id == warehouse_id)
+
+    total = StockTransfer.query.filter(*filters).count()
+    item_summary = (
+        db.session.query(
+            StockTransferItem.stock_transfer_id.label("transfer_id"),
+            func.count(StockTransferItem.id).label("items_count"),
+            func.coalesce(func.sum(StockTransferItem.quantity), 0).label("total_quantity"),
+        )
+        .group_by(StockTransferItem.stock_transfer_id)
+        .subquery()
+    )
+    rows = (
+        db.session.query(
+            StockTransfer,
+            func.coalesce(item_summary.c.items_count, 0).label("items_count"),
+            func.coalesce(item_summary.c.total_quantity, 0).label("total_quantity"),
+        )
+        .outerjoin(item_summary, item_summary.c.transfer_id == StockTransfer.id)
         .options(
-            selectinload(StockTransfer.items).selectinload(StockTransferItem.product),
             selectinload(StockTransfer.recipient_employee),
             selectinload(StockTransfer.created_by_employee),
         )
+        .filter(*filters)
         .order_by(StockTransfer.transferred_at.desc(), StockTransfer.id.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
     )
-    if warehouse_id:
-        query = query.filter(StockTransfer.warehouse_id == warehouse_id)
-    total = query.count()
-    transfers = query.offset((page - 1) * per_page).limit(per_page).all()
-    return transfers, total, page, per_page
+    return rows, total, page, per_page
 
 
-def serialize_stock_transfer(transfer):
+def serialize_stock_transfer_summary(transfer, items_count, total_quantity):
     return {
         "id": transfer.id,
         "transferred_at": transfer.transferred_at.isoformat() if transfer.transferred_at else None,
         "employee_name": transfer.recipient_employee.full_name,
         "created_by": transfer.created_by_employee.full_name,
-        "total_quantity": sum(int(item.quantity) for item in transfer.items),
+        "items_count": int(items_count or 0),
+        "total_quantity": int(total_quantity or 0),
+        "note": transfer.note,
+    }
+
+
+def get_stock_transfer_detail_service(transfer_id, page_value=None, per_page_value=None, keyword=None):
+    transfer = (
+        StockTransfer.query
+        .options(
+            selectinload(StockTransfer.recipient_employee),
+            selectinload(StockTransfer.created_by_employee),
+        )
+        .get(transfer_id)
+    )
+    if not transfer:
+        raise NotFoundError("Phiếu điều chuyển không tồn tại")
+
+    page = _parse_positive_int(page_value, 1)
+    per_page = min(_parse_positive_int(per_page_value, app.config.get("APPLICATION_SIZE", 10)), app.config.get("MAX_PAGE_SIZE", 100))
+    query = (
+        StockTransferItem.query
+        .options(selectinload(StockTransferItem.product))
+        .filter(StockTransferItem.stock_transfer_id == transfer.id)
+    )
+    all_items_count = query.count()
+    clean_keyword = str(keyword or "").strip()
+    if clean_keyword:
+        query = query.join(StockTransferItem.product).filter(Product.name.ilike(f"%{clean_keyword}%"))
+
+    total = query.count()
+    total_quantity = (
+        db.session.query(func.coalesce(func.sum(StockTransferItem.quantity), 0))
+        .filter(StockTransferItem.stock_transfer_id == transfer.id)
+        .scalar()
+        or 0
+    )
+    items = query.order_by(StockTransferItem.id.asc()).offset((page - 1) * per_page).limit(per_page).all()
+    return transfer, items, total, all_items_count, total_quantity, page, per_page
+
+
+def serialize_stock_transfer(transfer, items=None, items_count=None, total_quantity=None):
+    detail_items = list(transfer.items if items is None else items)
+    return {
+        "id": transfer.id,
+        "transferred_at": transfer.transferred_at.isoformat() if transfer.transferred_at else None,
+        "employee_name": transfer.recipient_employee.full_name,
+        "created_by": transfer.created_by_employee.full_name,
+        "total_quantity": int(total_quantity if total_quantity is not None else sum(int(item.quantity) for item in detail_items)),
+        "items_count": int(items_count if items_count is not None else len(detail_items)),
         "note": transfer.note,
         "items": [
             {
@@ -53,7 +121,7 @@ def serialize_stock_transfer(transfer):
                 "quantity": int(item.quantity),
                 "unit": item.product.unit,
             }
-            for item in transfer.items
+            for item in detail_items
         ],
     }
 

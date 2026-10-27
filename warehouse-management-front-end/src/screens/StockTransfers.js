@@ -18,12 +18,6 @@ function formatDate(value) {
   return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
 }
 
-function formatTransferProducts(transfer) {
-  return (transfer.items || [])
-    .map((item) => `${item.product_name} (${item.quantity})`)
-    .join(", ") || "—";
-}
-
 function StockTransfers() {
   const [employees, setEmployees] = useState([]);
   const [products, setProducts] = useState([]);
@@ -41,6 +35,14 @@ function StockTransfers() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [productRequestName, setProductRequestName] = useState("");
   const [productRequestOpen, setProductRequestOpen] = useState(false);
+  const [detailTransfer, setDetailTransfer] = useState(null);
+  const [detailItems, setDetailItems] = useState([]);
+  const [detailPagination, setDetailPagination] = useState(null);
+  const [detailPage, setDetailPage] = useState(1);
+  const [detailKeywordInput, setDetailKeywordInput] = useState("");
+  const [detailKeyword, setDetailKeyword] = useState("");
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -92,6 +94,54 @@ function StockTransfers() {
       cancelled = true;
     };
   }, [transfersPage]);
+
+  useEffect(() => {
+    if (!detailTransfer?.id) return undefined;
+    let cancelled = false;
+    const loadDetail = async () => {
+      try {
+        setDetailLoading(true);
+        setDetailError("");
+        const response = await authApis().get(
+          endpoints.stockTransferDetail(detailTransfer.id),
+          { params: { page: detailPage, per_page: 10, keyword: detailKeyword || undefined } },
+        );
+        if (cancelled) return;
+        setDetailItems(response.data?.transfer?.items || []);
+        setDetailPagination(response.data?.pagination || null);
+        setDetailTransfer((current) => ({
+          ...current,
+          ...response.data?.transfer,
+        }));
+      } catch (requestError) {
+        if (!cancelled) setDetailError(getApiError(requestError));
+      } finally {
+        if (!cancelled) setDetailLoading(false);
+      }
+    };
+    loadDetail();
+    return () => {
+      cancelled = true;
+    };
+  }, [detailTransfer?.id, detailPage, detailKeyword]);
+
+  const openTransferDetail = (transfer) => {
+    setDetailTransfer(transfer);
+    setDetailItems([]);
+    setDetailPagination(null);
+    setDetailPage(1);
+    setDetailKeywordInput("");
+    setDetailKeyword("");
+    setDetailError("");
+  };
+
+  const closeTransferDetail = () => {
+    if (detailLoading) return;
+    setDetailTransfer(null);
+    setDetailItems([]);
+    setDetailPagination(null);
+    setDetailError("");
+  };
 
   const updateItem = (index, field, value) => {
     setItems((current) =>
@@ -360,6 +410,58 @@ function StockTransfers() {
         />
       )}
 
+      {detailTransfer && (
+        <div className="warehouse-modal-overlay">
+          <div
+            className="warehouse-modal stock-transfer-detail-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="stock-transfer-detail-title"
+          >
+            <div className="warehouse-modal-header">
+              <div>
+                <p className="stock-transfer-detail-kicker">CHI TIẾT PHIẾU ĐIỀU CHUYỂN</p>
+                <h2 id="stock-transfer-detail-title">Phiếu #{detailTransfer.id}</h2>
+              </div>
+              <button type="button" className="warehouse-modal-close" onClick={closeTransferDetail} aria-label="Đóng chi tiết phiếu">×</button>
+            </div>
+            <div className="warehouse-modal-body stock-transfer-detail-body">
+              <div className="stock-transfer-detail-summary">
+                <div><span>Ngày điều chuyển</span><strong>{formatDate(detailTransfer.transferred_at)}</strong></div>
+                <div><span>Nhân viên nhận</span><strong>{detailTransfer.employee_name || "—"}</strong></div>
+                <div><span>Số mặt hàng</span><strong>{detailTransfer.items_count ?? detailPagination?.total ?? 0}</strong></div>
+                <div><span>Tổng số lượng</span><strong>{detailTransfer.total_quantity ?? 0}</strong></div>
+              </div>
+              {detailTransfer.note ? <div className="stock-transfer-detail-note"><span>Ghi chú</span><p>{detailTransfer.note}</p></div> : null}
+              <form className="stock-transfer-detail-toolbar" onSubmit={(event) => { event.preventDefault(); setDetailPage(1); setDetailKeyword(detailKeywordInput.trim()); }}>
+                <div>
+                  <h3>Danh sách mặt hàng</h3>
+                  <span>{detailPagination?.total ? `Hiển thị ${detailPagination.total} mặt hàng phù hợp` : "Tra cứu từng mặt hàng trong phiếu"}</span>
+                </div>
+                <div className="stock-transfer-detail-search">
+                  <input type="search" value={detailKeywordInput} onChange={(event) => setDetailKeywordInput(event.target.value)} placeholder="Tìm theo tên sản phẩm" aria-label="Tìm sản phẩm trong phiếu điều chuyển" />
+                  <button type="submit">Tìm kiếm</button>
+                </div>
+              </form>
+              <AutoDismissMessage message={detailError} className="stock-transfers-alert" />
+              {detailLoading ? <Skeleton rows={6} columns={4} /> : detailItems.length === 0 ? <div className="stock-transfers-state">Không tìm thấy mặt hàng phù hợp.</div> : (
+                <div className="stock-transfer-detail-table-wrap">
+                  <table className="stock-transfer-detail-table">
+                    <thead><tr><th>#</th><th>Sản phẩm</th><th>Đơn vị</th><th>Số lượng</th></tr></thead>
+                    <tbody>{detailItems.map((item, index) => (
+                      <tr key={`${item.product_id}-${index}`}>
+                        <td>{(detailPage - 1) * 10 + index + 1}</td><td><strong>{item.product_name}</strong></td><td>{item.unit || "—"}</td><td>{item.quantity}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              )}
+              <Pagination page={detailPage} totalPages={Number(detailPagination?.total_pages || 1)} onPageChange={setDetailPage} disabled={detailLoading} />
+            </div>
+          </div>
+        </div>
+      )}
+
       <section className="stock-transfers-history">
         <div className="stock-transfers-section-heading">
           <h2>Lịch sử điều chuyển</h2>
@@ -368,7 +470,7 @@ function StockTransfers() {
           ) : null}
         </div>
         {transfersLoading ? (
-          <Skeleton rows={6} columns={5} />
+          <Skeleton rows={6} columns={6} />
         ) : transfers.length === 0 ? (
           <div className="stock-transfers-state">Chưa có phiếu điều chuyển.</div>
         ) : (
@@ -380,6 +482,7 @@ function StockTransfers() {
                   <th>Mặt hàng</th>
                   <th>Nhân viên</th>
                   <th>Số lượng</th>
+                  <th>Thao tác</th>
                   <th>Ghi chú</th>
                 </tr>
               </thead>
@@ -387,9 +490,14 @@ function StockTransfers() {
                 {transfers.map((transfer) => (
                   <tr key={transfer.id}>
                     <td>{formatDate(transfer.transferred_at)}</td>
-                    <td>{formatTransferProducts(transfer)}</td>
+                    <td><strong>{transfer.items_count || 0}</strong> mặt hàng</td>
                     <td>{transfer.employee_name}</td>
                     <td>{transfer.total_quantity}</td>
+                    <td>
+                      <button type="button" className="stock-transfer-detail-button" onClick={() => openTransferDetail(transfer)}>
+                        Xem chi tiết
+                      </button>
+                    </td>
                     <td>{transfer.note || "—"}</td>
                   </tr>
                 ))}

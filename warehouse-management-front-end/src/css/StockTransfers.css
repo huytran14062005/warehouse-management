@@ -47,3 +47,160 @@
   .stock-transfers-history { padding: 16px; }
   .stock-transfers-pagination { justify-content: center; }
 }
+.stock-transfer-detail-button {
+  padding: 7px 12px;
+  border: 1px solid #b8c9da;
+  border-radius: 6px;
+  background: #fff;
+  color: #0b3158;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.stock-transfer-detail-button:hover {
+  background: #f1f6fa;
+}
+
+.warehouse-modal.stock-transfer-detail-modal {
+  max-width: 980px;
+}
+
+.stock-transfer-detail-kicker {
+  margin: 0 0 5px;
+  color: #956016;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.stock-transfer-detail-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.stock-transfer-detail-summary > div,
+.stock-transfer-detail-note {
+  padding: 12px 14px;
+  border: 1px solid #e1e8ef;
+  border-radius: 7px;
+  background: #f8fafc;
+}
+
+.stock-transfer-detail-summary span,
+.stock-transfer-detail-note span {
+  display: block;
+  margin-bottom: 5px;
+  color: #71849a;
+  font-size: 12px;
+}
+
+.stock-transfer-detail-summary strong {
+  color: #0b3158;
+  font-size: 15px;
+}
+
+.stock-transfer-detail-note {
+  margin-bottom: 18px;
+}
+
+.stock-transfer-detail-note p {
+  margin: 0;
+  color: #263f58;
+  white-space: pre-wrap;
+}
+
+.stock-transfer-detail-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 20px 0 10px;
+}
+
+.stock-transfer-detail-toolbar h3 {
+  margin: 0 0 4px;
+  color: #0b3158;
+  font-size: 16px;
+}
+
+.stock-transfer-detail-toolbar span {
+  color: #71849a;
+  font-size: 12px;
+}
+
+.stock-transfer-detail-search {
+  display: flex;
+  gap: 8px;
+}
+
+.stock-transfer-detail-search input {
+  width: 240px;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid #c8d6e3;
+  border-radius: 6px;
+}
+
+.stock-transfer-detail-search button {
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: #0b3158;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.stock-transfer-detail-table-wrap {
+  max-height: 48vh;
+  overflow: auto;
+  border: 1px solid #e1e8ef;
+  border-radius: 7px;
+}
+
+.stock-transfer-detail-table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+}
+
+.stock-transfer-detail-table th,
+.stock-transfer-detail-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid #edf1f5;
+  text-align: left;
+}
+
+.stock-transfer-detail-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f5f8fb;
+  color: #5e748d;
+  font-size: 12px;
+}
+
+.stock-transfer-detail-table td {
+  color: #2a4159;
+  font-size: 13px;
+}
+
+@media (max-width: 700px) {
+  .stock-transfer-detail-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stock-transfer-detail-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .stock-transfer-detail-search input {
+    width: 100%;
+  }
+}
