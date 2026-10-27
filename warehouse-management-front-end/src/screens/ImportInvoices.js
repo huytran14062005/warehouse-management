@@ -36,6 +36,13 @@ function formatDate(value) {
   return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
 }
 
+function formatDateTime(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
 function ImportDetail({ invoice, onClose, onEdit, onDelete, canEdit, canDelete, canPay, onPaymentSaved }) {
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("");
@@ -130,7 +137,7 @@ function ImportDetail({ invoice, onClose, onEdit, onDelete, canEdit, canDelete, 
               {invoice.payments.map((payment) => (
                 <div key={payment.id} className="warehouse-payment-history-item">
                   <strong>{formatCurrency(payment.amount)} · {payment.payment_method === "cash" ? "Tiền mặt" : "Chuyển khoản"}</strong>
-                  <span>{formatDate(payment.paid_at)}{payment.note ? ` · ${payment.note}` : ""}</span>
+                  <span>{formatDateTime(payment.paid_at)}</span>
                 </div>
               ))}
             </div>
