@@ -2156,12 +2156,12 @@ function SalesInvoices() {
                             Chờ duyệt hủy
                           </span>
                         )}
-                        Number(invoice.remaining_amount || 0) > 0 &&
-                        ["overdue", "due_today", "due_soon"].includes(invoice.payment_due_status) && (
-                          <span className={`sales-due-badge is-${invoice.payment_due_status}`}>
-                            {getPaymentDueLabel(invoice)}
-                          </span>
-                        )}
+                        {Number(invoice.remaining_amount || 0) > 0 &&
+                          ["overdue", "due_today", "due_soon"].includes(invoice.payment_due_status) && (
+                            <span className={`sales-due-badge is-${invoice.payment_due_status}`}>
+                              {getPaymentDueLabel(invoice)}
+                            </span>
+                          )}
                       </div>
                     </td>
                     <td>{invoice.items_count || 0}</td>

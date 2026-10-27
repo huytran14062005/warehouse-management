@@ -1,10 +1,11 @@
 from datetime import timedelta
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError
 
 from web import db
-from web.models import InvoiceStatus, PaymentStatus, SalesInvoice, SalesInvoiceItem
+from web.models import InvoiceStatus, SalesInvoice, SalesInvoiceItem
 
 
 def _invoice_load_options():
@@ -14,6 +15,31 @@ def _invoice_load_options():
         selectinload(SalesInvoice.warehouse),
         selectinload(SalesInvoice.created_by_employee),
         selectinload(SalesInvoice.discount_approved_by_employee),
+    )
+
+
+def sales_invoice_remaining_amount_expression():
+    """Return the SQL expression for the unpaid amount of an invoice.
+
+    Payment status is a cached label and can be stale after imports or manual
+    data changes. Debt/overdue queries must use the actual invoice total minus
+    payments so fully paid orders are never reported as overdue.
+    """
+    gross_total = (
+        select(
+            func.coalesce(
+                func.sum(SalesInvoiceItem.quantity * SalesInvoiceItem.unit_price),
+                0,
+            )
+        )
+        .where(SalesInvoiceItem.sales_invoice_id == SalesInvoice.id)
+        .correlate(SalesInvoice)
+        .scalar_subquery()
+    )
+    return (
+        gross_total
+        - func.coalesce(SalesInvoice.discount_amount, 0)
+        - func.coalesce(SalesInvoice.paid_amount, 0)
     )
 
 
@@ -154,10 +180,11 @@ def get_sales_invoices_list(
         query = query.filter(SalesInvoice.warehouse_id == warehouse_id)
 
     if debt_status:
+        remaining_amount = sales_invoice_remaining_amount_expression()
         open_debt_filters = (
             SalesInvoice.status == InvoiceStatus.COMPLETED,
-            SalesInvoice.payment_status != PaymentStatus.PAID,
             SalesInvoice.payment_due_date.isnot(None),
+            remaining_amount > 0,
         )
         query = query.filter(*open_debt_filters)
         if debt_status == "overdue":

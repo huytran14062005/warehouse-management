@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from web import db
 from web.blueprints.api_errors import handle_api_errors
 from web.config import Config
+from web.dao.sales_invoice_dao import sales_invoice_remaining_amount_expression
 from web.middleware.auth_middleware import verify_role, verify_token
 from web.models import (
     DamageReport,
@@ -14,7 +15,6 @@ from web.models import (
     Employee,
     EmployeeRole,
     InvoiceStatus,
-    PaymentStatus,
     ProductRequest,
     ProductRequestStatus,
     SalesInvoice,
@@ -89,6 +89,7 @@ def get_employee_accounts():
 def get_pending_requests_summary():
     today = business_today()
     due_soon_through = today + timedelta(days=PAYMENT_DUE_SOON_DAYS)
+    remaining_amount = sales_invoice_remaining_amount_expression()
 
     def count_of(model, *filters):
         return select(func.count(model.id)).where(*filters).scalar_subquery()
@@ -121,21 +122,24 @@ def get_pending_requests_summary():
         count_of(
             SalesInvoice,
             SalesInvoice.status == InvoiceStatus.COMPLETED,
-            SalesInvoice.payment_status != PaymentStatus.PAID,
+            SalesInvoice.payment_due_date.isnot(None),
             SalesInvoice.payment_due_date < today,
+            remaining_amount > 0,
         ).label("overdue_debts"),
         count_of(
             SalesInvoice,
             SalesInvoice.status == InvoiceStatus.COMPLETED,
-            SalesInvoice.payment_status != PaymentStatus.PAID,
+            SalesInvoice.payment_due_date.isnot(None),
             SalesInvoice.payment_due_date == today,
+            remaining_amount > 0,
         ).label("due_today_debts"),
         count_of(
             SalesInvoice,
             SalesInvoice.status == InvoiceStatus.COMPLETED,
-            SalesInvoice.payment_status != PaymentStatus.PAID,
+            SalesInvoice.payment_due_date.isnot(None),
             SalesInvoice.payment_due_date > today,
             SalesInvoice.payment_due_date <= due_soon_through,
+            remaining_amount > 0,
         ).label("due_soon_debts"),
     ).one()
     counts = {
