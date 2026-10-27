@@ -2156,7 +2156,8 @@ function SalesInvoices() {
                             Chờ duyệt hủy
                           </span>
                         )}
-                        {["overdue", "due_today", "due_soon"].includes(invoice.payment_due_status) && (
+                        Number(invoice.remaining_amount || 0) > 0 &&
+                        ["overdue", "due_today", "due_soon"].includes(invoice.payment_due_status) && (
                           <span className={`sales-due-badge is-${invoice.payment_due_status}`}>
                             {getPaymentDueLabel(invoice)}
                           </span>

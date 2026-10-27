@@ -63,12 +63,11 @@ def get_payment_due_info(invoice, remaining_amount):
     due_date = invoice.payment_due_date
     is_open_debt = (
         invoice.status == InvoiceStatus.COMPLETED
-        and invoice.payment_status != PaymentStatus.PAID
         and Decimal(str(remaining_amount or 0)) > 0
     )
     if not is_open_debt or not due_date:
         return {
-            "status": "paid" if invoice.payment_status == PaymentStatus.PAID else "not_set",
+            "status": "paid" if Decimal(str(remaining_amount or 0)) <= 0 else "not_set",
             "days_until_due": None,
             "days_overdue": 0,
         }
