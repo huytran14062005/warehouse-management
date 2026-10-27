@@ -4,7 +4,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 
 from web import app, dao, db
-from web.models import Employee, EmployeeRole, Product, StockTransfer, StockTransferItem, Warehouse
+from web.models import Employee, EmployeeRole, EmployeeStock, Product, StockTransfer, StockTransferItem, Warehouse
 from web.services.exceptions import NotFoundError, ValidationError
 from web.services.authorization import ensure_bounded_items, ensure_warehouse_access
 
@@ -101,11 +101,18 @@ def get_stock_transfer_detail_service(transfer_id, page_value=None, per_page_val
         or 0
     )
     items = query.order_by(StockTransferItem.id.asc()).offset((page - 1) * per_page).limit(per_page).all()
-    return transfer, items, total, all_items_count, total_quantity, page, per_page
+    product_ids = [item.product_id for item in items]
+    remaining_rows = EmployeeStock.query.filter(
+        EmployeeStock.employee_id == transfer.employee_id,
+        EmployeeStock.product_id.in_(product_ids),
+    ).all() if product_ids else []
+    remaining_by_product = {row.product_id: int(row.quantity or 0) for row in remaining_rows}
+    return transfer, items, total, all_items_count, total_quantity, remaining_by_product, page, per_page
 
 
-def serialize_stock_transfer(transfer, items=None, items_count=None, total_quantity=None):
+def serialize_stock_transfer(transfer, items=None, items_count=None, total_quantity=None, remaining_by_product=None):
     detail_items = list(transfer.items if items is None else items)
+    remaining_by_product = remaining_by_product or {}
     return {
         "id": transfer.id,
         "transferred_at": transfer.transferred_at.isoformat() if transfer.transferred_at else None,
@@ -119,6 +126,8 @@ def serialize_stock_transfer(transfer, items=None, items_count=None, total_quant
                 "product_id": item.product_id,
                 "product_name": item.product.name,
                 "quantity": int(item.quantity),
+                "transferred_quantity": int(item.quantity),
+                "remaining_quantity": int(remaining_by_product.get(item.product_id, 0)),
                 "unit": item.product.unit,
             }
             for item in detail_items

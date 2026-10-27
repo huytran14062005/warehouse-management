@@ -430,7 +430,7 @@ function StockTransfers() {
                 <div><span>Ngày điều chuyển</span><strong>{formatDate(detailTransfer.transferred_at)}</strong></div>
                 <div><span>Nhân viên nhận</span><strong>{detailTransfer.employee_name || "—"}</strong></div>
                 <div><span>Số mặt hàng</span><strong>{detailTransfer.items_count ?? detailPagination?.total ?? 0}</strong></div>
-                <div><span>Tổng số lượng</span><strong>{detailTransfer.total_quantity ?? 0}</strong></div>
+                <div><span>Tổng số lượng cấp</span><strong>{detailTransfer.total_quantity ?? 0}</strong></div>
               </div>
               {detailTransfer.note ? <div className="stock-transfer-detail-note"><span>Ghi chú</span><p>{detailTransfer.note}</p></div> : null}
               <form className="stock-transfer-detail-toolbar" onSubmit={(event) => { event.preventDefault(); setDetailPage(1); setDetailKeyword(detailKeywordInput.trim()); }}>
@@ -444,13 +444,13 @@ function StockTransfers() {
                 </div>
               </form>
               <AutoDismissMessage message={detailError} className="stock-transfers-alert" />
-              {detailLoading ? <Skeleton rows={6} columns={4} /> : detailItems.length === 0 ? <div className="stock-transfers-state">Không tìm thấy mặt hàng phù hợp.</div> : (
+              {detailLoading ? <Skeleton rows={6} columns={5} /> : detailItems.length === 0 ? <div className="stock-transfers-state">Không tìm thấy mặt hàng phù hợp.</div> : (
                 <div className="stock-transfer-detail-table-wrap">
                   <table className="stock-transfer-detail-table">
-                    <thead><tr><th>#</th><th>Sản phẩm</th><th>Đơn vị</th><th>Số lượng</th></tr></thead>
+                    <thead><tr><th>#</th><th>Sản phẩm</th><th>Đơn vị</th><th>Số lượng cấp</th><th>Còn lại hiện tại</th></tr></thead>
                     <tbody>{detailItems.map((item, index) => (
                       <tr key={`${item.product_id}-${index}`}>
-                        <td>{(detailPage - 1) * 10 + index + 1}</td><td><strong>{item.product_name}</strong></td><td>{item.unit || "—"}</td><td>{item.quantity}</td>
+                        <td>{(detailPage - 1) * 10 + index + 1}</td><td><strong>{item.product_name}</strong></td><td>{item.unit || "—"}</td><td>{item.transferred_quantity ?? item.quantity}</td><td><strong>{item.remaining_quantity ?? 0}</strong></td>
                       </tr>
                     ))}</tbody>
                   </table>
@@ -481,7 +481,7 @@ function StockTransfers() {
                   <th>Ngày</th>
                   <th>Mặt hàng</th>
                   <th>Nhân viên</th>
-                  <th>Số lượng</th>
+                  <th>Tổng số lượng cấp</th>
                   <th>Thao tác</th>
                   <th>Ghi chú</th>
                 </tr>
