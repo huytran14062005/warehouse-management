@@ -1,4 +1,5 @@
 import hmac
+from datetime import timedelta
 
 from flask import Blueprint, jsonify, request
 from web import app
@@ -24,7 +25,7 @@ reports_bp = Blueprint("reports", __name__, url_prefix="/api/reports")
 @reports_bp.route("/internal/overdue-debt-email", methods=["GET"])
 @handle_api_errors
 def send_overdue_debt_email_report():
-    """Vercel Cron entrypoint; it sends only on the configured monthly day."""
+    """Vercel Cron entrypoint; it sends only on the last day of each month."""
     configured_secret = str(app.config.get("CRON_SECRET") or "")
     authorization = request.headers.get("Authorization", "")
     provided_secret = authorization.removeprefix("Bearer ").strip()
@@ -32,8 +33,9 @@ def send_overdue_debt_email_report():
         return jsonify({"error": "Unauthorized"}), 401
 
     today = business_today()
-    report_day = max(1, min(28, int(app.config.get("OVERDUE_REPORT_DAY", 15))))
-    if today.day != report_day:
+    report_day = "cuối tháng"
+    tomorrow = today + timedelta(days=1)
+    if tomorrow.month == today.month:
         return jsonify({
             "sent": False,
             "message": f"Báo cáo được lập vào ngày {report_day} hàng tháng.",

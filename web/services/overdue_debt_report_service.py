@@ -39,7 +39,7 @@ def _recipient_emails():
 
 
 def get_overdue_customer_rows(as_of_date=None):
-    """Aggregate currently overdue, unpaid invoices once per customer."""
+    """Aggregate every still-open overdue invoice from all previous months."""
     report_date = as_of_date or business_today()
     remaining_amount = sales_invoice_remaining_amount_expression()
 
@@ -92,7 +92,7 @@ def _build_workbook(rows, report_date):
     sheet["A1"].alignment = Alignment(horizontal="center")
 
     sheet.merge_cells("A2:I2")
-    sheet["A2"] = "Dữ liệu lấy trực tiếp từ các đơn đã hoàn thành còn công nợ tại thời điểm lập báo cáo."
+    sheet["A2"] = "Bao gồm toàn bộ công nợ quá hạn chưa thanh toán từ các tháng trước đến ngày lập báo cáo."
     sheet["A2"].alignment = Alignment(wrap_text=True)
 
     headers = [
@@ -102,8 +102,8 @@ def _build_workbook(rows, report_date):
         "Địa chỉ",
         "Số đơn quá hạn",
         "Tổng công nợ quá hạn",
-        "Hạn thanh toán sớm nhất",
-        "Số ngày quá hạn lâu nhất",
+        "Ngày bắt đầu quá hạn",
+        "Thời gian nợ (ngày)",
         "Mã đơn quá hạn",
     ]
     header_row = 4
@@ -130,7 +130,7 @@ def _build_workbook(rows, report_date):
         sheet.cell(header_row + index, 6).number_format = '#,##0 "đ"'
         sheet.cell(header_row + index, 7).number_format = "dd/mm/yyyy"
 
-    widths = [8, 28, 18, 42, 16, 22, 22, 24, 22]
+    widths = [8, 28, 18, 42, 16, 22, 22, 20, 22]
     for index, width in enumerate(widths, start=1):
         sheet.column_dimensions[get_column_letter(index)].width = width
     sheet.freeze_panes = "A5"
@@ -151,16 +151,17 @@ def send_overdue_debt_report(as_of_date=None):
         raise RuntimeError("Chưa cấu hình email nhận báo cáo công nợ quá hạn")
 
     message = Message(
-        subject=f"Báo cáo khách hàng quá hạn nợ - {report_date:%m/%Y}",
+        subject=f"Báo cáo tổng hợp công nợ quá hạn đến cuối tháng {report_date:%m/%Y}",
         recipients=recipients,
         body=(
-            f"Báo cáo công nợ quá hạn đến ngày {report_date:%d/%m/%Y}.\n\n"
+            f"Báo cáo tổng hợp công nợ quá hạn, chốt ngày {report_date:%d/%m/%Y}.\n"
+            "Báo cáo bao gồm các khoản nợ còn mở từ tất cả các tháng trước.\n\n"
             f"Có {len(rows)} khách hàng còn công nợ quá hạn.\n"
             "Chi tiết nằm trong file Excel đính kèm."
         ),
     )
     message.attach(
-        f"bao-cao-cong-no-qua-han-{report_date:%Y-%m}.xlsx",
+        f"bao-cao-tong-hop-cong-no-qua-han-{report_date:%Y-%m}.xlsx",
         EXCEL_CONTENT_TYPE,
         _build_workbook(rows, report_date),
     )

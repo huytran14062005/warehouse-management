@@ -69,7 +69,6 @@ class Config:
         if email.strip()
     )
     CRON_SECRET = os.getenv("CRON_SECRET", "").strip()
-    OVERDUE_REPORT_DAY = int(os.getenv("OVERDUE_REPORT_DAY", 15))
     REPORT_LOGO_PATH = os.getenv("REPORT_LOGO_PATH", "")
     REPORT_FONT_PATH = os.getenv("REPORT_FONT_PATH", "")
     REPORT_MAX_ITEMS = int(os.getenv("REPORT_MAX_ITEMS", 5000))
