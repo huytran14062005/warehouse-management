@@ -740,7 +740,7 @@ function ImportInvoices() {
       <AutoDismissMessage message={error} className="warehouse-error" />
       <div className="warehouse-card">
         {loading ? (
-          <Skeleton rows={6} columns={5} />
+          <Skeleton rows={6} columns={6} />
         ) : invoices.length === 0 ? (
           <div className="warehouse-state">Chưa có phiếu nhập phù hợp.</div>
         ) : (
@@ -751,7 +751,8 @@ function ImportInvoices() {
                   <th>Ngày nhập</th>
                   <th>Nhà cung cấp</th>
                   <th>Số sản phẩm</th>
-                  <th>Tổng tiền</th>
+                  <th>Tiền nhập</th>
+                  <th>Còn phải trả</th>
                   <th>Người lập</th>
                 </tr>
               </thead>
@@ -771,6 +772,7 @@ function ImportInvoices() {
                     </td>
                     <td>{invoice.items_count}</td>
                     <td>{formatCurrency(invoice.total_amount)}</td>
+                    <td>{formatCurrency(invoice.remaining_amount)}</td>
                     <td>{invoice.employee?.full_name || "—"}</td>
                   </tr>
                 ))}
