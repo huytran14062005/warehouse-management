@@ -129,12 +129,20 @@ def _validate_items(items, warehouse_id):
         product_ids,
         warehouse_id,
     )
+    reserved_stock = product_dao.calculate_reserved_stock_for_items_at_warehouse(
+        product_ids,
+        warehouse_id,
+    )
     for item in validated_items:
         product = products_by_id[item["product_id"]]
         stock = stock_by_product[item["product_id"]]
-        if item["quantity"] > stock["available_stock"]:
+        available_stock = max(
+            0,
+            stock["available_stock"] - reserved_stock.get(item["product_id"], 0),
+        )
+        if item["quantity"] > available_stock:
             raise ValidationError(
-                f"Sản phẩm '{product.name}' chỉ còn {stock['available_stock']} trong kho, "
+                f"Sản phẩm '{product.name}' chỉ còn {available_stock} trong kho, "
                 f"không thể báo hư {item['quantity']}"
             )
 
@@ -203,16 +211,25 @@ def review_damage_report_service(report_id, manager_id, decision, review_note):
         raise NotFoundError("Quản lý không tồn tại")
 
     if normalized_decision == DamageReportStatus.APPROVED.value:
+        Warehouse.query.filter(Warehouse.id == report.warehouse_id).with_for_update().one()
         stock_by_product = product_dao.calculate_stock_for_items_at_warehouse(
+            [item.product_id for item in report.items],
+            report.warehouse_id,
+        )
+        reserved_stock = product_dao.calculate_reserved_stock_for_items_at_warehouse(
             [item.product_id for item in report.items],
             report.warehouse_id,
         )
         for item in report.items:
             stock = stock_by_product[item.product_id]
-            if float(item.quantity) > stock["available_stock"]:
+            available_stock = max(
+                0,
+                stock["available_stock"] - reserved_stock.get(item.product_id, 0),
+            )
+            if float(item.quantity) > available_stock:
                 raise ValidationError(
                     f"Không thể duyệt: sản phẩm '{item.product.name}' chỉ còn "
-                    f"{stock['available_stock']} trong kho"
+                    f"{available_stock} trong kho"
                 )
 
     return damage_report_dao.review_damage_report(

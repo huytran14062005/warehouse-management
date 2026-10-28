@@ -328,8 +328,16 @@ def create_stock_transfer_service(created_by_employee_id, employee_id, warehouse
     try:
         Warehouse.query.filter(Warehouse.id == warehouse.id).with_for_update().one()
         warehouse_stock = dao.calculate_stock_for_items_at_warehouse(product_ids, warehouse.id)
+        reserved_stock = dao.calculate_reserved_stock_for_items_at_warehouse(
+            product_ids,
+            warehouse.id,
+        )
         for item in normalized:
-            available = warehouse_stock[item["product_id"]]["available_stock"]
+            available = max(
+                0,
+                warehouse_stock[item["product_id"]]["available_stock"]
+                - reserved_stock.get(item["product_id"], 0),
+            )
             if available < item["quantity"]:
                 raise ValidationError(
                     f"Sản phẩm '{product_names[item['product_id']]}' không đủ tồn kho."

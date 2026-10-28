@@ -199,7 +199,7 @@ def _validate_sales_items(items):
     return normalized
 
 
-def _validate_items_available_in_warehouse(items, warehouse_id):
+def _validate_items_available_in_warehouse(items, warehouse_id, exclude_invoice_id=None):
     """Ensure a draft order can be fulfilled with the warehouse's current stock.
 
     Draft sales invoices do not deduct inventory, but editing one should not
@@ -212,14 +212,21 @@ def _validate_items_available_in_warehouse(items, warehouse_id):
         product_ids,
         warehouse_id,
     )
+    reserved_by_product = dao.calculate_reserved_stock_for_items_at_warehouse(
+        product_ids,
+        warehouse_id,
+        exclude_invoice_id=exclude_invoice_id,
+    )
     products_by_id = {
         product.id: product
         for product in Product.query.filter(Product.id.in_(product_ids)).all()
     }
 
     for item in items:
-        available_stock = int(
-            stock_by_product.get(item["product_id"], {}).get("available_stock", 0)
+        available_stock = max(
+            0,
+            int(stock_by_product.get(item["product_id"], {}).get("available_stock", 0))
+            - reserved_by_product.get(item["product_id"], 0),
         )
         if available_stock < item["quantity"]:
             product = products_by_id.get(item["product_id"])
@@ -504,6 +511,8 @@ def create_sales_invoice_service(
 
                                 
     validated_items = _validate_sales_items(items)
+    if sale_source == SaleSource.CENTRAL_WAREHOUSE:
+        _validate_items_available_in_warehouse(validated_items, warehouse_id)
 
     total_amount = calculate_total_amount(validated_items)
     total_quantity = sum(item["quantity"] for item in validated_items)
@@ -655,7 +664,8 @@ def update_sales_invoice_service(invoice_id, employee_id, warehouse_id, customer
 
                                 
     validated_items = _validate_sales_items(items)
-    _validate_items_available_in_warehouse(validated_items, warehouse_id)
+    if invoice.sale_source == SaleSource.CENTRAL_WAREHOUSE:
+        _validate_items_available_in_warehouse(validated_items, warehouse_id)
 
     total_amount = calculate_total_amount(validated_items)
     total_quantity = sum(item["quantity"] for item in validated_items)
@@ -742,16 +752,26 @@ def complete_sales_invoice_service(invoice_id, employee_id, payment_amount=0, pa
                                             
     try:
         Warehouse.query.filter(Warehouse.id == invoice.warehouse_id).with_for_update().one()
-        stock_by_product = dao.calculate_stock_for_items_at_warehouse(
-            [item.product_id for item in invoice.items],
-            invoice.warehouse_id,
-        )
-        for item in invoice.items:
-            stock_info = stock_by_product[item.product_id]
-            if stock_info["available_stock"] < int(item.quantity):
-                raise ValidationError(
-                    f"Sản phẩm '{item.product.name}' không đủ tồn kho."
-                )
+        if invoice.sale_source == SaleSource.CENTRAL_WAREHOUSE:
+            _validate_items_available_in_warehouse(
+                [
+                    {"product_id": item.product_id, "quantity": int(item.quantity)}
+                    for item in invoice.items
+                ],
+                invoice.warehouse_id,
+                exclude_invoice_id=invoice.id,
+            )
+        else:
+            stock_by_product = dao.calculate_stock_for_items_at_warehouse(
+                [item.product_id for item in invoice.items],
+                invoice.warehouse_id,
+            )
+            for item in invoice.items:
+                stock_info = stock_by_product[item.product_id]
+                if stock_info["available_stock"] < int(item.quantity):
+                    raise ValidationError(
+                        f"Sản phẩm '{item.product.name}' không đủ tồn kho."
+                    )
 
         total_amount = sum(
             Decimal(str(item.quantity)) * Decimal(str(item.unit_price))
@@ -1004,6 +1024,8 @@ def update_invoice_status_service(invoice_id, employee_id, status_value):
     invoice = SalesInvoice.query.get(invoice_id)
     if not invoice:
         raise NotFoundError("Đơn hàng không tồn tại")
+
+    ensure_warehouse_access(employee_id, invoice.warehouse_id)
     
                   
     text = str(status_value).strip().lower()
@@ -1052,6 +1074,19 @@ def update_invoice_status_service(invoice_id, employee_id, status_value):
     
             
     try:
+        if (
+            new_status in {InvoiceStatus.PROCESSING, InvoiceStatus.DELIVERING}
+            and invoice.sale_source == SaleSource.CENTRAL_WAREHOUSE
+        ):
+            Warehouse.query.filter(Warehouse.id == invoice.warehouse_id).with_for_update().one()
+            _validate_items_available_in_warehouse(
+                [
+                    {"product_id": item.product_id, "quantity": int(item.quantity)}
+                    for item in invoice.items
+                ],
+                invoice.warehouse_id,
+                exclude_invoice_id=invoice.id,
+            )
         invoice.status = new_status
         db.session.commit()
         db.session.refresh(invoice)

@@ -198,6 +198,34 @@ def calculate_stock_for_items_at_warehouse(product_ids, warehouse_id, exclude_in
     }
 
 
+def calculate_reserved_stock_for_items_at_warehouse(product_ids, warehouse_id, exclude_invoice_id=None):
+    """Return quantities reserved by active central-warehouse sales orders."""
+    product_ids = list({int(product_id) for product_id in product_ids})
+    if not product_ids:
+        return {}
+
+    query = (
+        db.session.query(
+            SalesInvoiceItem.product_id,
+            func.sum(SalesInvoiceItem.quantity).label("quantity"),
+        )
+        .join(SalesInvoice, SalesInvoiceItem.sales_invoice_id == SalesInvoice.id)
+        .filter(
+            SalesInvoice.warehouse_id == warehouse_id,
+            SalesInvoice.sale_source == SaleSource.CENTRAL_WAREHOUSE,
+            SalesInvoice.status.in_((InvoiceStatus.PROCESSING, InvoiceStatus.DELIVERING)),
+            SalesInvoiceItem.product_id.in_(product_ids),
+        )
+    )
+    if exclude_invoice_id is not None:
+        query = query.filter(SalesInvoice.id != exclude_invoice_id)
+
+    return {
+        product_id: int(quantity or 0)
+        for product_id, quantity in query.group_by(SalesInvoiceItem.product_id).all()
+    }
+
+
 def calculate_inventory_for_products(product_ids, warehouse_id=None):
     return _inventory_for_products(product_ids, warehouse_id=warehouse_id)
 
