@@ -3,7 +3,12 @@ from flask import Blueprint, jsonify, request
 from web.blueprints.api_errors import handle_api_errors
 from web.middleware.auth_middleware import verify_role, verify_token
 from web.models import Employee, EmployeeRole, StockTransfer
-from web.services.authorization import ensure_warehouse_access, get_central_warehouse, scoped_warehouse_id
+from web.services.authorization import (
+    ensure_warehouse_access,
+    get_accessible_warehouses,
+    get_central_warehouse,
+    scoped_warehouse_id,
+)
 from web.services.exceptions import NotFoundError
 from web.services.stock_transfer_service import (
     create_stock_transfer_service,
@@ -25,15 +30,48 @@ stock_transfers_bp = Blueprint("stock_transfers", __name__)
 @verify_role(EmployeeRole.THU_KHO, EmployeeRole.QUAN_LY)
 @handle_api_errors
 def get_sales_employees():
-    warehouse = get_central_warehouse()
-    ensure_warehouse_access(request.employee_id, warehouse.id)
+    warehouses = get_accessible_warehouses(request.employee_id)
+    central = get_central_warehouse()
+    default_warehouse = next(
+        (warehouse for warehouse in warehouses if warehouse.id == central.id),
+        warehouses[0] if warehouses else central,
+    )
     return jsonify({
         "employees": get_sales_employees_service(),
         "warehouse": {
-            "id": warehouse.id,
-            "name": warehouse.name,
-            "address": warehouse.address,
+            "id": default_warehouse.id,
+            "name": default_warehouse.name,
+            "address": default_warehouse.address,
         },
+        "warehouses": [
+            {"id": warehouse.id, "name": warehouse.name, "address": warehouse.address}
+            for warehouse in warehouses
+        ],
+    }), 200
+
+
+@stock_transfers_bp.route("/api/warehouses", methods=["GET"])
+@verify_token
+@verify_role(
+    EmployeeRole.NHAN_VIEN_BAN_HANG,
+    EmployeeRole.THU_KHO,
+    EmployeeRole.KE_TOAN,
+    EmployeeRole.QUAN_LY,
+)
+@handle_api_errors
+def get_warehouses():
+    warehouses = get_accessible_warehouses(request.employee_id)
+    central = get_central_warehouse()
+    default_warehouse = next(
+        (warehouse for warehouse in warehouses if warehouse.id == central.id),
+        warehouses[0] if warehouses else central,
+    )
+    return jsonify({
+        "warehouses": [
+            {"id": warehouse.id, "name": warehouse.name, "address": warehouse.address}
+            for warehouse in warehouses
+        ],
+        "default_warehouse_id": default_warehouse.id,
     }), 200
 
 

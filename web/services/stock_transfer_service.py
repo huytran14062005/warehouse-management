@@ -8,7 +8,6 @@ from web.models import Employee, EmployeeRole, InvoiceStatus, Product, SaleSourc
 from web.services.exceptions import NotFoundError, ValidationError
 from web.services.authorization import (
     ensure_bounded_items,
-    ensure_central_warehouse,
     ensure_warehouse_access,
     get_central_warehouse,
 )
@@ -23,7 +22,6 @@ def _parse_positive_int(value, default):
 
 
 def get_stock_transfers_list_service(page_value=None, per_page_value=None, warehouse_id=None):
-    warehouse_id = ensure_central_warehouse(warehouse_id).id
     page = _parse_positive_int(page_value, 1)
     per_page = min(_parse_positive_int(
         per_page_value,
@@ -66,6 +64,7 @@ def get_stock_transfers_list_service(page_value=None, per_page_value=None, wareh
 def serialize_stock_transfer_summary(transfer, items_count, total_quantity):
     return {
         "id": transfer.id,
+        "warehouse": {"id": transfer.warehouse.id, "name": transfer.warehouse.name},
         "transferred_at": transfer.transferred_at.isoformat() if transfer.transferred_at else None,
         "employee_name": transfer.recipient_employee.full_name,
         "created_by": transfer.created_by_employee.full_name,
@@ -174,6 +173,7 @@ def serialize_stock_transfer(transfer, items=None, items_count=None, total_quant
     remaining_by_item = remaining_by_item or {}
     return {
         "id": transfer.id,
+        "warehouse": {"id": transfer.warehouse.id, "name": transfer.warehouse.name},
         "transferred_at": transfer.transferred_at.isoformat() if transfer.transferred_at else None,
         "employee_name": transfer.recipient_employee.full_name,
         "created_by": transfer.created_by_employee.full_name,
@@ -312,16 +312,12 @@ def create_stock_transfer_service(created_by_employee_id, employee_id, warehouse
     if recipient.role != EmployeeRole.NHAN_VIEN_BAN_HANG:
         raise ValidationError("Chỉ được cấp hàng cho nhân viên bán hàng")
 
-    central_warehouse = get_central_warehouse()
     if warehouse_id in (None, ""):
-        warehouse = central_warehouse
+        warehouse = get_central_warehouse()
     else:
         warehouse = Warehouse.query.get(_positive_integer(warehouse_id, "Mã kho"))
     if not warehouse:
         raise NotFoundError("Kho không tồn tại")
-    if warehouse.id != central_warehouse.id:
-        raise ValidationError("Chỉ được cấp hàng từ kho trung tâm")
-
     ensure_warehouse_access(created_by_employee_id, warehouse.id)
     normalized = _normalize_transfer_items(items)
     product_ids = [item["product_id"] for item in normalized]

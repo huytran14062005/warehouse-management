@@ -22,6 +22,7 @@ function StockTransfers() {
   const [employees, setEmployees] = useState([]);
   const [products, setProducts] = useState([]);
   const [sourceWarehouse, setSourceWarehouse] = useState(null);
+  const [warehouses, setWarehouses] = useState([]);
   const [employeeId, setEmployeeId] = useState("");
   const [items, setItems] = useState([]);
   const [note, setNote] = useState("");
@@ -60,6 +61,7 @@ function StockTransfers() {
         });
         if (cancelled) return;
         setEmployees(employeesResponse.data?.employees || []);
+        setWarehouses(employeesResponse.data?.warehouses || [warehouse]);
         setSourceWarehouse(warehouse);
         setProducts(productsResponse.data?.products || []);
       } catch (requestError) {
@@ -75,6 +77,19 @@ function StockTransfers() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!sourceWarehouse?.id) return undefined;
+    let cancelled = false;
+    authApis().get(endpoints.productsInventory, {
+      params: { warehouse_id: sourceWarehouse.id, page: 1, per_page: 1000 },
+    }).then((response) => {
+      if (!cancelled) setProducts(response.data?.products || []);
+    }).catch((requestError) => {
+      if (!cancelled) setError(getApiError(requestError));
+    });
+    return () => { cancelled = true; };
+  }, [sourceWarehouse?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -277,10 +292,22 @@ function StockTransfers() {
               </button>
             </div>
             <form className="warehouse-modal-body stock-transfers-form" onSubmit={submit}>
-          <div className="stock-transfers-source-warehouse">
+          <label className="stock-transfers-source-warehouse">
             <span>Kho xuất hàng</span>
-            <strong>{sourceWarehouse?.name || "Kho trung tâm"}</strong>
-          </div>
+            <select
+              value={sourceWarehouse?.id || ""}
+              onChange={(event) => {
+                setSourceWarehouse(warehouses.find((warehouse) => String(warehouse.id) === event.target.value) || null);
+                setItems([]);
+                setProducts([]);
+              }}
+              required
+            >
+              {warehouses.map((warehouse) => (
+                <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>
+              ))}
+            </select>
+          </label>
           <label className="stock-transfers-field">
             <span>Nhân viên nhận hàng</span>
             <SharedSearchableDropdown
@@ -440,6 +467,7 @@ function StockTransfers() {
             </div>
             <div className="warehouse-modal-body stock-transfer-detail-body">
               <div className="stock-transfer-detail-summary">
+                <div><span>Kho xuất hàng</span><strong>{detailTransfer.warehouse?.name || "—"}</strong></div>
                 <div><span>Ngày điều chuyển</span><strong>{formatDate(detailTransfer.transferred_at)}</strong></div>
                 <div><span>Nhân viên nhận</span><strong>{detailTransfer.employee_name || "—"}</strong></div>
                 <div><span>Số mặt hàng</span><strong>{detailTransfer.items_count ?? detailPagination?.total ?? 0}</strong></div>
@@ -492,6 +520,7 @@ function StockTransfers() {
               <thead>
                 <tr>
                   <th>Ngày</th>
+                  <th>Kho xuất</th>
                   <th>Mặt hàng</th>
                   <th>Nhân viên</th>
                   <th>Tổng số lượng cấp</th>
@@ -503,6 +532,7 @@ function StockTransfers() {
                 {transfers.map((transfer) => (
                   <tr key={transfer.id}>
                     <td>{formatDate(transfer.transferred_at)}</td>
+                    <td>{transfer.warehouse?.name || "—"}</td>
                     <td><strong>{transfer.items_count || 0}</strong> mặt hàng</td>
                     <td>{transfer.employee_name}</td>
                     <td>{transfer.total_quantity}</td>

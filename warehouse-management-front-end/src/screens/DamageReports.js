@@ -135,6 +135,8 @@ function DamageDetail({ report, onClose, canReview, onReview }) {
 
 function DamageEditor({ onClose, onSaved }) {
   const [products, setProducts] = useState([]);
+  const [warehouses, setWarehouses] = useState([]);
+  const [warehouseId, setWarehouseId] = useState("");
   const [items, setItems] = useState([]);
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(true);
@@ -142,10 +144,11 @@ function DamageEditor({ onClose, onSaved }) {
   const [error, setError] = useNotificationState();
   useEffect(() => {
     let cancelled = false;
-    authApis()
-      .get(endpoints.productsInventory, { params: { page: 1, per_page: 1000 } })
+    authApis().get(endpoints.warehouses)
       .then((response) => {
-        if (!cancelled) setProducts(response.data?.products || []);
+        if (cancelled) return;
+        setWarehouses(response.data?.warehouses || []);
+        setWarehouseId(String(response.data?.default_warehouse_id || ""));
       })
       .catch((requestError) => {
         if (!cancelled) setError(getApiError(requestError));
@@ -157,6 +160,18 @@ function DamageEditor({ onClose, onSaved }) {
       cancelled = true;
     };
   }, []);
+  useEffect(() => {
+    if (!warehouseId) return undefined;
+    let cancelled = false;
+    authApis().get(endpoints.productsInventory, {
+      params: { warehouse_id: warehouseId, page: 1, per_page: 1000 },
+    }).then((response) => {
+      if (!cancelled) setProducts(response.data?.products || []);
+    }).catch((requestError) => {
+      if (!cancelled) setError(getApiError(requestError));
+    });
+    return () => { cancelled = true; };
+  }, [warehouseId]);
   const updateItem = (index, field, value) =>
     setItems((current) =>
       current.map((item, itemIndex) =>
@@ -166,6 +181,7 @@ function DamageEditor({ onClose, onSaved }) {
   const submit = async (event) => {
     event.preventDefault();
     setError("");
+    if (!warehouseId) return setError("Vui lòng chọn kho xuất hàng.");
     if (!items.length)
       return setError("Vui lòng thêm ít nhất một sản phẩm để báo hư.");
     const ids = new Set();
@@ -185,6 +201,7 @@ function DamageEditor({ onClose, onSaved }) {
     try {
       setSaving(true);
       const response = await authApis().post(endpoints.damageReports, {
+        warehouse_id: Number(warehouseId),
         note: note.trim(),
         items: items.map((item) => ({
           product_id: Number(item.product_id),
@@ -224,6 +241,18 @@ function DamageEditor({ onClose, onSaved }) {
             <Skeleton variant="form" rows={3} />
           ) : (
             <>
+              <label className="warehouse-field">
+                <span>Kho xuất hàng</span>
+                <select value={warehouseId} onChange={(event) => {
+                  setWarehouseId(event.target.value);
+                  setItems([]);
+                  setProducts([]);
+                }} required>
+                  {warehouses.map((warehouse) => (
+                    <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>
+                  ))}
+                </select>
+              </label>
               <div className="warehouse-section-heading">
                 <h3>Sản phẩm hư hỏng</h3>
                 <button

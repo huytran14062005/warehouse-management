@@ -28,6 +28,7 @@ export const endpoints = {
   promotions: "/promotions",
   promotionDetail: (promotionId) => `/promotions/${promotionId}`,
   salesEmployees: "/sales-employees",
+  warehouses: "/warehouses",
   employeeStock: "/employee-stock/me",
   employeeStockById: (employeeId) => `/employee-stock/${employeeId}`,
   stockTransfers: "/stock-transfers",

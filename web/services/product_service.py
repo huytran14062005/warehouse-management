@@ -6,7 +6,6 @@ from sqlalchemy import func
 from web import app, dao, db
 from web.models import Employee, EmployeeRole, Product, ProductRequest, ProductRequestStatus
 from web.services.exceptions import NotFoundError, ValidationError
-from web.services.authorization import ensure_central_warehouse
 from web.services.validators import require_text, validate_money_amount
 
 
@@ -104,7 +103,6 @@ def serialize_product_inventory(product, inventory):
 
 
 def get_product_detail_service(product_id, warehouse_id=None):
-    warehouse_id = ensure_central_warehouse(warehouse_id).id
     product = Product.query.get(product_id)
     if not product:
         raise NotFoundError("Sản phẩm không tồn tại")
@@ -136,9 +134,7 @@ def get_products_inventory_service(
        
     page, per_page = parse_paging_args(page_value, per_page_value)
     keyword = str(keyword or '').strip()
-    warehouse_id = ensure_central_warehouse(
-        parse_warehouse_id(warehouse_id_value)
-    ).id
+    warehouse_id = parse_warehouse_id(warehouse_id_value)
     min_price, max_price = parse_price_range(min_price_value, max_price_value)
     status = parse_inventory_status(status_value)
 

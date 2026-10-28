@@ -7,6 +7,7 @@
 .stock-transfers-field { display: block; color: #52657a; font-size: 12px; font-weight: 600; }
 .stock-transfers-source-warehouse { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; padding: 10px 12px; border: 1px solid #cbd7e2; border-radius: 6px; background: #f5f8fb; color: #52657a; font-size: 13px; }
 .stock-transfers-source-warehouse strong { color: #123b62; }
+.stock-transfers-source-warehouse select { min-width: 180px; max-width: 100%; padding: 8px 10px; border: 1px solid #cbd7e2; border-radius: 5px; background: #fff; color: #123b62; font: inherit; }
 .stock-transfers-field > span { display: block; margin-bottom: 6px; }
 .stock-transfers-field > input, .stock-transfers-field textarea, .stock-transfers-item > input { box-sizing: border-box; width: 100%; min-height: 40px; padding: 9px 10px; color: #1b2d40; border: 1px solid #cbd7e2; border-radius: 5px; background: #fff; outline: none; font: inherit; font-size: 13px; }
 .stock-transfers-field textarea { resize: vertical; }

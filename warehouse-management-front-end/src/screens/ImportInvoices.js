@@ -95,6 +95,10 @@ function ImportDetail({ invoice, onClose, onEdit, onDelete, canEdit, canDelete, 
         <div className="warehouse-modal-body">
           <div className="warehouse-info-grid">
             <div>
+              <span>Kho nhập hàng</span>
+              <strong>{invoice.warehouse?.name || "—"}</strong>
+            </div>
+            <div>
               <span>Ngày nhập</span>
               <strong>{formatDate(invoice.imported_at)}</strong>
             </div>
@@ -200,6 +204,8 @@ function ImportDetail({ invoice, onClose, onEdit, onDelete, canEdit, canDelete, 
 function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = true }) {
   const [suppliers, setSuppliers] = useState([]);
   const [products, setProducts] = useState([]);
+  const [warehouses, setWarehouses] = useState([]);
+  const [warehouseId, setWarehouseId] = useState(String(invoice?.warehouse?.id || ""));
   const [supplierId, setSupplierId] = useState(
     String(invoice?.supplier?.id || ""),
   );
@@ -235,11 +241,14 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = true }) {
       authApis().get(endpoints.productsInventory, {
         params: { page: 1, per_page: 1000 },
       }),
+      authApis().get(endpoints.warehouses),
     ])
-      .then(([supplierResponse, productResponse]) => {
+      .then(([supplierResponse, productResponse, warehouseResponse]) => {
         if (cancelled) return;
         setSuppliers(supplierResponse.data?.suppliers || []);
         setProducts(productResponse.data?.products || []);
+        setWarehouses(warehouseResponse.data?.warehouses || []);
+        setWarehouseId((current) => current || String(warehouseResponse.data?.default_warehouse_id || ""));
       })
       .catch((requestError) => {
         if (!cancelled) setError(getApiError(requestError));
@@ -298,6 +307,7 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = true }) {
     setError("");
     if (supplierMode === "existing" && !supplierId)
       return setError("Vui lòng chọn nhà cung cấp.");
+    if (!warehouseId) return setError("Vui lòng chọn kho nhập hàng.");
     if (
       supplierMode === "new" &&
       (!newSupplier.name.trim() || !newSupplier.address.trim())
@@ -341,6 +351,7 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = true }) {
     try {
       setSaving(true);
       const payload = {
+        warehouse_id: Number(warehouseId),
         supplier_id: supplierMode === "existing" ? Number(supplierId) : null,
         supplier_data:
           supplierMode === "new"
@@ -402,6 +413,14 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = true }) {
             <Skeleton variant="form" rows={5} />
           ) : (
             <>
+              <label className="warehouse-field">
+                <span>Kho nhập hàng</span>
+                <select value={warehouseId} onChange={(event) => setWarehouseId(event.target.value)} required>
+                  {warehouses.map((warehouse) => (
+                    <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>
+                  ))}
+                </select>
+              </label>
               <div className="warehouse-field">
                 <span>Nhà cung cấp</span>
                 <div className="warehouse-supplier-mode">
@@ -749,6 +768,7 @@ function ImportInvoices() {
               <thead>
                 <tr>
                   <th>Ngày nhập</th>
+                  <th>Kho nhập</th>
                   <th>Nhà cung cấp</th>
                   <th>Số sản phẩm</th>
                   <th>Tiền nhập</th>
@@ -767,6 +787,7 @@ function ImportInvoices() {
                     }}
                   >
                     <td>{formatDate(invoice.imported_at)}</td>
+                    <td>{invoice.warehouse?.name || "—"}</td>
                     <td>
                       <strong>{invoice.supplier?.name || "—"}</strong>
                     </td>

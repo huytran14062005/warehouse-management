@@ -23,7 +23,6 @@ from web.models import (
 from web.services.exceptions import AppError, NotFoundError, ValidationError
 from web.services.authorization import (
     ensure_bounded_items,
-    ensure_central_warehouse,
     ensure_warehouse_access,
     get_central_warehouse,
 )
@@ -140,11 +139,8 @@ def validate_money(value, field_name, allow_zero=True):
 
 
 def resolve_sales_warehouse(warehouse_id):
-    warehouse = ensure_central_warehouse(warehouse_id)
-    return warehouse.id, warehouse
-
     if warehouse_id in (None, ""):
-        warehouse = Warehouse.query.order_by(Warehouse.id.asc()).first()
+        warehouse = get_central_warehouse()
     else:
         warehouse_id = validate_positive_integer(warehouse_id, "Mã kho")
         warehouse = Warehouse.query.get(warehouse_id)
@@ -392,6 +388,10 @@ def serialize_sales_invoice(invoice):
         "id": invoice.id,
         "sold_at": invoice.sold_at.isoformat() if invoice.sold_at else None,
         "warehouse_id": invoice.warehouse_id,
+        "warehouse": {
+            "id": invoice.warehouse.id,
+            "name": invoice.warehouse.name,
+        },
         "status": invoice.status.value,
         "sale_source": invoice.sale_source.value,
         "payment_status": invoice.payment_status.value,
@@ -479,11 +479,7 @@ def create_sales_invoice_service(
 
                                 
     sale_source = parse_sale_source(sale_source)
-    if sale_source == SaleSource.CENTRAL_WAREHOUSE:
-        warehouse = get_central_warehouse()
-        warehouse_id = warehouse.id
-    else:
-        warehouse_id, warehouse = resolve_sales_warehouse(warehouse_id)
+    warehouse_id, warehouse = resolve_sales_warehouse(warehouse_id)
     ensure_warehouse_access(employee_id, warehouse_id)
 
                                
@@ -639,8 +635,6 @@ def update_sales_invoice_service(invoice_id, employee_id, warehouse_id, customer
 
     customer_id = invoice.customer_id
     warehouse_id = invoice.warehouse_id
-    if invoice.sale_source == SaleSource.CENTRAL_WAREHOUSE:
-        warehouse_id = get_central_warehouse().id
 
                     
     if not items or len(items) == 0:
@@ -864,6 +858,7 @@ def serialize_invoice_summary(invoice):
     
     return {
         "id": invoice.id,
+        "warehouse": {"id": invoice.warehouse.id, "name": invoice.warehouse.name},
         "sold_at": invoice.sold_at.isoformat() if invoice.sold_at else None,
         "status": invoice.status.value,
         "cancel_requested": has_active_cancel_request(invoice),

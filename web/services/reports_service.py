@@ -1,7 +1,6 @@
 from datetime import datetime, time, timedelta
 from web.dao import reports_dao
 from web.models import Warehouse
-from web.services.authorization import ensure_central_warehouse
 from web.services.exceptions import NotFoundError, ValidationError
 
 
@@ -40,7 +39,6 @@ def get_inventory_report_service(warehouse_id_value, product_id_value, keyword):
         if not warehouse:
             raise NotFoundError("Kho không tồn tại")
     
-    warehouse_id = ensure_central_warehouse(warehouse_id).id
     products_data = reports_dao.get_inventory_report(
         warehouse_id=warehouse_id,
         product_id=product_id,
@@ -70,7 +68,6 @@ def get_movements_report_service(from_date_value, to_date_value, warehouse_id_va
         if not warehouse:
             raise NotFoundError("Kho không tồn tại")
     
-    warehouse_id = ensure_central_warehouse(warehouse_id).id
     report_data = reports_dao.get_movements_report(
         from_date=from_date,
         to_date=to_date,

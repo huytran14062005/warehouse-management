@@ -288,7 +288,7 @@ function SalesInvoiceDetail({
                   <dd>
                     {invoice.sale_source === "hàng nhân viên"
                       ? "Hàng nhân viên đi tỉnh"
-                      : "Kho trung tâm"}
+                      : invoice.warehouse?.name || "Kho"}
                   </dd>
                 </div>
               </dl>
@@ -647,6 +647,8 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
       ? "employee_stock"
       : "central_warehouse",
   );
+  const [warehouses, setWarehouses] = useState([]);
+  const [warehouseId, setWarehouseId] = useState(String(invoice?.warehouse_id || ""));
   const [employeeStock, setEmployeeStock] = useState([]);
   const [employeeStockLoading, setEmployeeStockLoading] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState(
@@ -686,6 +688,20 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
   const customerSearchTouchedRef = useRef(false);
   const productSearchTimerRefs = useRef({});
   const productSearchRequestRefs = useRef({});
+
+  useEffect(() => {
+    let cancelled = false;
+    authApis().get(endpoints.warehouses)
+      .then((response) => {
+        if (cancelled) return;
+        setWarehouses(response.data?.warehouses || []);
+        setWarehouseId((current) => current || String(response.data?.default_warehouse_id || ""));
+      })
+      .catch((requestError) => {
+        if (!cancelled) setFormError(getApiError(requestError));
+      });
+    return () => { cancelled = true; };
+  }, [setFormError]);
 
   useEffect(() => {
     if (isEditing || customerMode !== "new" || salesAreas.length) {
@@ -863,11 +879,7 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
         } else {
           const response = await authApis().get(endpoints.productsInventory, {
             params: {
-              source: saleSource === "central_warehouse" ? "central" : undefined,
-              warehouse_id:
-                saleSource === "central_warehouse"
-                  ? undefined
-                  : invoice?.warehouse_id || undefined,
+              warehouse_id: warehouseId || undefined,
               page: 1,
               per_page: 100,
               keyword: keyword || undefined,
@@ -934,6 +946,17 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
     setPaymentAmount("");
   };
 
+  const handleWarehouseChange = (value) => {
+    setWarehouseId(String(value));
+    Object.values(productSearchTimerRefs.current).forEach(clearTimeout);
+    Object.keys(productSearchRequestRefs.current).forEach((key) => {
+      productSearchRequestRefs.current[key] += 1;
+    });
+    setItems([{ productId: "", productSearch: "", quantity: "1", unitPrice: "" }]);
+    setProductSearchResults({});
+    setProductSearchLoading({});
+  };
+
   const removeItem = (index) => {
     setItems((current) =>
       current.filter((_, itemIndex) => itemIndex !== index),
@@ -943,6 +966,10 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
   const handleSubmit = async (event) => {
     event.preventDefault();
     setFormError("");
+    if (!warehouseId) {
+      setFormError("Vui lòng chọn kho xuất hàng.");
+      return;
+    }
     if (!isEditing && customerMode === "existing" && !customerId) {
       setFormError("Vui lòng chọn khách hàng.");
       return;
@@ -1011,6 +1038,7 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
     try {
       setSaving(true);
       const payload = {
+        warehouse_id: Number(warehouseId),
         customer_id: isEditing
           ? Number(invoice.customer.id)
           : customerMode === "existing"
@@ -1091,7 +1119,7 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                     options={[
                       {
                         value: "central_warehouse",
-                        label: "Xuất từ kho trung tâm",
+                        label: "Xuất từ kho",
                       },
                       ...(canUseEmployeeStock
                         ? [
@@ -1111,6 +1139,21 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                     </small>
                   )}
                 </div>
+              )}
+              {saleSource === "central_warehouse" && (
+                <label className="sales-editor-field">
+                  <span>Kho xuất hàng</span>
+                  <select
+                    value={warehouseId}
+                    onChange={(event) => handleWarehouseChange(event.target.value)}
+                    disabled={isEditing}
+                    required
+                  >
+                    {warehouses.map((warehouse) => (
+                      <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>
+                    ))}
+                  </select>
+                </label>
               )}
               <div className="sales-editor-field">
                 <span>Khách hàng</span>
@@ -1360,7 +1403,7 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                         <small>
                           {saleSource === "employee_stock"
                             ? "Tồn kho của bạn"
-                            : "Tồn kho trung tâm"}: {formatQuantity(selectedProduct.available_stock)}{" "}
+                            : `Tồn kho ${warehouses.find((warehouse) => String(warehouse.id) === warehouseId)?.name || "đã chọn"}`}: {formatQuantity(selectedProduct.available_stock)}{" "}
                           {selectedProduct.unit}
                         </small>
                       )}
@@ -2184,6 +2227,7 @@ function SalesInvoices() {
               <thead>
                 <tr>
                   <th>Ngày bán</th>
+                  <th>Kho xuất</th>
                   <th>Khách hàng</th>
                   <th>Trạng thái</th>
                   <th>Số sản phẩm</th>
@@ -2202,6 +2246,7 @@ function SalesInvoices() {
                     }}
                   >
                     <td>{formatDateTime(invoice.sold_at)}</td>
+                    <td>{invoice.sale_source === "hàng nhân viên" ? "Hàng nhân viên" : invoice.warehouse?.name || "—"}</td>
                     <td>
                       <strong>{invoice.customer?.full_name || "—"}</strong>
                       <small>{invoice.customer?.phone || ""}</small>
