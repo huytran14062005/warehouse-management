@@ -3,7 +3,7 @@ from flask import Blueprint, jsonify, request
 from web.blueprints.api_errors import handle_api_errors
 from web.middleware.auth_middleware import verify_role, verify_token
 from web.models import Employee, EmployeeRole, StockTransfer
-from web.services.authorization import ensure_warehouse_access, scoped_warehouse_id
+from web.services.authorization import ensure_warehouse_access, get_central_warehouse, scoped_warehouse_id
 from web.services.exceptions import NotFoundError
 from web.services.stock_transfer_service import (
     create_stock_transfer_service,
@@ -25,10 +25,15 @@ stock_transfers_bp = Blueprint("stock_transfers", __name__)
 @verify_role(EmployeeRole.THU_KHO, EmployeeRole.QUAN_LY)
 @handle_api_errors
 def get_sales_employees():
+    warehouse = get_central_warehouse()
+    ensure_warehouse_access(request.employee_id, warehouse.id)
     return jsonify({
-        "employees": get_sales_employees_service(
-            scoped_warehouse_id(request.employee_id)
-        )
+        "employees": get_sales_employees_service(),
+        "warehouse": {
+            "id": warehouse.id,
+            "name": warehouse.name,
+            "address": warehouse.address,
+        },
     }), 200
 
 

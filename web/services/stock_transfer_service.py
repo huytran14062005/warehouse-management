@@ -6,7 +6,11 @@ from sqlalchemy.orm import selectinload
 from web import app, dao, db
 from web.models import Employee, EmployeeRole, InvoiceStatus, Product, SaleSource, SalesInvoice, SalesInvoiceItem, StockTransfer, StockTransferItem, Warehouse
 from web.services.exceptions import NotFoundError, ValidationError
-from web.services.authorization import ensure_bounded_items, ensure_warehouse_access
+from web.services.authorization import (
+    ensure_bounded_items,
+    ensure_warehouse_access,
+    get_central_warehouse,
+)
 
 
 def _parse_positive_int(value, default):
@@ -306,27 +310,17 @@ def create_stock_transfer_service(created_by_employee_id, employee_id, warehouse
     if recipient.role != EmployeeRole.NHAN_VIEN_BAN_HANG:
         raise ValidationError("Chỉ được cấp hàng cho nhân viên bán hàng")
 
+    central_warehouse = get_central_warehouse()
     if warehouse_id in (None, ""):
-        # A warehouse-scoped keeper must always operate on the warehouse
-        # assigned to their account.  Falling back to the first warehouse
-        # here can make the UI show stock from one warehouse while the
-        # validation checks a different one.
-        creator = Employee.query.get(created_by_employee_id)
-        if not creator:
-            raise NotFoundError("Nhân viên cấp hàng không tồn tại")
-        warehouse = (
-            Warehouse.query.get(creator.warehouse_id)
-            if creator.warehouse_id is not None
-            else Warehouse.query.order_by(Warehouse.id.asc()).first()
-        )
+        warehouse = central_warehouse
     else:
         warehouse = Warehouse.query.get(_positive_integer(warehouse_id, "Mã kho"))
     if not warehouse:
         raise NotFoundError("Kho không tồn tại")
+    if warehouse.id != central_warehouse.id:
+        raise ValidationError("Chỉ được cấp hàng từ kho trung tâm")
 
     ensure_warehouse_access(created_by_employee_id, warehouse.id)
-    if recipient.warehouse_id is not None and recipient.warehouse_id != warehouse.id:
-        raise ValidationError("NhÃ¢n viÃªn nháº­n hÃ ng khÃ´ng thuá»™c kho Ä‘ang cáº¥p")
     normalized = _normalize_transfer_items(items)
     product_ids = [item["product_id"] for item in normalized]
     product_names = {item["product_id"]: item["product_name"] for item in normalized}

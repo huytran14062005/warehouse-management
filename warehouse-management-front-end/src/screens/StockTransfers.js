@@ -21,6 +21,7 @@ function formatDate(value) {
 function StockTransfers() {
   const [employees, setEmployees] = useState([]);
   const [products, setProducts] = useState([]);
+  const [sourceWarehouse, setSourceWarehouse] = useState(null);
   const [employeeId, setEmployeeId] = useState("");
   const [items, setItems] = useState([]);
   const [note, setNote] = useState("");
@@ -49,14 +50,17 @@ function StockTransfers() {
     const loadOptions = async () => {
       try {
         setLoading(true);
-        const [employeesResponse, productsResponse] = await Promise.all([
-          authApis().get(endpoints.salesEmployees),
-          authApis().get(endpoints.productsInventory, {
-            params: { page: 1, per_page: 1000 },
-          }),
-        ]);
+        const employeesResponse = await authApis().get(endpoints.salesEmployees);
+        const warehouse = employeesResponse.data?.warehouse;
+        if (!warehouse?.id) {
+          throw new Error("Chưa cấu hình kho trung tâm để cấp hàng cho nhân viên.");
+        }
+        const productsResponse = await authApis().get(endpoints.productsInventory, {
+          params: { warehouse_id: warehouse.id, page: 1, per_page: 1000 },
+        });
         if (cancelled) return;
         setEmployees(employeesResponse.data?.employees || []);
+        setSourceWarehouse(warehouse);
         setProducts(productsResponse.data?.products || []);
       } catch (requestError) {
         if (!cancelled) setError(getApiError(requestError));
@@ -176,6 +180,10 @@ function StockTransfers() {
       setError("Vui lòng chọn sản phẩm và nhập số lượng hợp lệ.");
       return;
     }
+    if (!sourceWarehouse?.id) {
+      setError("Chưa xác định được kho trung tâm.");
+      return;
+    }
     const productIds = new Set(items.map((item) => item.product_id));
     if (productIds.size !== items.length) {
       setError("Mỗi sản phẩm chỉ được cấp một lần trong phiếu.");
@@ -186,6 +194,7 @@ function StockTransfers() {
       setSaving(true);
       await authApis().post(endpoints.stockTransfers, {
         employee_id: Number(employeeId),
+        warehouse_id: Number(sourceWarehouse?.id),
         items: items.map((item) => ({
           product_id: Number(item.product_id),
           quantity: Number(item.quantity),
@@ -199,7 +208,7 @@ function StockTransfers() {
       setNote("");
       setEditorOpen(false);
       const response = await authApis().get(endpoints.productsInventory, {
-        params: { page: 1, per_page: 1000 },
+        params: { warehouse_id: sourceWarehouse?.id, page: 1, per_page: 1000 },
       });
       setProducts(response.data?.products || []);
       const transfersResponse = await authApis().get(endpoints.stockTransfers, {
@@ -268,6 +277,10 @@ function StockTransfers() {
               </button>
             </div>
             <form className="warehouse-modal-body stock-transfers-form" onSubmit={submit}>
+          <div className="stock-transfers-source-warehouse">
+            <span>Kho xuất hàng</span>
+            <strong>{sourceWarehouse?.name || "Kho trung tâm"}</strong>
+          </div>
           <label className="stock-transfers-field">
             <span>Nhân viên nhận hàng</span>
             <SharedSearchableDropdown

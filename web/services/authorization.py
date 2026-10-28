@@ -1,6 +1,26 @@
+from sqlalchemy import func
+
 from web import app
 from web.models import Employee, EmployeeRole, Warehouse
-from web.services.exceptions import ForbiddenError, NotFoundError
+from web.services.exceptions import ForbiddenError, NotFoundError, ValidationError
+
+
+CENTRAL_WAREHOUSE_NAME = "Kho trung tâm"
+
+
+def get_central_warehouse():
+    """Return the single warehouse used as the source for employee stock."""
+    warehouses = (
+        Warehouse.query
+        .filter(func.lower(func.trim(Warehouse.name)) == CENTRAL_WAREHOUSE_NAME.lower())
+        .order_by(Warehouse.id.asc())
+        .all()
+    )
+    if not warehouses:
+        raise ValidationError("Chưa cấu hình kho trung tâm để cấp hàng cho nhân viên")
+    if len(warehouses) > 1:
+        raise ValidationError("Có nhiều kho trung tâm; cần giữ lại đúng một kho trung tâm")
+    return warehouses[0]
 
 
 def get_employee_or_404(employee_id):
