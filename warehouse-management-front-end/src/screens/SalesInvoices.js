@@ -1107,7 +1107,7 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                     <small>
                       {employeeStockLoading
                         ? "Đang tải tồn hàng của bạn..."
-                        : "Đơn sẽ hoàn thành ngay sau khi lưu và trừ vào tồn hàng của bạn."}
+                        : "Đơn sẽ hoàn thành ngay sau khi lưu và trừ vào tồn kho của bạn."}
                     </small>
                   )}
                 </div>
@@ -1358,7 +1358,9 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                       </button>
                       {selectedProduct?.available_stock != null && (
                         <small>
-                          Tồn kho thực tế: {formatQuantity(selectedProduct.available_stock)}{" "}
+                          {saleSource === "employee_stock"
+                            ? "Tồn kho của bạn"
+                            : "Tồn kho trung tâm"}: {formatQuantity(selectedProduct.available_stock)}{" "}
                           {selectedProduct.unit}
                         </small>
                       )}

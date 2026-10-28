@@ -555,26 +555,24 @@ function Customers() {
 
       <AutoDismissMessage message={error} className="customers-alert" />
 
-      <div className="customers-summary" aria-label="Tổng quan khách hàng">
-        <div className="customers-summary-card">
+      {canViewCustomerFinancial && (
+        <div className="customers-summary" aria-label="Tổng quan khách hàng">
+          <div className="customers-summary-card customers-summary-card--paid">
+            <span>Tổng tiền đã thu</span>
+            <strong>{formatCurrency(customerSummary.total_collected)}</strong>
+          </div>
+          <div className="customers-summary-card customers-summary-card--debt">
+            <span>Tổng công nợ hiện tại</span>
+            <strong>{formatCurrency(customerSummary.total_debt)}</strong>
+          </div>
+        </div>
+      )}
+
+      <div className="customers-card">
+        <div className="customers-table-meta">
           <span>Tổng số khách hàng</span>
           <strong>{customerSummary.total_customers.toLocaleString("vi-VN")}</strong>
         </div>
-        {canViewCustomerFinancial && (
-          <>
-            <div className="customers-summary-card customers-summary-card--paid">
-              <span>Tổng tiền đã thu</span>
-              <strong>{formatCurrency(customerSummary.total_collected)}</strong>
-            </div>
-            <div className="customers-summary-card customers-summary-card--debt">
-              <span>Tổng công nợ hiện tại</span>
-              <strong>{formatCurrency(customerSummary.total_debt)}</strong>
-            </div>
-          </>
-        )}
-      </div>
-
-      <div className="customers-card">
         {loading ? (
           <Skeleton rows={6} columns={6} />
         ) : customers.length === 0 ? (
