@@ -159,21 +159,23 @@ def _inventory_for_products(product_ids, warehouse_id=None, exclude_invoice_id=N
 
     for data in inventory.values():
         for warehouse in data["warehouses"].values():
-            warehouse["stock"] = (
+            warehouse["stock"] = max(
+                0,
                 warehouse["imported"]
                 - warehouse["sold"]
                 - warehouse["damaged"]
-                - warehouse["transferred"]
+                - warehouse["transferred"],
             )
         data["warehouses"] = sorted(
             data["warehouses"].values(),
             key=lambda warehouse: warehouse["warehouse_id"],
         )
-        data["available_stock"] = (
+        data["available_stock"] = max(
+            0,
             data["total_imported"]
             - data["total_sold"]
             - data["total_damaged"]
-            - data["total_transferred"]
+            - data["total_transferred"],
         )
 
     return inventory
