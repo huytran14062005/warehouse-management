@@ -411,7 +411,7 @@ def update_import_invoice_service(invoice_id, employee_id, warehouse_id, supplie
     old_items = {item.product_id: float(item.quantity) for item in invoice.items}
 
     if invoice.warehouse_id != warehouse_id:
-        old_stock_by_product = product_dao.calculate_stock_for_items_at_warehouse(
+        old_stock_by_product = product_dao.calculate_available_stock_for_items_at_warehouse(
             list(old_items),
             invoice.warehouse_id,
         )
@@ -429,7 +429,7 @@ def update_import_invoice_service(invoice_id, employee_id, warehouse_id, supplie
         item["product_id"]: item["quantity"]
         for item in validated_items
     }
-    stock_by_product = product_dao.calculate_stock_for_items_at_warehouse(
+    stock_by_product = product_dao.calculate_available_stock_for_items_at_warehouse(
         list(set(old_items) | set(new_items_by_product)),
         warehouse_id,
     )
@@ -480,7 +480,7 @@ def delete_import_invoice_service(invoice_id):
     if invoice.payments:
         raise ValidationError("KhÃ´ng thá»ƒ xÃ³a phiáº¿u nháº­p Ä‘Ã£ phÃ¡t sinh thanh toÃ¡n cho nhÃ  cung cáº¥p")
 
-    stock_by_product = product_dao.calculate_stock_for_items_at_warehouse(
+    stock_by_product = product_dao.calculate_available_stock_for_items_at_warehouse(
         [item.product_id for item in invoice.items],
         invoice.warehouse_id,
     )
