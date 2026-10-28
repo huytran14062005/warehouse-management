@@ -1358,8 +1358,11 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                       </button>
                       {selectedProduct?.available_stock != null && (
                         <small>
-                          Tồn hiện tại: {selectedProduct.available_stock}{" "}
+                          Có thể dùng: {formatQuantity(selectedProduct.available_stock)}{" "}
                           {selectedProduct.unit}
+                          {Number(selectedProduct.reserved_stock || 0) > 0
+                            ? ` (đã giữ ${formatQuantity(selectedProduct.reserved_stock)} cho đơn đang xử lý)`
+                            : ""}
                         </small>
                       )}
                     </div>

@@ -125,11 +125,7 @@ def _validate_items(items, warehouse_id):
     if missing_product_ids:
         raise NotFoundError(f"Sản phẩm ID {missing_product_ids[0]} không tồn tại")
 
-    stock_by_product = product_dao.calculate_stock_for_items_at_warehouse(
-        product_ids,
-        warehouse_id,
-    )
-    reserved_stock = product_dao.calculate_reserved_stock_for_items_at_warehouse(
+    stock_by_product = product_dao.calculate_available_stock_for_items_at_warehouse(
         product_ids,
         warehouse_id,
     )
@@ -138,7 +134,7 @@ def _validate_items(items, warehouse_id):
         stock = stock_by_product[item["product_id"]]
         available_stock = max(
             0,
-            stock["available_stock"] - reserved_stock.get(item["product_id"], 0),
+            stock["available_stock"],
         )
         if item["quantity"] > available_stock:
             raise ValidationError(
@@ -212,11 +208,7 @@ def review_damage_report_service(report_id, manager_id, decision, review_note):
 
     if normalized_decision == DamageReportStatus.APPROVED.value:
         Warehouse.query.filter(Warehouse.id == report.warehouse_id).with_for_update().one()
-        stock_by_product = product_dao.calculate_stock_for_items_at_warehouse(
-            [item.product_id for item in report.items],
-            report.warehouse_id,
-        )
-        reserved_stock = product_dao.calculate_reserved_stock_for_items_at_warehouse(
+        stock_by_product = product_dao.calculate_available_stock_for_items_at_warehouse(
             [item.product_id for item in report.items],
             report.warehouse_id,
         )
@@ -224,7 +216,7 @@ def review_damage_report_service(report_id, manager_id, decision, review_note):
             stock = stock_by_product[item.product_id]
             available_stock = max(
                 0,
-                stock["available_stock"] - reserved_stock.get(item.product_id, 0),
+                stock["available_stock"],
             )
             if float(item.quantity) > available_stock:
                 raise ValidationError(

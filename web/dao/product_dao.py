@@ -43,6 +43,8 @@ def _empty_inventory():
         "total_damaged": 0,
         "total_transferred": 0,
         "available_stock": 0,
+        "physical_stock": 0,
+        "reserved_stock": 0,
         "warehouses": {},
     }
 
@@ -170,14 +172,58 @@ def _inventory_for_products(product_ids, warehouse_id=None, exclude_invoice_id=N
             data["warehouses"].values(),
             key=lambda warehouse: warehouse["warehouse_id"],
         )
-        data["available_stock"] = max(
+        physical_stock = max(
             0,
             data["total_imported"]
             - data["total_sold"]
             - data["total_damaged"]
             - data["total_transferred"],
         )
+        data["physical_stock"] = physical_stock
+        data["available_stock"] = physical_stock
 
+    return inventory
+
+
+def _apply_reserved_stock(inventory, warehouse_id, exclude_invoice_id=None):
+    """Add reservation-aware availability to an already calculated inventory.
+
+    ``physical_stock`` is the stock physically present after completed
+    movements. ``reserved_stock`` is quantity committed by processing/delivering
+    central-warehouse orders. ``available_stock`` is the quantity that can be
+    used for a new operation. Keeping all three values prevents the UI from
+    showing physical stock while validation uses reserved-adjusted stock.
+    """
+    if warehouse_id is None or not inventory:
+        return inventory
+
+    reserved_by_product = calculate_reserved_stock_for_items_at_warehouse(
+        list(inventory),
+        warehouse_id,
+        exclude_invoice_id=exclude_invoice_id,
+    )
+    for product_id, data in inventory.items():
+        physical_stock = max(
+            0,
+            int(data.get("physical_stock", data.get("available_stock", 0)) or 0),
+        )
+        reserved_stock = max(0, int(reserved_by_product.get(product_id, 0) or 0))
+        data["physical_stock"] = physical_stock
+        data["reserved_stock"] = reserved_stock
+        data["available_stock"] = max(0, physical_stock - reserved_stock)
+
+        for warehouse in data.get("warehouses", []):
+            if warehouse.get("warehouse_id") == warehouse_id:
+                warehouse["physical_stock"] = max(
+                    0,
+                    int(warehouse.get("stock", 0) or 0),
+                )
+                warehouse["reserved_stock"] = reserved_stock
+                warehouse["stock"] = max(
+                    0,
+                    warehouse["physical_stock"] - reserved_stock,
+                )
+                warehouse["available_stock"] = warehouse["stock"]
     return inventory
 
 
@@ -193,6 +239,37 @@ def calculate_stock_for_items_at_warehouse(product_ids, warehouse_id, exclude_in
             "total_sold": data["total_sold"],
             "total_damaged": data["total_damaged"],
             "available_stock": data["available_stock"],
+        }
+        for product_id, data in inventory.items()
+    }
+
+
+def calculate_available_stock_for_items_at_warehouse(
+    product_ids,
+    warehouse_id,
+    exclude_invoice_id=None,
+):
+    """Return stock that is safe to allocate from a warehouse right now."""
+    inventory = calculate_stock_for_items_at_warehouse(
+        product_ids,
+        warehouse_id,
+        exclude_invoice_id=exclude_invoice_id,
+    )
+    reserved_by_product = calculate_reserved_stock_for_items_at_warehouse(
+        product_ids,
+        warehouse_id,
+        exclude_invoice_id=exclude_invoice_id,
+    )
+    return {
+        product_id: {
+            **data,
+            "physical_stock": max(0, int(data.get("available_stock", 0) or 0)),
+            "reserved_stock": max(0, int(reserved_by_product.get(product_id, 0) or 0)),
+            "available_stock": max(
+                0,
+                int(data.get("available_stock", 0) or 0)
+                - int(reserved_by_product.get(product_id, 0) or 0),
+            ),
         }
         for product_id, data in inventory.items()
     }
@@ -226,8 +303,20 @@ def calculate_reserved_stock_for_items_at_warehouse(product_ids, warehouse_id, e
     }
 
 
-def calculate_inventory_for_products(product_ids, warehouse_id=None):
-    return _inventory_for_products(product_ids, warehouse_id=warehouse_id)
+def calculate_inventory_for_products(
+    product_ids,
+    warehouse_id=None,
+    include_reserved=False,
+    exclude_invoice_id=None,
+):
+    inventory = _inventory_for_products(product_ids, warehouse_id=warehouse_id)
+    if include_reserved:
+        _apply_reserved_stock(
+            inventory,
+            warehouse_id,
+            exclude_invoice_id=exclude_invoice_id,
+        )
+    return inventory
 
 
 def _inventory_status_key(inventory):
@@ -271,6 +360,7 @@ def get_products_with_inventory(
             [product.id for product in all_products],
             warehouse_id=warehouse_id,
         )
+        _apply_reserved_stock(all_inventory, warehouse_id)
         filtered_products = [
             product
             for product in all_products
@@ -294,6 +384,7 @@ def get_products_with_inventory(
             [product.id for product in products],
             warehouse_id=warehouse_id,
         )
+        _apply_reserved_stock(inventory_by_product, warehouse_id)
     result = []
     for product in products:
         inventory_data = inventory_by_product.get(product.id, _empty_inventory()).copy()

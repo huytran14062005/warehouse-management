@@ -208,11 +208,7 @@ def _validate_items_available_in_warehouse(items, warehouse_id, exclude_invoice_
     protect against stock changes after this check.
     """
     product_ids = [item["product_id"] for item in items]
-    stock_by_product = dao.calculate_stock_for_items_at_warehouse(
-        product_ids,
-        warehouse_id,
-    )
-    reserved_by_product = dao.calculate_reserved_stock_for_items_at_warehouse(
+    stock_by_product = dao.calculate_available_stock_for_items_at_warehouse(
         product_ids,
         warehouse_id,
         exclude_invoice_id=exclude_invoice_id,
@@ -225,8 +221,7 @@ def _validate_items_available_in_warehouse(items, warehouse_id, exclude_invoice_
     for item in items:
         available_stock = max(
             0,
-            int(stock_by_product.get(item["product_id"], {}).get("available_stock", 0))
-            - reserved_by_product.get(item["product_id"], 0),
+            int(stock_by_product.get(item["product_id"], {}).get("available_stock", 0)),
         )
         if available_stock < item["quantity"]:
             product = products_by_id.get(item["product_id"])

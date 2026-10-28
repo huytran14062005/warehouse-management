@@ -327,16 +327,14 @@ def create_stock_transfer_service(created_by_employee_id, employee_id, warehouse
 
     try:
         Warehouse.query.filter(Warehouse.id == warehouse.id).with_for_update().one()
-        warehouse_stock = dao.calculate_stock_for_items_at_warehouse(product_ids, warehouse.id)
-        reserved_stock = dao.calculate_reserved_stock_for_items_at_warehouse(
+        warehouse_stock = dao.calculate_available_stock_for_items_at_warehouse(
             product_ids,
             warehouse.id,
         )
         for item in normalized:
             available = max(
                 0,
-                warehouse_stock[item["product_id"]]["available_stock"]
-                - reserved_stock.get(item["product_id"], 0),
+                warehouse_stock[item["product_id"]]["available_stock"],
             )
             if available < item["quantity"]:
                 raise ValidationError(
