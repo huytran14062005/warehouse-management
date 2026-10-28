@@ -346,18 +346,20 @@ function SalesInvoiceDetail({
 
           <section className="sales-payment-card">
             <div className="sales-payment-header">
-              <h3>Thanh toán</h3>
-              <span
-                className={`sales-payment-status ${
-                  cancelled
-                    ? "is-cancelled"
-                    : getPaymentStatusClass(invoice.payment_status)
-                }`}
-              >
-                {cancelled
-                  ? "Không cần thanh toán"
-                  : getPaymentStatusLabel(invoice.payment_status)}
-              </span>
+              <div className="sales-payment-title-row">
+                <h3>Thanh toán</h3>
+                <span
+                  className={`sales-payment-status ${
+                    cancelled
+                      ? "is-cancelled"
+                      : getPaymentStatusClass(invoice.payment_status)
+                  }`}
+                >
+                  {cancelled
+                    ? "Không cần thanh toán"
+                    : getPaymentStatusLabel(invoice.payment_status)}
+                </span>
+              </div>
               {invoice.payments?.length > 0 && (
                 <div className="sales-payment-header-history">
                   {invoice.payments.map((payment) => (
