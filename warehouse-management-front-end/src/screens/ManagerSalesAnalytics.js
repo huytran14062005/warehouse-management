@@ -389,7 +389,7 @@ function ManagerAnalyticsCharts({ report, debtPagination, tablePages, onTablePag
             <div className="manager-chart-table-wrap">
               <table className="manager-chart-table">
                 <thead>
-                  <tr><th>Tháng</th><th>Số đơn</th><th>Số lượng bán</th><th>Doanh thu</th><th>Đã thu</th><th>Tiền mặt</th><th>Chuyển khoản</th><th>Chi nhà cung cấp</th><th>Doanh thu TB/đơn</th></tr>
+                  <tr><th>Tháng</th><th>Số đơn</th><th>Số lượng bán</th><th>Doanh thu</th><th>Đã thu</th><th>Tiền mặt</th><th>Chuyển khoản</th></tr>
                 </thead>
                 <tbody>
                   {(report.monthly_table || monthlyRows).map((row) => (
@@ -401,8 +401,6 @@ function ManagerAnalyticsCharts({ report, debtPagination, tablePages, onTablePag
                       <td>{money(row.paid)}</td>
                       <td>{money(row.cash_paid)}</td>
                       <td>{money(row.bank_paid)}</td>
-                      <td>{money(row.supplier_paid)}</td>
-                      <td>{money(row.average_order_value)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -635,7 +633,7 @@ function ManagerSalesAnalytics() {
       <div className="manager-analytics-header">
         <div>
           <h1>Thống kê công nợ &amp; doanh thu</h1>
-          <p> </p>
+          <p>Doanh thu và tiền thu/chi theo khoảng ngày; công nợ và tiền còn lại là số hiện tại theo dữ liệu đã ghi nhận.</p>
         </div>
       </div>
       <form className="manager-analytics-filter" onSubmit={loadReport}>
@@ -699,9 +697,21 @@ function ManagerSalesAnalytics() {
                 onClick={() => scrollToSection("manager-monthly-chart")}
               />
               <SummaryCard
-                label="Đã trả nhà cung cấp"
+                label="Đã trả nhà cung cấp trong kỳ"
                 value={money(summary.supplier_paid_total)}
                 onClick={() => scrollToSection("manager-monthly-chart")}
+              />
+              <SummaryCard
+                label="Công nợ nhà cung cấp hiện tại"
+                value={money(summary.supplier_debt_total)}
+                onClick={() => scrollToSection("manager-monthly-chart")}
+                tone={Number(summary.supplier_debt_total) > 0 ? "warning" : "positive"}
+              />
+              <SummaryCard
+                label="Tiền còn lại theo hệ thống"
+                value={money(summary.company_balance_total)}
+                onClick={() => scrollToSection("manager-monthly-chart")}
+                tone={Number(summary.company_balance_total) >= 0 ? "positive" : "warning"}
               />
               <SummaryCard
                 label="Biến động công nợ"

@@ -8,6 +8,8 @@ from web.models import (
     Customer,
     CustomerPayment,
     InvoiceStatus,
+    ImportInvoice,
+    ImportInvoiceItem,
     Product,
     SalesInvoice,
     SalesInvoiceItem,
@@ -54,6 +56,69 @@ def _paginate_rows(rows, page, per_page):
     total = len(rows)
     start = (page - 1) * per_page
     return rows[start:start + per_page], total
+
+
+def _current_financial_totals():
+    """Return all-time financial totals from recorded customer/supplier flows.
+
+    Supplier debt is derived from import-invoice totals minus supplier payments
+    because import invoices do not duplicate a paid/remaining balance. The
+    company balance is a system-book balance: customer receipts minus supplier
+    payments. It excludes expenses and opening balances because those flows are
+    not tracked by this application.
+    """
+    customer_collected = float(
+        db.session.query(func.coalesce(func.sum(CustomerPayment.amount), 0)).scalar() or 0
+    )
+    supplier_paid = float(
+        db.session.query(func.coalesce(func.sum(SupplierPayment.amount), 0)).scalar() or 0
+    )
+
+    invoice_totals = (
+        db.session.query(
+            ImportInvoice.id.label("invoice_id"),
+            func.coalesce(
+                func.sum(ImportInvoiceItem.quantity * ImportInvoiceItem.unit_price),
+                0,
+            ).label("invoice_total"),
+        )
+        .outerjoin(
+            ImportInvoiceItem,
+            ImportInvoiceItem.import_invoice_id == ImportInvoice.id,
+        )
+        .group_by(ImportInvoice.id)
+        .subquery()
+    )
+    paid_by_invoice = (
+        db.session.query(
+            SupplierPayment.import_invoice_id.label("invoice_id"),
+            func.coalesce(func.sum(SupplierPayment.amount), 0).label("paid_total"),
+        )
+        .group_by(SupplierPayment.import_invoice_id)
+        .subquery()
+    )
+    supplier_invoice_rows = (
+        db.session.query(
+            invoice_totals.c.invoice_total,
+            func.coalesce(paid_by_invoice.c.paid_total, 0).label("paid_total"),
+        )
+        .outerjoin(
+            paid_by_invoice,
+            paid_by_invoice.c.invoice_id == invoice_totals.c.invoice_id,
+        )
+        .all()
+    )
+    supplier_debt = sum(
+        max(float(row.invoice_total or 0) - float(row.paid_total or 0), 0)
+        for row in supplier_invoice_rows
+    )
+
+    return {
+        "customer_collected_total": customer_collected,
+        "supplier_paid_total": supplier_paid,
+        "supplier_debt_total": supplier_debt,
+        "company_balance_total": customer_collected - supplier_paid,
+    }
 
 
 def _build_monthly_trend(from_date, to_date):
@@ -589,6 +654,7 @@ def get_manager_sales_analytics_service(
     total_current_debt = sum(float(customer.debt_amount or 0) for customer in customers)
     total_period_sales = sum(sales_by_customer.values())
     total_period_paid = sum(paid_by_customer.values())
+    current_financials = _current_financial_totals()
     monthly_trend, monthly_peak = _build_monthly_trend(from_date, to_date)
     revenue_table, revenue_total = _paginate_rows(revenue_by_area, 1, per_page)
     inventory_table, inventory_total = _paginate_rows(inventory_chart, 1, per_page)
@@ -612,6 +678,10 @@ def get_manager_sales_analytics_service(
             "supplier_paid_total": sum(row.get("supplier_paid", 0) for row in monthly_trend),
             "supplier_cash_paid_total": sum(row.get("supplier_cash_paid", 0) for row in monthly_trend),
             "supplier_bank_paid_total": sum(row.get("supplier_bank_paid", 0) for row in monthly_trend),
+            "supplier_debt_total": current_financials["supplier_debt_total"],
+            "customer_collected_total": current_financials["customer_collected_total"],
+            "supplier_paid_all_total": current_financials["supplier_paid_total"],
+            "company_balance_total": current_financials["company_balance_total"],
         },
         "debts": paged_debts,
         "debt_chart": debt_chart_rows,
