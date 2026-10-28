@@ -20,6 +20,8 @@
 .products-toolbar > button:hover { background: #072542; }
 .products-validation-warning { margin-bottom: 16px; padding: 11px 13px; color: #8a5a12; border: 1px solid #ecd39e; border-radius: 5px; background: #fff8e8; font-size: 13px; }
 .products-alert { margin-bottom: 16px; padding: 11px 13px; color: #9f2d2d; border: 1px solid #f1c8c8; border-radius: 5px; background: #fff1f1; font-size: 13px; }
+.products-stock-note { margin: 0 0 12px; color: #71849a; font-size: 12px; line-height: 1.5; }
+.products-stock-note strong { color: #26704b; font-weight: 700; }
 .products-card { overflow: hidden; border: 1px solid #d9e2ec; border-radius: 6px; background: #fff; }
 .products-table-wrapper { overflow-x: auto; }
 .products-table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -39,7 +41,9 @@
 .product-detail-section-title { margin: 22px 0 9px; color: #0b3158; font-size: 15px; }
 .product-detail-warehouse-list { display: grid; gap: 7px; }
 .product-detail-warehouse-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border-bottom: 1px solid #edf1f5; }
-.product-detail-warehouse-row strong { color: #0b3158; }
+.product-detail-warehouse-row > div { display: grid; gap: 3px; }
+.product-detail-warehouse-row small { color: #71849a; font-size: 11px; }
+.product-detail-warehouse-row strong { color: #26704b; font-size: 13px; }
 .product-detail-empty { color: #71849a; }
 @media (max-width: 640px) {
   .product-detail-summary, .product-detail-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -48,6 +52,9 @@
 .products-money { text-align: right !important; }
 .products-number { text-align: center !important; }
 .products-stock { color: #0b3158; font-weight: 700; }
+.products-reserved { color: #a8640b; }
+.products-available { color: #26704b; }
+.products-available-heading { color: #26704b !important; }
 .products-stock-status { display: inline-block; padding: 4px 8px; border: 1px solid; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
 .products-stock-status.is-available { color: #26704b; border-color: #a9d5bd; background: #eef9f2; }
 .products-stock-status.is-low { color: #956016; border-color: #e6c58e; background: #fff8e9; }
