@@ -852,7 +852,16 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
             : saleProducts;
         } else {
           const response = await authApis().get(endpoints.productsInventory, {
-            params: { page: 1, per_page: 100, keyword: keyword || undefined },
+            params: {
+              source: saleSource === "central_warehouse" ? "central" : undefined,
+              warehouse_id:
+                saleSource === "central_warehouse"
+                  ? undefined
+                  : invoice?.warehouse_id || undefined,
+              page: 1,
+              per_page: 100,
+              keyword: keyword || undefined,
+            },
           });
           results = response.data?.products || [];
         }

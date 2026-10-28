@@ -14,7 +14,7 @@ from web.services.product_service import (
     update_product_service,
 )
 from web.services.price_list_export_service import build_price_list_export
-from web.services.authorization import scoped_warehouse_id
+from web.services.authorization import get_central_warehouse, scoped_warehouse_id
 from web.utils.pagination import build_pagination
 
 
@@ -112,12 +112,15 @@ def create_product_request():
 @verify_role(EmployeeRole.NHAN_VIEN_BAN_HANG, EmployeeRole.THU_KHO, EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY)
 @handle_api_errors
 def get_products_inventory():
-       
+    requested_warehouse_id = request.args.get('warehouse_id')
+    if request.args.get('source') == 'central':
+        requested_warehouse_id = get_central_warehouse().id
+
     products_data, total, page, per_page = get_products_inventory_service(
         page_value=request.args.get('page'),
         per_page_value=request.args.get('per_page'),
         keyword=request.args.get('keyword'),
-        warehouse_id_value=scoped_warehouse_id(request.employee_id, request.args.get('warehouse_id')),
+        warehouse_id_value=scoped_warehouse_id(request.employee_id, requested_warehouse_id),
         min_price_value=request.args.get('min_price'),
         max_price_value=request.args.get('max_price'),
         status_value=request.args.get('status'),
