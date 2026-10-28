@@ -52,9 +52,7 @@
 .products-money { text-align: right !important; }
 .products-number { text-align: center !important; }
 .products-stock { color: #0b3158; font-weight: 700; }
-.products-reserved { color: #a8640b; }
-.products-available { color: #26704b; }
-.products-available-heading { color: #26704b !important; }
+.products-stock-heading { color: #0b3158 !important; }
 .products-stock-status { display: inline-block; padding: 4px 8px; border: 1px solid; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
 .products-stock-status.is-available { color: #26704b; border-color: #a9d5bd; background: #eef9f2; }
 .products-stock-status.is-low { color: #956016; border-color: #e6c58e; background: #fff8e9; }

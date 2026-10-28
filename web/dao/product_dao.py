@@ -43,8 +43,6 @@ def _empty_inventory():
         "total_damaged": 0,
         "total_transferred": 0,
         "available_stock": 0,
-        "physical_stock": 0,
-        "reserved_stock": 0,
         "warehouses": {},
     }
 
@@ -78,7 +76,16 @@ def _inventory_for_products(product_ids, warehouse_id=None, exclude_invoice_id=N
         .join(Warehouse, SalesInvoice.warehouse_id == Warehouse.id)
         .filter(
             SalesInvoiceItem.product_id.in_(product_ids),
-            SalesInvoice.status == InvoiceStatus.COMPLETED,
+            # Once an order leaves draft, its goods are considered sold from
+            # the central warehouse. Draft and cancelled orders do not reduce
+            # stock and therefore are intentionally excluded here.
+            SalesInvoice.status.in_(
+                (
+                    InvoiceStatus.PROCESSING,
+                    InvoiceStatus.DELIVERING,
+                    InvoiceStatus.COMPLETED,
+                )
+            ),
             SalesInvoice.sale_source == SaleSource.CENTRAL_WAREHOUSE,
         )
     )
@@ -179,51 +186,8 @@ def _inventory_for_products(product_ids, warehouse_id=None, exclude_invoice_id=N
             - data["total_damaged"]
             - data["total_transferred"],
         )
-        data["physical_stock"] = physical_stock
         data["available_stock"] = physical_stock
 
-    return inventory
-
-
-def _apply_reserved_stock(inventory, warehouse_id, exclude_invoice_id=None):
-    """Add reservation-aware availability to an already calculated inventory.
-
-    ``physical_stock`` is the stock physically present after completed
-    movements. ``reserved_stock`` is quantity committed by processing/delivering
-    central-warehouse orders. ``available_stock`` is the quantity that can be
-    used for a new operation. Keeping all three values prevents the UI from
-    showing physical stock while validation uses reserved-adjusted stock.
-    """
-    if warehouse_id is None or not inventory:
-        return inventory
-
-    reserved_by_product = calculate_reserved_stock_for_items_at_warehouse(
-        list(inventory),
-        warehouse_id,
-        exclude_invoice_id=exclude_invoice_id,
-    )
-    for product_id, data in inventory.items():
-        physical_stock = max(
-            0,
-            int(data.get("physical_stock", data.get("available_stock", 0)) or 0),
-        )
-        reserved_stock = max(0, int(reserved_by_product.get(product_id, 0) or 0))
-        data["physical_stock"] = physical_stock
-        data["reserved_stock"] = reserved_stock
-        data["available_stock"] = max(0, physical_stock - reserved_stock)
-
-        for warehouse in data.get("warehouses", []):
-            if warehouse.get("warehouse_id") == warehouse_id:
-                warehouse["physical_stock"] = max(
-                    0,
-                    int(warehouse.get("stock", 0) or 0),
-                )
-                warehouse["reserved_stock"] = reserved_stock
-                warehouse["stock"] = max(
-                    0,
-                    warehouse["physical_stock"] - reserved_stock,
-                )
-                warehouse["available_stock"] = warehouse["stock"]
     return inventory
 
 
@@ -239,6 +203,7 @@ def calculate_stock_for_items_at_warehouse(product_ids, warehouse_id, exclude_in
             "total_sold": data["total_sold"],
             "total_damaged": data["total_damaged"],
             "available_stock": data["available_stock"],
+            "physical_stock": data["available_stock"],
         }
         for product_id, data in inventory.items()
     }
@@ -249,74 +214,28 @@ def calculate_available_stock_for_items_at_warehouse(
     warehouse_id,
     exclude_invoice_id=None,
 ):
-    """Return stock that is safe to allocate from a warehouse right now."""
-    inventory = calculate_stock_for_items_at_warehouse(
+    """Return stock available for a new operation.
+
+    Confirmed sales are already included in ``total_sold`` above, so no
+    second reservation subtraction is applied here.
+    """
+    return calculate_stock_for_items_at_warehouse(
         product_ids,
         warehouse_id,
         exclude_invoice_id=exclude_invoice_id,
     )
-    reserved_by_product = calculate_reserved_stock_for_items_at_warehouse(
-        product_ids,
-        warehouse_id,
-        exclude_invoice_id=exclude_invoice_id,
-    )
-    return {
-        product_id: {
-            **data,
-            "physical_stock": max(0, int(data.get("available_stock", 0) or 0)),
-            "reserved_stock": max(0, int(reserved_by_product.get(product_id, 0) or 0)),
-            "available_stock": max(
-                0,
-                int(data.get("available_stock", 0) or 0)
-                - int(reserved_by_product.get(product_id, 0) or 0),
-            ),
-        }
-        for product_id, data in inventory.items()
-    }
-
-
-def calculate_reserved_stock_for_items_at_warehouse(product_ids, warehouse_id, exclude_invoice_id=None):
-    """Return quantities reserved by active central-warehouse sales orders."""
-    product_ids = list({int(product_id) for product_id in product_ids})
-    if not product_ids:
-        return {}
-
-    query = (
-        db.session.query(
-            SalesInvoiceItem.product_id,
-            func.sum(SalesInvoiceItem.quantity).label("quantity"),
-        )
-        .join(SalesInvoice, SalesInvoiceItem.sales_invoice_id == SalesInvoice.id)
-        .filter(
-            SalesInvoice.warehouse_id == warehouse_id,
-            SalesInvoice.sale_source == SaleSource.CENTRAL_WAREHOUSE,
-            SalesInvoice.status.in_((InvoiceStatus.PROCESSING, InvoiceStatus.DELIVERING)),
-            SalesInvoiceItem.product_id.in_(product_ids),
-        )
-    )
-    if exclude_invoice_id is not None:
-        query = query.filter(SalesInvoice.id != exclude_invoice_id)
-
-    return {
-        product_id: int(quantity or 0)
-        for product_id, quantity in query.group_by(SalesInvoiceItem.product_id).all()
-    }
 
 
 def calculate_inventory_for_products(
     product_ids,
     warehouse_id=None,
-    include_reserved=False,
     exclude_invoice_id=None,
 ):
-    inventory = _inventory_for_products(product_ids, warehouse_id=warehouse_id)
-    if include_reserved:
-        _apply_reserved_stock(
-            inventory,
-            warehouse_id,
-            exclude_invoice_id=exclude_invoice_id,
-        )
-    return inventory
+    return _inventory_for_products(
+        product_ids,
+        warehouse_id=warehouse_id,
+        exclude_invoice_id=exclude_invoice_id,
+    )
 
 
 def _inventory_status_key(inventory):
@@ -360,7 +279,6 @@ def get_products_with_inventory(
             [product.id for product in all_products],
             warehouse_id=warehouse_id,
         )
-        _apply_reserved_stock(all_inventory, warehouse_id)
         filtered_products = [
             product
             for product in all_products
@@ -384,7 +302,6 @@ def get_products_with_inventory(
             [product.id for product in products],
             warehouse_id=warehouse_id,
         )
-        _apply_reserved_stock(inventory_by_product, warehouse_id)
     result = []
     for product in products:
         inventory_data = inventory_by_product.get(product.id, _empty_inventory()).copy()

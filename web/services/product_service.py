@@ -97,8 +97,6 @@ def serialize_product_inventory(product, inventory):
         "total_sold": inventory["total_sold"],
         "total_damaged": inventory["total_damaged"],
         "total_transferred": inventory.get("total_transferred", 0),
-        "physical_stock": inventory.get("physical_stock", inventory.get("available_stock", 0)),
-        "reserved_stock": inventory.get("reserved_stock", 0),
         "available_stock": inventory["available_stock"],
         "warehouses": inventory["warehouses"]
     }
@@ -109,15 +107,13 @@ def get_product_detail_service(product_id, warehouse_id=None):
     if not product:
         raise NotFoundError("Sản phẩm không tồn tại")
     inventory = dao.calculate_inventory_for_products(
-        [product.id], warehouse_id=warehouse_id, include_reserved=warehouse_id is not None,
+        [product.id], warehouse_id=warehouse_id,
     ).get(product.id, {
         "total_imported": 0,
         "total_sold": 0,
         "total_damaged": 0,
         "total_transferred": 0,
         "available_stock": 0,
-        "physical_stock": 0,
-        "reserved_stock": 0,
         "warehouses": [],
     })
     return {

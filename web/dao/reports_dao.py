@@ -179,7 +179,6 @@ def get_movements_report(from_date, to_date, warehouse_id=None):
     inventory_by_product = calculate_inventory_for_products(
         list(product_summary.keys()),
         warehouse_id=warehouse_id,
-        include_reserved=warehouse_id is not None,
     )
     by_product = []
     for product_id, data in product_summary.items():

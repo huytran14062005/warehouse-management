@@ -30,7 +30,6 @@ from .product_dao import (
     calculate_inventory_for_products,
     calculate_stock_for_items_at_warehouse,
     calculate_available_stock_for_items_at_warehouse,
-    calculate_reserved_stock_for_items_at_warehouse,
     get_products_with_inventory,
 )
 from .sales_invoice_dao import (
@@ -73,7 +72,6 @@ __all__ = [
     "calculate_inventory_for_products",
     "calculate_stock_for_items_at_warehouse",
     "calculate_available_stock_for_items_at_warehouse",
-    "calculate_reserved_stock_for_items_at_warehouse",
     "create_sales_invoice",
     "get_sales_invoices_list",
     "get_sales_invoice_by_id",

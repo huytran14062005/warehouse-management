@@ -150,9 +150,7 @@ function ProductDetail({ product, canEdit, onClose, onEdit }) {
           <div className="product-detail-summary">
             <div><span>Đơn vị tính</span><strong>{product.unit}</strong></div>
             <div><span>Giá bán mặc định</span><strong>{formatCurrency(product.default_sale_price)}</strong></div>
-            <div><span>Tồn vật lý</span><strong>{formatQuantity(product.physical_stock ?? product.available_stock)}</strong></div>
-            <div><span>Đã giữ chỗ</span><strong>{formatQuantity(product.reserved_stock)}</strong></div>
-            <div><span>Có thể bán/cấp</span><strong>{formatQuantity(product.available_stock)}</strong></div>
+            <div><span>Tồn kho hiện tại</span><strong>{formatQuantity(product.available_stock)}</strong></div>
           </div>
           <div className="product-detail-stats">
             <div><span>Đã nhập</span><strong>{formatQuantity(product.total_imported)}</strong></div>
@@ -167,14 +165,9 @@ function ProductDetail({ product, canEdit, onClose, onEdit }) {
                 <div key={warehouse.warehouse_id} className="product-detail-warehouse-row">
                   <div>
                     <span>{warehouse.warehouse_name}</span>
-                    <small>
-                      Vật lý: {formatQuantity(warehouse.physical_stock ?? warehouse.stock)} {product.unit}
-                      {Number(warehouse.reserved_stock || 0) > 0
-                        ? ` · Giữ chỗ: ${formatQuantity(warehouse.reserved_stock)} ${product.unit}`
-                        : ""}
-                    </small>
+                    <small>Tồn kho thực tế sau khi trừ bán, hư hỏng và cấp đi</small>
                   </div>
-                  <strong>Có thể dùng: {formatQuantity(warehouse.stock)} {product.unit}</strong>
+                  <strong>{formatQuantity(warehouse.stock)} {product.unit}</strong>
                 </div>
               ))}
             </div>
@@ -481,8 +474,8 @@ function Products() {
       <AutoDismissMessage message={validationWarning} type="warning" className="products-validation-warning" />
       <AutoDismissMessage message={error} className="products-alert" />
       <p className="products-stock-note">
-        Tồn vật lý là số hàng thực tế trong kho. Hàng đã giữ chỗ thuộc các đơn đang xử lý/đang giao;
-        <strong> có thể bán/cấp</strong> là số còn được phép sử dụng.
+        Tồn kho hiện tại = đã nhập − đã bán − đã hư − đã cấp đi. Đơn đã rời trạng thái nháp sẽ được tính vào số đã bán;
+        đơn nháp và đơn hủy không trừ tồn kho.
       </p>
 
       <div className="products-card">
@@ -502,9 +495,7 @@ function Products() {
                   <th className="products-number">Đã bán</th>
                   <th className="products-number">Đã hư</th>
                   <th className="products-number">Đã cấp đi</th>
-                  <th className="products-number">Tồn vật lý</th>
-                  <th className="products-number">Đã giữ chỗ</th>
-                  <th className="products-number products-available-heading">Có thể bán/cấp</th>
+                  <th className="products-number products-stock-heading">Tồn kho hiện tại</th>
                   <th>Trạng thái</th>
                 </tr>
               </thead>
@@ -543,13 +534,7 @@ function Products() {
                     <td className="products-number">
                       {formatQuantity(product.total_transferred)}
                     </td>
-                    <td className="products-number">
-                      {formatQuantity(product.physical_stock ?? product.available_stock)}
-                    </td>
-                    <td className="products-number products-reserved">
-                      {formatQuantity(product.reserved_stock)}
-                    </td>
-                    <td className="products-number products-stock products-available">
+                    <td className="products-number products-stock">
                       {formatQuantity(product.available_stock)}
                     </td>
                     <td>

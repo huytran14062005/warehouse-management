@@ -359,11 +359,8 @@ function StockTransfers() {
                       if (!selectedProduct) return null;
                       return (
                         <div className="stock-transfers-stock-info">
-                          Có thể cấp: {Number(selectedProduct.available_stock || 0).toLocaleString("vi-VN")}{" "}
+                          Tồn kho thực tế: {Number(selectedProduct.available_stock || 0).toLocaleString("vi-VN")}{" "}
                           {selectedProduct.unit}
-                          {Number(selectedProduct.reserved_stock || 0) > 0
-                            ? ` (đã giữ ${Number(selectedProduct.reserved_stock).toLocaleString("vi-VN")} cho đơn đang xử lý)`
-                            : ""}
                         </div>
                       );
                     })()}
