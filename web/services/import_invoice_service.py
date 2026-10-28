@@ -6,7 +6,11 @@ from web.dao import import_invoice_dao, product_dao
 from web.models import Employee, EmployeeRole, ImportInvoice, PaymentMethod, Product, Supplier, SupplierPayment, Warehouse
 from web.services.exceptions import NotFoundError, ValidationError
 from web.services.validators import require_text, validate_money_amount
-from web.services.authorization import ensure_bounded_items, ensure_warehouse_access
+from web.services.authorization import (
+    ensure_bounded_items,
+    ensure_warehouse_access,
+    resolve_document_warehouse,
+)
 from web.services.payment_service import parse_payment_method
 
 
@@ -290,8 +294,6 @@ def create_import_invoice_service(employee_id, warehouse_id, supplier_id, suppli
     if not items or len(items) == 0:
         raise ValidationError("Phiếu nhập phải có ít nhất 1 sản phẩm")
 
-    warehouse_id = validate_positive_integer(warehouse_id, "Mã kho") if warehouse_id not in (None, "") else None
-
                                
     imported_at = parse_date(imported_at) if imported_at not in (None, "") else datetime.now()
     employee = Employee.query.get(employee_id)
@@ -301,11 +303,8 @@ def create_import_invoice_service(employee_id, warehouse_id, supplier_id, suppli
     validated_items = _validate_import_items(items)
 
                                 
-    warehouse = Warehouse.query.get(warehouse_id) if warehouse_id else Warehouse.query.order_by(Warehouse.id.asc()).first()
-    if not warehouse:
-        raise NotFoundError("Kho không tồn tại")
+    warehouse = resolve_document_warehouse(employee_id, warehouse_id)
     warehouse_id = warehouse.id
-    ensure_warehouse_access(employee_id, warehouse_id)
 
                                
     supplier = _resolve_supplier(supplier_id, supplier_data)

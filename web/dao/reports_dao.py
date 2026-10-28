@@ -7,7 +7,6 @@ from web.models import (
     DamageReportStatus,
     ImportInvoice,
     ImportInvoiceItem,
-    InvoiceStatus,
     Product,
     SalesInvoice,
     SalesInvoiceItem,
@@ -17,6 +16,7 @@ from web.models import (
     Warehouse,
 )
 from web.dao.product_dao import calculate_inventory_for_products
+from web.services.inventory_policy import STOCK_DEDUCTING_SALES_STATUSES
 
 
 def get_inventory_report(warehouse_id=None, product_id=None, keyword=None):
@@ -61,7 +61,7 @@ def get_movements_report(from_date, to_date, warehouse_id=None):
         selectinload(SalesInvoice.warehouse),
         selectinload(SalesInvoice.created_by_employee),
     ).filter(
-        SalesInvoice.status == InvoiceStatus.COMPLETED,
+        SalesInvoice.status.in_(STOCK_DEDUCTING_SALES_STATUSES),
         SalesInvoice.sale_source == SaleSource.CENTRAL_WAREHOUSE,
     )
     

@@ -7,7 +7,11 @@ from web.models import (
     Warehouse,
 )
 from web.services.exceptions import NotFoundError, ValidationError
-from web.services.authorization import ensure_bounded_items, ensure_warehouse_access
+from web.services.authorization import (
+    ensure_bounded_items,
+    ensure_warehouse_access,
+    resolve_document_warehouse,
+)
 
 
 def _positive_integer(value, field_name):
@@ -145,12 +149,8 @@ def _validate_items(items, warehouse_id):
     return validated_items
 
 def create_damage_report_service(reported_by_employee_id, warehouse_id, note, items):
-    warehouse_id = _positive_integer(warehouse_id, "Mã kho") if warehouse_id not in (None, "") else None
-    warehouse = Warehouse.query.get(warehouse_id) if warehouse_id else Warehouse.query.order_by(Warehouse.id.asc()).first()
-    if not warehouse:
-        raise NotFoundError("Kho không tồn tại")
+    warehouse = resolve_document_warehouse(reported_by_employee_id, warehouse_id)
     warehouse_id = warehouse.id
-    ensure_warehouse_access(reported_by_employee_id, warehouse_id)
 
     if not Employee.query.get(reported_by_employee_id):
         raise NotFoundError("Nhân viên không tồn tại")

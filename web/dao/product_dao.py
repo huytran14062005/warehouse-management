@@ -8,7 +8,6 @@ from web.models import (
     DamageReportStatus,
     ImportInvoice,
     ImportInvoiceItem,
-    InvoiceStatus,
     Product,
     SalesInvoice,
     SalesInvoiceItem,
@@ -17,6 +16,7 @@ from web.models import (
     StockTransferItem,
     Warehouse,
 )
+from web.services.inventory_policy import STOCK_DEDUCTING_SALES_STATUSES
 
 
 def apply_pagination(query, page, page_size=None):
@@ -79,13 +79,7 @@ def _inventory_for_products(product_ids, warehouse_id=None, exclude_invoice_id=N
             # Once an order leaves draft, its goods are considered sold from
             # the central warehouse. Draft and cancelled orders do not reduce
             # stock and therefore are intentionally excluded here.
-            SalesInvoice.status.in_(
-                (
-                    InvoiceStatus.PROCESSING,
-                    InvoiceStatus.DELIVERING,
-                    InvoiceStatus.COMPLETED,
-                )
-            ),
+            SalesInvoice.status.in_(STOCK_DEDUCTING_SALES_STATUSES),
             SalesInvoice.sale_source == SaleSource.CENTRAL_WAREHOUSE,
         )
     )

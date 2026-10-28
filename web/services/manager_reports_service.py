@@ -18,6 +18,7 @@ from web.models import (
     PaymentMethod,
 )
 from web.services.exceptions import ValidationError
+from web.services.authorization import get_central_warehouse
 from web.services.reports_service import parse_date
 from web.utils.pagination import build_pagination
 
@@ -267,7 +268,14 @@ def _build_monthly_trend(from_date, to_date):
     return rows, peak
 
 
-def _get_manager_sales_table_page(table, from_date, to_date, page, per_page):
+def _get_manager_sales_table_page(
+    table,
+    from_date,
+    to_date,
+    page,
+    per_page,
+    inventory_warehouse_id=None,
+):
     """Load only the requested statistics table for an independent page change."""
     if table == "debt":
         totals = _invoice_total_subquery()
@@ -367,7 +375,10 @@ def _get_manager_sales_table_page(table, from_date, to_date, page, per_page):
         key = "revenue_table"
     elif table == "inventory":
         products = Product.query.order_by(Product.name.asc()).all()
-        inventory_by_product = product_dao.calculate_inventory_for_products([product.id for product in products])
+        inventory_by_product = product_dao.calculate_inventory_for_products(
+            [product.id for product in products],
+            warehouse_id=inventory_warehouse_id,
+        )
         rows = []
         for product in products:
             available_stock = max(0, int(inventory_by_product.get(product.id, {}).get("available_stock", 0) or 0))
@@ -460,7 +471,17 @@ def get_manager_sales_analytics_service(
         table_per_page = min(app.config.get("APPLICATION_SIZE", 10), app.config.get("MAX_PAGE_SIZE", 100))
 
     if table_value in {"debt", "revenue", "inventory", "sold", "monthly"}:
-        return _get_manager_sales_table_page(table_value, from_date, to_date, table_page, table_per_page)
+        inventory_warehouse_id = (
+            get_central_warehouse().id if table_value == "inventory" else None
+        )
+        return _get_manager_sales_table_page(
+            table_value,
+            from_date,
+            to_date,
+            table_page,
+            table_per_page,
+            inventory_warehouse_id=inventory_warehouse_id,
+        )
 
     totals = _invoice_total_subquery()
     invoice_filters = _completed_invoice_filters(from_date, to_date)
@@ -596,8 +617,10 @@ def get_manager_sales_analytics_service(
     # Tồn kho hiện tại lấy theo cùng một công thức với màn hình quản lý kho:
     # nhập - bán trực tiếp - hư hỏng - đã cấp cho nhân viên.
     products = Product.query.order_by(Product.name.asc()).all()
+    central_warehouse_id = get_central_warehouse().id
     inventory_by_product = product_dao.calculate_inventory_for_products(
-        [product.id for product in products]
+        [product.id for product in products],
+        warehouse_id=central_warehouse_id,
     )
     inventory_chart = []
     total_current_stock = 0

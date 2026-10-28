@@ -83,6 +83,35 @@ def scoped_warehouse_id(employee_id, requested_id=None):
     return warehouses[0].id if warehouses else None
 
 
+def resolve_document_warehouse(employee_id, requested_id=None):
+    """Resolve a document's warehouse without guessing by database order.
+
+    A caller may provide an explicit warehouse id. When it does not, a
+    warehouse-scoped employee must have an assignment; a manager defaults to
+    the single configured central warehouse. There is deliberately no
+    ``first warehouse`` fallback because that can silently put stock in the
+    wrong warehouse after another warehouse is added.
+    """
+    employee = get_employee_or_404(employee_id)
+
+    if requested_id not in (None, ""):
+        try:
+            requested_id = int(requested_id)
+        except (TypeError, ValueError):
+            raise ValidationError("Mã kho không hợp lệ")
+        return ensure_warehouse_access(employee_id, requested_id)
+
+    if employee.warehouse_id is not None:
+        return ensure_warehouse_access(employee_id, employee.warehouse_id)
+
+    if employee.role == EmployeeRole.QUAN_LY:
+        warehouse = get_central_warehouse()
+        ensure_warehouse_access(employee_id, warehouse.id)
+        return warehouse
+
+    raise ForbiddenError("Tài khoản chưa được phân công kho")
+
+
 def ensure_bounded_items(items, label="danh sách sản phẩm"):
     if not isinstance(items, list):
         return
