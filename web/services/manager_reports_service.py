@@ -63,17 +63,10 @@ def _current_financial_totals():
 
     Supplier debt is derived from import-invoice totals minus supplier payments
     because import invoices do not duplicate a paid/remaining balance. The
-    company balance is a system-book balance: customer receipts minus supplier
-    payments. It excludes expenses and opening balances because those flows are
-    not tracked by this application.
+    The date-scoped company balance is calculated by the report function below;
+    this helper only loads the all-time supplier debt and payment totals needed
+    for current-balance cards.
     """
-    customer_collected = float(
-        db.session.query(func.coalesce(func.sum(CustomerPayment.amount), 0)).scalar() or 0
-    )
-    supplier_paid = float(
-        db.session.query(func.coalesce(func.sum(SupplierPayment.amount), 0)).scalar() or 0
-    )
-
     invoice_totals = (
         db.session.query(
             ImportInvoice.id.label("invoice_id"),
@@ -114,10 +107,7 @@ def _current_financial_totals():
     )
 
     return {
-        "customer_collected_total": customer_collected,
-        "supplier_paid_total": supplier_paid,
         "supplier_debt_total": supplier_debt,
-        "company_balance_total": customer_collected - supplier_paid,
     }
 
 
@@ -656,6 +646,7 @@ def get_manager_sales_analytics_service(
     total_period_paid = sum(paid_by_customer.values())
     current_financials = _current_financial_totals()
     monthly_trend, monthly_peak = _build_monthly_trend(from_date, to_date)
+    period_supplier_paid = sum(row.get("supplier_paid", 0) for row in monthly_trend)
     revenue_table, revenue_total = _paginate_rows(revenue_by_area, 1, per_page)
     inventory_table, inventory_total = _paginate_rows(inventory_chart, 1, per_page)
     sold_table, sold_total = _paginate_rows(sold_chart, 1, per_page)
@@ -675,13 +666,11 @@ def get_manager_sales_analytics_service(
             "period_sold_quantity": total_period_sold,
             "customer_cash_paid_total": sum(row.get("cash_paid", 0) for row in monthly_trend),
             "customer_bank_paid_total": sum(row.get("bank_paid", 0) for row in monthly_trend),
-            "supplier_paid_total": sum(row.get("supplier_paid", 0) for row in monthly_trend),
+            "supplier_paid_total": period_supplier_paid,
             "supplier_cash_paid_total": sum(row.get("supplier_cash_paid", 0) for row in monthly_trend),
             "supplier_bank_paid_total": sum(row.get("supplier_bank_paid", 0) for row in monthly_trend),
             "supplier_debt_total": current_financials["supplier_debt_total"],
-            "customer_collected_total": current_financials["customer_collected_total"],
-            "supplier_paid_all_total": current_financials["supplier_paid_total"],
-            "company_balance_total": current_financials["company_balance_total"],
+            "company_balance_total": total_period_paid - period_supplier_paid,
         },
         "debts": paged_debts,
         "debt_chart": debt_chart_rows,

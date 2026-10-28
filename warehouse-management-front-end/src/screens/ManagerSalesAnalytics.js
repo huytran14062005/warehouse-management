@@ -708,7 +708,7 @@ function ManagerSalesAnalytics() {
                 tone={Number(summary.supplier_debt_total) > 0 ? "warning" : "positive"}
               />
               <SummaryCard
-                label="Tiền còn lại theo hệ thống"
+                label="Tiền còn lại trong kỳ"
                 value={money(summary.company_balance_total)}
                 onClick={() => scrollToSection("manager-monthly-chart")}
                 tone={Number(summary.company_balance_total) >= 0 ? "positive" : "warning"}
