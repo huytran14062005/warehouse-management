@@ -15,6 +15,7 @@
 .manager-summary-card span { color: #7186a1; font-size: 14px; }
 .manager-summary-card strong { color: #103b68; font-size: 22px; }
 .manager-summary-card small { margin-top: -6px; color: #7186a1; font-size: 12px; }
+.manager-summary-card .manager-summary-formula { margin-top: -5px; color: #8a9bb0; font-size: 11px; font-weight: 500; line-height: 1.25; }
 .manager-summary-card.is-warning strong { color: #ad6910; }
 .manager-summary-card.is-positive strong { color: #19754a; }
 .manager-analytics-chart-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; margin-bottom: 18px; }

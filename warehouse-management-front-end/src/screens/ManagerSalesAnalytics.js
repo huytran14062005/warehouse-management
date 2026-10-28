@@ -683,6 +683,7 @@ function ManagerSalesAnalytics() {
               />
               <SummaryCard
                 label="Đã thu"
+                formula="Tiền mặt + chuyển khoản"
                 value={money(summary.period_paid_total)}
                 onClick={() => scrollToSection("manager-revenue-chart")}
               />
@@ -698,23 +699,27 @@ function ManagerSalesAnalytics() {
               />
               <SummaryCard
                 label="Đã trả nhà cung cấp trong kỳ"
+                formula="Tổng các khoản đã thanh toán"
                 value={money(summary.supplier_paid_total)}
                 onClick={() => scrollToSection("manager-monthly-chart")}
               />
               <SummaryCard
                 label="Công nợ nhà cung cấp hiện tại"
+                formula="Tổng phiếu nhập − đã trả nhà cung cấp"
                 value={money(summary.supplier_debt_total)}
                 onClick={() => scrollToSection("manager-monthly-chart")}
                 tone={Number(summary.supplier_debt_total) > 0 ? "warning" : "positive"}
               />
               <SummaryCard
                 label="Tiền còn lại trong kỳ"
+                formula="Đã thu − đã trả nhà cung cấp"
                 value={money(summary.company_balance_total)}
                 onClick={() => scrollToSection("manager-monthly-chart")}
                 tone={Number(summary.company_balance_total) >= 0 ? "positive" : "warning"}
               />
               <SummaryCard
                 label="Biến động công nợ"
+                formula="Doanh số − đã thu"
                 value={money(summary.net_debt_change)}
                 onClick={() => scrollToSection("manager-debt-chart")}
                 tone={
@@ -758,7 +763,7 @@ function scrollToSection(id) {
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-function SummaryCard({ label, value, suffix = "", tone = "", onClick }) {
+function SummaryCard({ label, formula = "", value, suffix = "", tone = "", onClick }) {
   return (
     <button
       type="button"
@@ -766,6 +771,7 @@ function SummaryCard({ label, value, suffix = "", tone = "", onClick }) {
       onClick={onClick}
     >
       <span>{label}</span>
+      {formula && <small className="manager-summary-formula">{formula}</small>}
       <strong>{value}</strong>
       {suffix && <small>{suffix}</small>}
     </button>
