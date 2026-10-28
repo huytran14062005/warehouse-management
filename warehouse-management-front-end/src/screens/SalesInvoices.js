@@ -64,6 +64,12 @@ function formatCurrency(value) {
   }).format(Number(value || 0));
 }
 
+function formatQuantity(value) {
+  return new Intl.NumberFormat("vi-VN", {
+    maximumFractionDigits: 0,
+  }).format(Number(value || 0));
+}
+
 function formatDateTime(value) {
   if (!value) return "—";
   const date = new Date(value);
@@ -329,7 +335,7 @@ function SalesInvoiceDetail({
                       <tr key={item.id}>
                         <td>{item.product_name}</td>
                         <td>{item.unit || "—"}</td>
-                        <td>{item.quantity}</td>
+                        <td>{formatQuantity(item.quantity)}</td>
                         <td>{formatCurrency(item.unit_price)}</td>
                         <td className="sales-money">
                           {formatCurrency(item.total)}
