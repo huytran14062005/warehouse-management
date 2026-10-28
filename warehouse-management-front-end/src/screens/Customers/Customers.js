@@ -701,10 +701,12 @@ function Customers() {
                       <span>Địa chỉ</span>
                       <strong>{detail.customer.address}</strong>
                     </div>
-                    <div>
-                      <span>Công nợ hiện tại</span>
-                      <strong>{formatCurrency(detail.customer.debt_amount)}</strong>
-                    </div>
+                    {canViewCustomerFinancial && (
+                      <div>
+                        <span>Công nợ hiện tại</span>
+                        <strong>{formatCurrency(detail.customer.debt_amount)}</strong>
+                      </div>
+                    )}
                   </div>
 
                   <div className="customer-detail-stats">
@@ -716,14 +718,18 @@ function Customers() {
                       <span>Đơn hoàn thành</span>
                       <strong>{detail.statistics?.total_completed_orders || 0}</strong>
                     </div>
-                    <div>
-                      <span>Tổng đã mua</span>
-                      <strong>{formatCurrency(detail.statistics?.total_spent)}</strong>
-                    </div>
-                    <div>
-                      <span>Đã mua năm {detail.statistics?.current_year || new Date().getFullYear()}</span>
-                      <strong>{formatCurrency(detail.statistics?.total_spent_current_year)}</strong>
-                    </div>
+                    {canViewCustomerFinancial && (
+                      <>
+                        <div>
+                          <span>Tổng đã mua</span>
+                          <strong>{formatCurrency(detail.statistics?.total_spent)}</strong>
+                        </div>
+                        <div>
+                          <span>Đã mua năm {detail.statistics?.current_year || new Date().getFullYear()}</span>
+                          <strong>{formatCurrency(detail.statistics?.total_spent_current_year)}</strong>
+                        </div>
+                      </>
+                    )}
                   </div>
                   {canReceivePayment && Number(detail.customer.debt_amount || 0) > 0 && (
                     <div className="customer-payment-section">

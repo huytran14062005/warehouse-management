@@ -277,7 +277,7 @@ def reduce_customer_debt(customer_id, payment_amount):
         raise Exception(f"Lỗi hệ thống: {str(ex)}!")
 
 
-def get_customer_statistics(customer_id):
+def get_customer_statistics(customer_id, warehouse_id=None):
     from web.models import SalesInvoiceItem
 
     current_year = datetime.now().year
@@ -296,49 +296,48 @@ def get_customer_statistics(customer_id):
         .scalar_subquery()
     )
 
-    statistics = (
-        db.session.query(
-            func.count(func.distinct(SalesInvoice.id)).label("total_orders"),
-            func.count(
-                func.distinct(
-                    case(
-                        (SalesInvoice.status == InvoiceStatus.COMPLETED, SalesInvoice.id),
-                        else_=None,
-                    )
+    statistics_query = db.session.query(
+        func.count(func.distinct(SalesInvoice.id)).label("total_orders"),
+        func.count(
+            func.distinct(
+                case(
+                    (SalesInvoice.status == InvoiceStatus.COMPLETED, SalesInvoice.id),
+                    else_=None,
                 )
-            ).label("total_completed_orders"),
-            func.coalesce(
-                func.sum(
-                    case(
-                        (
+            )
+        ).label("total_completed_orders"),
+        func.coalesce(
+            func.sum(
+                case(
+                    (
+                        completed_condition,
+                        invoice_total,
+                    ),
+                    else_=0,
+                )
+            ),
+            0,
+        ).label("total_spent"),
+        func.coalesce(
+            func.sum(
+                case(
+                    (
+                        and_(
                             completed_condition,
-                            invoice_total,
+                            SalesInvoice.sold_at >= year_start,
+                            SalesInvoice.sold_at < next_year_start,
                         ),
-                        else_=0,
-                    )
-                ),
-                0,
-            ).label("total_spent"),
-            func.coalesce(
-                func.sum(
-                    case(
-                        (
-                            and_(
-                                completed_condition,
-                                SalesInvoice.sold_at >= year_start,
-                                SalesInvoice.sold_at < next_year_start,
-                            ),
-                            invoice_total,
-                        ),
-                        else_=0,
-                    )
-                ),
-                0,
-            ).label("total_spent_current_year"),
-        )
-        .filter(SalesInvoice.customer_id == customer_id)
-        .one()
-    )
+                        invoice_total,
+                    ),
+                    else_=0,
+                )
+            ),
+            0,
+        ).label("total_spent_current_year"),
+    ).filter(SalesInvoice.customer_id == customer_id)
+    if warehouse_id is not None:
+        statistics_query = statistics_query.filter(SalesInvoice.warehouse_id == warehouse_id)
+    statistics = statistics_query.one()
 
     return {
         "total_orders": int(statistics.total_orders or 0),

@@ -114,14 +114,19 @@ def create_customer_service(full_name, phone, address, sales_area_id=None):
     )
 
 
-def get_customer_detail_service(customer_id, page_value=None, per_page_value=None):
+def get_customer_detail_service(
+    customer_id,
+    page_value=None,
+    per_page_value=None,
+    warehouse_id=None,
+):
        
     customer = dao.get_customer_by_id(customer_id)
     
     if not customer:
         raise NotFoundError("Khách hàng không tồn tại")
     
-    statistics = dao.get_customer_statistics(customer_id)
+    statistics = dao.get_customer_statistics(customer_id, warehouse_id=warehouse_id)
     page, per_page = parse_paging_args(page_value, per_page_value)
     payments, total_payments = dao.get_customer_payments(
         customer_id, page=page, per_page=per_page

@@ -10,6 +10,7 @@ from web.services.customer_service import (
     update_customer_service,
 )
 from web.services.payment_service import record_old_debt_payment_service
+from web.services.authorization import scoped_warehouse_id
 from web.utils.pagination import build_pagination
 
 
@@ -49,16 +50,22 @@ def get_customers_list():
 @handle_api_errors
 def get_customer_detail(customer_id):
        
+    warehouse_id = scoped_warehouse_id(request.employee_id)
     customer, statistics, payments, total_payments, page, per_page = get_customer_detail_service(
         customer_id,
         page_value=request.args.get('payment_page'),
         per_page_value=request.args.get('payment_per_page'),
+        warehouse_id=warehouse_id,
     )
 
     include_financial = request.employee_role != EmployeeRole.NHAN_VIEN_BAN_HANG.value
+    visible_statistics = statistics if include_financial else {
+        "total_orders": statistics["total_orders"],
+        "total_completed_orders": statistics["total_completed_orders"],
+    }
     return jsonify({
         "customer": serialize_customer(customer, include_financial=include_financial),
-        "statistics": statistics if include_financial else None,
+        "statistics": visible_statistics,
         "payments": [
             {
                 "id": payment.id,
