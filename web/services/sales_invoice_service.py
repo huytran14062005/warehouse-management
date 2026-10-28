@@ -23,6 +23,7 @@ from web.models import (
 from web.services.exceptions import AppError, NotFoundError, ValidationError
 from web.services.authorization import (
     ensure_bounded_items,
+    ensure_central_warehouse,
     ensure_warehouse_access,
     get_central_warehouse,
 )
@@ -139,6 +140,9 @@ def validate_money(value, field_name, allow_zero=True):
 
 
 def resolve_sales_warehouse(warehouse_id):
+    warehouse = ensure_central_warehouse(warehouse_id)
+    return warehouse.id, warehouse
+
     if warehouse_id in (None, ""):
         warehouse = Warehouse.query.order_by(Warehouse.id.asc()).first()
     else:

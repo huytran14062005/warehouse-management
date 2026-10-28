@@ -9,6 +9,7 @@ from web.models import (
 from web.services.exceptions import NotFoundError, ValidationError
 from web.services.authorization import (
     ensure_bounded_items,
+    ensure_central_warehouse,
     ensure_warehouse_access,
     resolve_document_warehouse,
 )
@@ -174,6 +175,7 @@ def get_damage_reports_service(page_value, per_page_value, status_value, warehou
         if not Warehouse.query.get(warehouse_id):
             raise NotFoundError("Kho không tồn tại")
 
+    warehouse_id = ensure_central_warehouse(warehouse_id).id
     reports, total = damage_report_dao.get_damage_reports(
         page=page,
         per_page=per_page,

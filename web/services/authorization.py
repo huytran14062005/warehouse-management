@@ -9,6 +9,16 @@ CENTRAL_WAREHOUSE_NAME = "Kho trung tâm"
 
 
 def get_central_warehouse():
+    warehouses = Warehouse.query.order_by(Warehouse.id.asc()).all()
+    if not warehouses:
+        raise ValidationError("Chưa cấu hình kho trung tâm")
+    if len(warehouses) > 1:
+        raise ValidationError("Hệ thống chỉ sử dụng một kho trung tâm; vui lòng chuẩn hóa dữ liệu kho")
+    warehouse = warehouses[0]
+    if warehouse.name.strip().casefold() != CENTRAL_WAREHOUSE_NAME.casefold():
+        raise ValidationError("Kho duy nhất phải có tên 'Kho trung tâm'")
+    return warehouse
+
     """Return the single warehouse used as the source for employee stock."""
     warehouses = (
         Warehouse.query
@@ -23,9 +33,21 @@ def get_central_warehouse():
     return warehouses[0]
 
 
+def ensure_central_warehouse(requested_id=None):
+    warehouse = get_central_warehouse()
+    if requested_id not in (None, ""):
+        try:
+            requested_id = int(requested_id)
+        except (TypeError, ValueError):
+            raise ValidationError("Mã kho không hợp lệ")
+        if requested_id != warehouse.id:
+            raise ValidationError("Hệ thống chỉ sử dụng kho trung tâm")
+    return warehouse
+
+
 def scoped_central_warehouse_id(employee_id):
     """Return the central warehouse after applying the caller's access check."""
-    warehouse = get_central_warehouse()
+    warehouse = ensure_central_warehouse()
     ensure_warehouse_access(employee_id, warehouse.id)
     return warehouse.id
 
@@ -38,6 +60,7 @@ def get_employee_or_404(employee_id):
 
 
 def ensure_warehouse_access(employee_id, warehouse_id):
+    ensure_central_warehouse(warehouse_id)
     """Keep warehouse-scoped operations inside the employee's assigned scope.
 
     Managers and accountants are intentionally cross-warehouse roles. A stock
@@ -62,6 +85,10 @@ def ensure_warehouse_access(employee_id, warehouse_id):
 
 
 def scoped_warehouse_id(employee_id, requested_id=None):
+    central = ensure_central_warehouse(requested_id)
+    ensure_warehouse_access(employee_id, central.id)
+    return central.id
+
     """Return a safe warehouse filter for list/report endpoints."""
     employee = get_employee_or_404(employee_id)
     if requested_id not in (None, ""):
@@ -84,6 +111,10 @@ def scoped_warehouse_id(employee_id, requested_id=None):
 
 
 def resolve_document_warehouse(employee_id, requested_id=None):
+    central = ensure_central_warehouse(requested_id)
+    ensure_warehouse_access(employee_id, central.id)
+    return central
+
     """Resolve a document's warehouse without guessing by database order.
 
     A caller may provide an explicit warehouse id. When it does not, a

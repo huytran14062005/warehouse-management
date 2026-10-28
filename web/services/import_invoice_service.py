@@ -8,6 +8,7 @@ from web.services.exceptions import NotFoundError, ValidationError
 from web.services.validators import require_text, validate_money_amount
 from web.services.authorization import (
     ensure_bounded_items,
+    ensure_central_warehouse,
     ensure_warehouse_access,
     resolve_document_warehouse,
 )
@@ -265,6 +266,7 @@ def get_import_invoices_list_service(page_value, per_page_value, warehouse_id_va
         to_date = datetime.combine(to_date.date(), time.max)
     keyword = str(keyword or '').strip() or None
     
+    warehouse_id = ensure_central_warehouse(warehouse_id).id
     invoices, total = import_invoice_dao.get_all_import_invoices(
         page=page,
         per_page=per_page,

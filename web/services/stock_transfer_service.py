@@ -8,6 +8,7 @@ from web.models import Employee, EmployeeRole, InvoiceStatus, Product, SaleSourc
 from web.services.exceptions import NotFoundError, ValidationError
 from web.services.authorization import (
     ensure_bounded_items,
+    ensure_central_warehouse,
     ensure_warehouse_access,
     get_central_warehouse,
 )
@@ -22,6 +23,7 @@ def _parse_positive_int(value, default):
 
 
 def get_stock_transfers_list_service(page_value=None, per_page_value=None, warehouse_id=None):
+    warehouse_id = ensure_central_warehouse(warehouse_id).id
     page = _parse_positive_int(page_value, 1)
     per_page = min(_parse_positive_int(
         per_page_value,
