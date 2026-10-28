@@ -240,7 +240,7 @@ function SalesInvoiceDetail({
       ? "Khách chưa thanh toán cho đơn này."
       : remainingAmount > 0
         ? "Khách đã thanh toán một phần; số còn lại là khoản cần thu của riêng đơn này."
-        : "Đơn này đã được thanh toán đủ.";
+        : "";
   return createPortal(
     <div className="sales-detail-overlay">
       <div
@@ -365,6 +365,22 @@ function SalesInvoiceDetail({
                   ? "Không cần thanh toán"
                   : getPaymentStatusLabel(invoice.payment_status)}
               </span>
+              {invoice.payments?.length > 0 && (
+                <div className="sales-payment-header-history">
+                  {invoice.payments.map((payment) => (
+                    <div key={payment.id}>
+                      <strong>
+                        {payment.payment_method === "cash"
+                          ? "Tiền mặt"
+                          : payment.payment_method === "bank_transfer"
+                            ? "Chuyển khoản"
+                            : "Chưa xác định"}
+                      </strong>
+                      <small>{formatDateTime(payment.paid_at)}</small>
+                    </div>
+                  ))}
+                </div>
+              )}
               {invoice.discount?.promotion && (
                 <div className="sales-payment-promotion">
                   <strong>{invoice.discount.promotion.name}</strong>
@@ -374,10 +390,6 @@ function SalesInvoiceDetail({
               )}
             </div>
             <div className="sales-payment-breakdown">
-              <div>
-                <span>Tiền hàng</span>
-                <strong>{formatCurrency(invoice.total_amount)}</strong>
-              </div>
               {discountAmount > 0 && (
                 <div>
                   <span>
@@ -417,17 +429,7 @@ function SalesInvoiceDetail({
                 </div>
               )}
             </div>
-            <p className="sales-payment-help">{paymentMessage}</p>
-            {invoice.payments?.length > 0 && (
-              <div className="sales-payment-history">
-                {invoice.payments.map((payment) => (
-                  <div key={payment.id}>
-                    <span>{formatCurrency(payment.amount)} · {payment.payment_method === "cash" ? "Tiền mặt" : payment.payment_method === "bank_transfer" ? "Chuyển khoản" : "Chưa xác định"}</span>
-                    <small>{formatDateTime(payment.paid_at)}</small>
-                  </div>
-                ))}
-              </div>
-            )}
+            {paymentMessage && <p className="sales-payment-help">{paymentMessage}</p>}
           </section>
           {canManageDueDate && isCompletedStatus(invoice.status) && remainingAmount > 0 && (
             <div className="sales-due-date-editor">

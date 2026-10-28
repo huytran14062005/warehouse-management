@@ -133,6 +133,10 @@
 .sales-payment-status.is-partial { color: #956016; border-color: #e6c58e; background: #fff8e9; }
 .sales-payment-status.is-paid { color: #26704b; border-color: #a9d5bd; background: #eef9f2; }
 .sales-payment-status.is-cancelled { color: #52657a; border-color: #b8c4d1; background: #f4f6f8; }
+.sales-payment-header-history { display: grid; gap: 7px; margin-top: 16px; padding-top: 13px; border-top: 1px solid #dce5ec; }
+.sales-payment-header-history > div { display: grid; gap: 2px; }
+.sales-payment-header-history strong { color: #1b2d40; font-size: 12px; }
+.sales-payment-header-history small { color: #71849a; font-size: 11px; }
 .sales-payment-breakdown { display: grid; gap: 8px; padding: 18px 20px; }
 .sales-payment-breakdown > div { display: flex; align-items: baseline; justify-content: space-between; gap: 20px; color: #71849a; font-size: 12px; }
 .sales-payment-breakdown strong { color: #1b2d40; white-space: nowrap; }
