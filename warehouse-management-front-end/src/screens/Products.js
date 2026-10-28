@@ -221,7 +221,9 @@ function Products() {
     setSelectedProduct(null);
     setDetailLoading(true);
     try {
-      const response = await authApis().get(endpoints.productDetail(product.id));
+      const response = await authApis().get(endpoints.productDetail(product.id), {
+        params: { source: "central" },
+      });
       setSelectedProduct(response.data?.product || product);
     } catch (requestError) {
       setError(getApiError(requestError));
@@ -244,6 +246,7 @@ function Products() {
       setError("");
       const response = await authApis().get(endpoints.productsInventory, {
         params: {
+          source: "central",
           page,
           per_page: PER_PAGE,
           keyword: keyword || undefined,

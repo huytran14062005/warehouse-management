@@ -15,7 +15,7 @@ from web.services.reports_service import (
 from web.services.manager_reports_service import get_manager_sales_analytics_service
 from web.services.overdue_debt_report_service import send_overdue_debt_report
 from web.services.sales_invoice_service import business_today
-from web.services.authorization import scoped_warehouse_id
+from web.services.authorization import scoped_central_warehouse_id, scoped_warehouse_id
 from web.utils.pagination import build_pagination
 
 
@@ -67,9 +67,12 @@ def get_manager_sales_report():
 @verify_role(EmployeeRole.THU_KHO, EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY)
 @handle_api_errors
 def get_inventory_report():
+    requested_warehouse_id = request.args.get("warehouse_id")
+    if request.args.get("source") == "central":
+        requested_warehouse_id = scoped_central_warehouse_id(request.employee_id)
        
     products_data = get_inventory_report_service(
-        warehouse_id_value=scoped_warehouse_id(request.employee_id, request.args.get('warehouse_id')),
+        warehouse_id_value=scoped_warehouse_id(request.employee_id, requested_warehouse_id),
         product_id_value=request.args.get('product_id'),
         keyword=request.args.get('keyword')
     )
@@ -91,10 +94,13 @@ def get_inventory_report():
 @handle_api_errors
 def get_movements_report():
        
+    requested_warehouse_id = request.args.get("warehouse_id")
+    if request.args.get("source") == "central":
+        requested_warehouse_id = scoped_central_warehouse_id(request.employee_id)
     report_data, warehouse, from_date, to_date = get_movements_report_service(
         from_date_value=request.args.get('from_date'),
         to_date_value=request.args.get('to_date'),
-        warehouse_id_value=scoped_warehouse_id(request.employee_id, request.args.get('warehouse_id'))
+        warehouse_id_value=scoped_warehouse_id(request.employee_id, requested_warehouse_id)
     )
     
                                

@@ -23,6 +23,13 @@ def get_central_warehouse():
     return warehouses[0]
 
 
+def scoped_central_warehouse_id(employee_id):
+    """Return the central warehouse after applying the caller's access check."""
+    warehouse = get_central_warehouse()
+    ensure_warehouse_access(employee_id, warehouse.id)
+    return warehouse.id
+
+
 def get_employee_or_404(employee_id):
     employee = Employee.query.get(employee_id)
     if not employee:

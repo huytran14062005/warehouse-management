@@ -14,7 +14,10 @@ from web.services.product_service import (
     update_product_service,
 )
 from web.services.price_list_export_service import build_price_list_export
-from web.services.authorization import get_central_warehouse, scoped_warehouse_id
+from web.services.authorization import (
+    scoped_central_warehouse_id,
+    scoped_warehouse_id,
+)
 from web.utils.pagination import build_pagination
 
 
@@ -26,9 +29,12 @@ products_bp = Blueprint("products", __name__, url_prefix="/api/products")
 @verify_role(EmployeeRole.NHAN_VIEN_BAN_HANG, EmployeeRole.THU_KHO, EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY)
 @handle_api_errors
 def get_product_detail(product_id):
+    requested_warehouse_id = request.args.get("warehouse_id")
+    if request.args.get("source") == "central":
+        requested_warehouse_id = scoped_central_warehouse_id(request.employee_id)
     product = get_product_detail_service(
         product_id,
-        warehouse_id=scoped_warehouse_id(request.employee_id, request.args.get("warehouse_id")),
+        warehouse_id=scoped_warehouse_id(request.employee_id, requested_warehouse_id),
     )
     return jsonify({"product": product}), 200
 
@@ -114,7 +120,7 @@ def create_product_request():
 def get_products_inventory():
     requested_warehouse_id = request.args.get('warehouse_id')
     if request.args.get('source') == 'central':
-        requested_warehouse_id = get_central_warehouse().id
+        requested_warehouse_id = scoped_central_warehouse_id(request.employee_id)
 
     products_data, total, page, per_page = get_products_inventory_service(
         page_value=request.args.get('page'),

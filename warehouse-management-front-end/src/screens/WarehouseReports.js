@@ -41,6 +41,7 @@ function WarehouseReports() {
         const [movementsResponse, inventoryResponse] = await Promise.all([
           authApis().get(endpoints.reportsMovements, {
             params: {
+              source: "central",
               from_date: fromDate || undefined,
               to_date: toDate || undefined,
               page: productPage,
@@ -48,7 +49,9 @@ function WarehouseReports() {
               keyword: productKeyword.trim() || undefined,
             },
           }),
-          authApis().get(endpoints.reportsInventory),
+          authApis().get(endpoints.reportsInventory, {
+            params: { source: "central" },
+          }),
         ]);
         setReport(movementsResponse.data || {});
         setProductPagination(movementsResponse.data?.pagination || { total: 0, total_pages: 1 });
