@@ -532,24 +532,34 @@ function SalesInvoiceDetail({
           )}
           {canManageStatus && invoice.status === "đang giao" && (
             <div className="sales-detail-actions sales-complete-actions">
-              <MoneyInput
-                value={completionPayment}
-                onChange={setCompletionPayment}
-                label="Số tiền khách thanh toán"
-                allowZero
-                allowEmpty
-                placeholder="Khách thanh toán từ 500 đ"
-                aria-label="Số tiền khách thanh toán"
-              />
-              <select
-                value={completionPaymentMethod}
-                onChange={(event) => setCompletionPaymentMethod(event.target.value)}
-                required={Number(completionPayment) > 0}
-              >
-                <option value="">{"Phương thức thanh toán"}</option>
-                <option value="cash">{"Tiền mặt"}</option>
-                <option value="bank_transfer">{"Chuyển khoản"}</option>
-              </select>
+              <div className="sales-completion-heading">
+                <strong>Ghi nhận thanh toán</strong>
+                <span>Nhập số tiền khách trả và chọn phương thức tương ứng.</span>
+              </div>
+              <label className="sales-completion-field">
+                <span>Số tiền khách trả</span>
+                <MoneyInput
+                  value={completionPayment}
+                  onChange={setCompletionPayment}
+                  label="Số tiền khách thanh toán"
+                  allowZero
+                  allowEmpty
+                  placeholder="Ví dụ: 500.000"
+                  aria-label="Số tiền khách thanh toán"
+                />
+              </label>
+              <label className="sales-completion-field">
+                <span>Phương thức thanh toán</span>
+                <select
+                  value={completionPaymentMethod}
+                  onChange={(event) => setCompletionPaymentMethod(event.target.value)}
+                  required={Number(completionPayment) > 0}
+                >
+                  <option value="">Chọn phương thức</option>
+                  <option value="cash">Tiền mặt</option>
+                  <option value="bank_transfer">Chuyển khoản</option>
+                </select>
+              </label>
               {(Number(invoice.final_amount || 0) - (Number(completionPayment) || 0)) > 0 && (
                 <label className="sales-completion-due-date">
                   <span>Hạn thanh toán</span>
