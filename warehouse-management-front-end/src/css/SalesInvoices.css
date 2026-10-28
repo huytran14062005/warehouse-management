@@ -139,11 +139,11 @@
 .sales-payment-header-history small { color: #71849a; font-size: 11px; }
 .sales-payment-breakdown { display: grid; gap: 8px; padding: 18px 20px; }
 .sales-payment-breakdown > div { display: flex; align-items: baseline; justify-content: space-between; gap: 20px; color: #71849a; font-size: 12px; }
-.sales-payment-breakdown strong { color: #1b2d40; white-space: nowrap; }
-.sales-payment-breakdown .sales-payment-total { margin-top: 2px; padding-top: 10px; border-top: 1px solid #d9e2ec; color: #1b2d40; font-weight: 700; }
-.sales-payment-breakdown .sales-payment-total strong { color: #0b3158; font-size: 17px; }
-.sales-payment-breakdown .sales-payment-remaining { color: #9f3d3d; font-weight: 700; }
-.sales-payment-breakdown .sales-payment-remaining strong { color: #9f3d3d; font-size: 15px; }
+.sales-payment-breakdown strong { color: #1b2d40; font-weight: 500; white-space: nowrap; }
+.sales-payment-breakdown .sales-payment-total { margin-top: 2px; padding-top: 10px; border-top: 1px solid #d9e2ec; color: #1b2d40; font-weight: 600; }
+.sales-payment-breakdown .sales-payment-total strong { color: #0b3158; font-size: 15px; font-weight: 600; }
+.sales-payment-breakdown .sales-payment-remaining { color: #9f3d3d; font-weight: 600; }
+.sales-payment-breakdown .sales-payment-remaining strong { color: #9f3d3d; font-size: 14px; font-weight: 600; }
 .sales-payment-breakdown .sales-payment-due-status { margin-top: 2px; padding: 7px 8px; border: 1px solid; border-radius: 5px; }
 .sales-due-date-editor { display: flex; align-items: flex-end; justify-content: flex-end; gap: 10px; margin-top: 12px; padding: 12px; border: 1px solid #d9e2ec; border-radius: 6px; background: #f9fbfc; }
 .sales-due-date-editor label, .sales-completion-due-date { display: grid; gap: 5px; color: #52657a; font-size: 11px; font-weight: 600; }

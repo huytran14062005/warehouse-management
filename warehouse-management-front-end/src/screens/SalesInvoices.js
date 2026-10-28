@@ -234,13 +234,6 @@ function SalesInvoiceDetail({
   const remainingAmount = Number(invoice.remaining_amount || 0);
   const cancelled = isCancelledStatus(invoice.status);
   const discountPending = invoice.discount?.status === "chờ duyệt";
-  const paymentMessage = cancelled
-    ? "Đơn đã hủy nên không còn khoản cần thu."
-    : paidAmount <= 0
-      ? "Khách chưa thanh toán cho đơn này."
-      : remainingAmount > 0
-        ? "Khách đã thanh toán một phần; số còn lại là khoản cần thu của riêng đơn này."
-        : "";
   return createPortal(
     <div className="sales-detail-overlay">
       <div
@@ -404,18 +397,16 @@ function SalesInvoiceDetail({
                 </span>
                 <strong>{formatCurrency(invoice.final_amount)}</strong>
               </div>
-              {!cancelled && paidAmount > 0 && (
+              {!cancelled && (
                 <div>
                   <span>Khách đã trả</span>
                   <strong>{formatCurrency(paidAmount)}</strong>
                 </div>
               )}
-              {!cancelled && remainingAmount > 0 && (
-                <div className="sales-payment-remaining">
-                  <span>Còn phải thu</span>
-                  <strong>{formatCurrency(remainingAmount)}</strong>
-                </div>
-              )}
+              <div className="sales-payment-remaining">
+                <span>Số tiền cần trả</span>
+                <strong>{formatCurrency(cancelled ? 0 : remainingAmount)}</strong>
+              </div>
               {!cancelled && remainingAmount > 0 && (
                 <div className="sales-payment-due-summary">
                   <span>Hạn thanh toán</span>
@@ -429,7 +420,6 @@ function SalesInvoiceDetail({
                 </div>
               )}
             </div>
-            {paymentMessage && <p className="sales-payment-help">{paymentMessage}</p>}
           </section>
           {canManageDueDate && isCompletedStatus(invoice.status) && remainingAmount > 0 && (
             <div className="sales-due-date-editor">
