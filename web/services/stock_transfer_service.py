@@ -4,7 +4,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 
 from web import app, dao, db
-from web.models import Employee, EmployeeRole, InvoiceStatus, Product, SaleSource, SalesInvoice, SalesInvoiceItem, StockTransfer, StockTransferItem, Warehouse
+from web.models import Employee, EmployeeRole, Product, StockTransfer, StockTransferItem, Warehouse
 from web.services.exceptions import NotFoundError, ValidationError
 from web.services.authorization import (
     ensure_bounded_items,
@@ -111,66 +111,25 @@ def get_stock_transfer_detail_service(transfer_id, page_value=None, per_page_val
 
 
 def _calculate_transfer_item_remaining(transfer, page_items):
-    """Allocate completed employee-stock sales to transfer lots using FIFO."""
+    """Allocate field sales and damage to transfer lots using FIFO."""
     product_ids = {item.product_id for item in page_items}
     if not product_ids:
         return {}
-
-    lots = (
-        db.session.query(StockTransferItem, StockTransfer.transferred_at)
-        .join(StockTransfer, StockTransfer.id == StockTransferItem.stock_transfer_id)
-        .filter(
-            StockTransfer.employee_id == transfer.employee_id,
-            StockTransferItem.product_id.in_(product_ids),
-        )
-        .order_by(StockTransfer.transferred_at.asc(), StockTransfer.id.asc(), StockTransferItem.id.asc())
-        .all()
+    sold_by_item, damaged_by_item, _, _ = dao.calculate_allocated_employee_stock_movements(
+        product_ids, employee_id=transfer.employee_id
     )
-    sales = (
-        db.session.query(SalesInvoiceItem.product_id, SalesInvoiceItem.quantity, SalesInvoice.sold_at, SalesInvoice.id)
-        .join(SalesInvoice, SalesInvoice.id == SalesInvoiceItem.sales_invoice_id)
-        .filter(
-            SalesInvoice.employee_id == transfer.employee_id,
-            SalesInvoice.sale_source == SaleSource.EMPLOYEE_STOCK,
-            SalesInvoice.status == InvoiceStatus.COMPLETED,
-            SalesInvoiceItem.product_id.in_(product_ids),
-        )
-        .order_by(SalesInvoice.sold_at.asc(), SalesInvoice.id.asc(), SalesInvoiceItem.id.asc())
-        .all()
-    )
-
-    lots_by_product = {product_id: [] for product_id in product_ids}
-    remaining_by_item = {}
-    for lot, transferred_at in lots:
-        remaining_by_item[lot.id] = int(lot.quantity or 0)
-        lots_by_product.setdefault(lot.product_id, []).append((lot, transferred_at))
-
-    pointers = {product_id: 0 for product_id in product_ids}
-    for product_id, quantity, sold_at, _invoice_id in sales:
-        quantity_to_allocate = int(quantity or 0)
-        product_lots = lots_by_product.get(product_id, [])
-        pointer = pointers.get(product_id, 0)
-        while quantity_to_allocate > 0 and pointer < len(product_lots):
-            lot, transferred_at = product_lots[pointer]
-            if transferred_at > sold_at:
-                break
-            available = remaining_by_item[lot.id]
-            if available <= 0:
-                pointer += 1
-                continue
-            consumed = min(available, quantity_to_allocate)
-            remaining_by_item[lot.id] -= consumed
-            quantity_to_allocate -= consumed
-            if remaining_by_item[lot.id] <= 0:
-                pointer += 1
-        pointers[product_id] = pointer
-
-    return {item.id: remaining_by_item.get(item.id, int(item.quantity or 0)) for item in page_items}
+    return {
+        item.id: int(item.quantity or 0) - sold_by_item.get(item.id, 0) - damaged_by_item.get(item.id, 0)
+        for item in page_items
+    }
 
 
 def serialize_stock_transfer(transfer, items=None, items_count=None, total_quantity=None, remaining_by_item=None):
     detail_items = list(transfer.items if items is None else items)
     remaining_by_item = remaining_by_item or {}
+    sold_by_item, damaged_by_item, _, _ = dao.calculate_allocated_employee_stock_movements(
+        {item.product_id for item in detail_items}, employee_id=transfer.employee_id,
+    )
     return {
         "id": transfer.id,
         "warehouse": {"id": transfer.warehouse.id, "name": transfer.warehouse.name},
@@ -186,7 +145,8 @@ def serialize_stock_transfer(transfer, items=None, items_count=None, total_quant
                 "product_name": item.product.name,
                 "quantity": int(item.quantity),
                 "transferred_quantity": int(item.quantity),
-                "sold_quantity": int(item.quantity) - int(remaining_by_item.get(item.id, item.quantity)),
+                "sold_quantity": sold_by_item.get(item.id, 0),
+                "damaged_quantity": damaged_by_item.get(item.id, 0),
                 "remaining_quantity": int(remaining_by_item.get(item.id, item.quantity)),
                 "unit": item.product.unit,
             }

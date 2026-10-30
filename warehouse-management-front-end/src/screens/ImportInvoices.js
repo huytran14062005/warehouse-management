@@ -1,12 +1,14 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { authApis, endpoints } from "../configs/Apis";
 import { getApiError } from "../utils/apiError";
 import useNotificationState from "../utils/useNotificationState";
 import { notifyInventoryChanged } from "../utils/inventoryEvents";
 import AutoDismissMessage from "../components/AutoDismissMessage";
 import MoneyInput from "../components/MoneyInput";
+import PaymentMethodDropdown from "../components/PaymentMethodDropdown";
+import { ProductEntryField, ProductEntryInfo } from "../components/ProductEntryFields";
 import Pagination from "../components/Pagination";
 import ConfirmDialog from "../components/ConfirmDialog";
 import SharedSearchableDropdown from "../components/SearchableDropdown";
@@ -14,6 +16,7 @@ import Skeleton from "../components/Skeleton";
 import "../css/WarehouseOperations.css";
 
 const PER_PAGE = 10;
+const PAYMENT_HISTORY_PAGE_SIZE = 5;
 
 function toDateInputValue(value) {
   if (value) return String(value).slice(0, 10);
@@ -27,6 +30,10 @@ function formatCurrency(value) {
     currency: "VND",
     maximumFractionDigits: 0,
   }).format(Number(value || 0));
+}
+
+function formatAmount(value) {
+  return new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 }).format(Number(value || 0));
 }
 
 function formatDate(value) {
@@ -49,12 +56,38 @@ function ImportDetail({ invoice, onClose, onEdit, onDelete, canEdit, canDelete, 
   const [paymentNote, setPaymentNote] = useState("");
   const [paymentError, setPaymentError] = useState("");
   const [paymentSaving, setPaymentSaving] = useState(false);
+  const [funds, setFunds] = useState(null);
+  const [fundsError, setFundsError] = useState("");
+  const [paymentHistoryPage, setPaymentHistoryPage] = useState(1);
+  const paymentHistory = useMemo(() => [...(invoice.payments || [])].sort((a, b) =>
+    (Date.parse(b.paid_at) || 0) - (Date.parse(a.paid_at) || 0) ||
+    Number(b.id || 0) - Number(a.id || 0)
+  ), [invoice.payments]);
+  const paymentHistoryPages = Math.ceil(paymentHistory.length / PAYMENT_HISTORY_PAGE_SIZE);
+  const currentHistoryPage = Math.min(paymentHistoryPage, paymentHistoryPages || 1);
+  const firstHistoryItem = (currentHistoryPage - 1) * PAYMENT_HISTORY_PAGE_SIZE;
+  useEffect(() => { setPaymentHistoryPage(1); }, [invoice.id, invoice.payments?.length]);
+  useEffect(() => {
+    if (!canPay) return undefined;
+    let active = true;
+    authApis().get(endpoints.companyFunds).then((response) => {
+      if (active) setFunds(response.data);
+    }).catch((error) => {
+      if (active) setFundsError(getApiError(error));
+    });
+    return () => { active = false; };
+  }, [canPay]);
+  const selectedFund = funds?.funds?.find((fund) => fund.method === paymentMethod);
+  const availableBalance = Number(selectedFund?.balance || 0);
+  const projectedBalance = availableBalance - Number(paymentAmount || 0);
   const recordPayment = async (event) => {
     event.preventDefault();
     const amount = Number(paymentAmount || 0);
     if (!Number.isFinite(amount) || amount < 500) return setPaymentError("Số tiền thanh toán tối thiểu là 500 đ.");
     if (amount > Number(invoice.remaining_amount || 0)) return setPaymentError("Số tiền thanh toán không được vượt quá số còn nợ nhà cung cấp.");
     if (!paymentMethod) return setPaymentError("Vui lòng chọn phương thức thanh toán.");
+    if (!funds?.initialized) return setPaymentError("Quản lý cần thiết lập số dư ban đầu trong Sổ quỹ công ty.");
+    if (amount > availableBalance) return setPaymentError("Số dư quỹ đã chọn không đủ để trả nhà cung cấp.");
     try {
       setPaymentSaving(true);
       setPaymentError("");
@@ -66,6 +99,12 @@ function ImportDetail({ invoice, onClose, onEdit, onDelete, canEdit, canDelete, 
       setPaymentAmount("");
       setPaymentMethod("");
       setPaymentNote("");
+      setFunds((current) => current && ({
+        ...current,
+        funds: current.funds.map((fund) => fund.method === paymentMethod
+          ? { ...fund, balance: Number(fund.balance) - amount }
+          : fund),
+      }));
       onPaymentSaved(response.data?.invoice);
     } catch (requestError) {
       setPaymentError(getApiError(requestError));
@@ -124,27 +163,24 @@ function ImportDetail({ invoice, onClose, onEdit, onDelete, canEdit, canDelete, 
           {canPay && Number(invoice.remaining_amount || 0) > 0 && (
             <form className="warehouse-payment-form" onSubmit={recordPayment}>
               <h3>{"Ghi nhận trả tiền nhà cung cấp"}</h3>
+              <p className="warehouse-payment-guidance">Chỉ ghi nhận sau khi đã trả tiền mặt hoặc chuyển khoản thực tế.</p>
+              {fundsError && <p className="warehouse-error">{fundsError}</p>}
+              {funds && !funds.initialized && <p className="warehouse-error">Quản lý cần thiết lập số dư ban đầu tại <Link to="/company-funds">Sổ quỹ công ty</Link> trước khi ghi nhận thanh toán.</p>}
               <AutoDismissMessage message={paymentError} className="warehouse-error" />
-              <MoneyInput value={paymentAmount} onChange={setPaymentAmount} label="Số tiền thanh toán" allowEmpty placeholder="Từ 500 đ" />
-              <select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)} required>
-                <option value="">{"Chọn phương thức thanh toán"}</option>
-                <option value="cash">{"Tiền mặt"}</option>
-                <option value="bank_transfer">{"Chuyển khoản"}</option>
-              </select>
+              <label className="warehouse-field"><span>Số tiền trả nhà cung cấp</span>
+                <MoneyInput value={paymentAmount} onChange={setPaymentAmount} label="Số tiền trả nhà cung cấp" allowEmpty maxAmount={Math.min(Number(invoice.remaining_amount || 0), availableBalance || Infinity)} placeholder="Từ 500 đ" />
+              </label>
+              <label className="warehouse-field"><span>Phương thức thanh toán</span>
+                <PaymentMethodDropdown value={paymentMethod} onChange={setPaymentMethod} />
+              </label>
+              {selectedFund && <div className="warehouse-payment-fund-info">
+                <span>Số dư {paymentMethod === "cash" ? "tiền mặt" : "ngân hàng"}: <strong>{formatCurrency(availableBalance)}</strong></span>
+                {Number(paymentAmount || 0) > 0 && projectedBalance >= 0 && <span>Sau khi trả: <strong>{formatCurrency(projectedBalance)}</strong></span>}
+              </div>}
+              {selectedFund && projectedBalance < 0 && <p className="warehouse-error">Số dư quỹ đã chọn không đủ để trả nhà cung cấp.</p>}
               <input value={paymentNote} onChange={(event) => setPaymentNote(event.target.value)} placeholder="Ghi chú (không bắt buộc)" />
-              <button type="submit" className="warehouse-primary-button" disabled={paymentSaving}>{paymentSaving ? "Đang lưu..." : "Lưu thanh toán"}</button>
+              <button type="submit" className="warehouse-primary-button" disabled={paymentSaving || !funds?.initialized || projectedBalance < 0}>{paymentSaving ? "Đang lưu..." : "Ghi nhận đã trả"}</button>
             </form>
-          )}
-          {invoice.payments?.length > 0 && (
-            <div className="warehouse-payment-history">
-              <h3>{"Lịch sử thanh toán nhà cung cấp"}</h3>
-              {invoice.payments.map((payment) => (
-                <div key={payment.id} className="warehouse-payment-history-item">
-                  <strong>{formatCurrency(payment.amount)} · {payment.payment_method === "cash" ? "Tiền mặt" : "Chuyển khoản"}</strong>
-                  <span>{formatDateTime(payment.paid_at)}</span>
-                </div>
-              ))}
-            </div>
           )}
           <div className="warehouse-table-wrap">
             <table className="warehouse-table">
@@ -176,6 +212,30 @@ function ImportDetail({ invoice, onClose, onEdit, onDelete, canEdit, canDelete, 
               <p>{invoice.note}</p>
             </div>
           )}
+          {paymentHistory.length > 0 && (
+            <section className="warehouse-payment-history" aria-label="Lịch sử thanh toán nhà cung cấp">
+              <div className="warehouse-payment-history-heading">
+                <h3>Lịch sử thanh toán nhà cung cấp</h3>
+                <span>{paymentHistory.length} giao dịch</span>
+              </div>
+              {paymentHistory.slice(firstHistoryItem, firstHistoryItem + PAYMENT_HISTORY_PAGE_SIZE).map((payment) => (
+                <div key={payment.id} className="warehouse-payment-history-item">
+                  <div className="warehouse-payment-history-amount">{formatAmount(payment.amount)}({payment.payment_method === "cash" ? "Tiền mặt" : "Chuyển khoản"})</div>
+                  <span>{formatDateTime(payment.paid_at)}</span>
+                  {payment.note && <p>{payment.note}</p>}
+                </div>
+              ))}
+              {paymentHistoryPages > 1 && (
+                <div className="warehouse-payment-history-pagination">
+                  <span>Trang {currentHistoryPage}/{paymentHistoryPages}</span>
+                  <div>
+                    <button type="button" onClick={() => setPaymentHistoryPage((page) => page - 1)} disabled={currentHistoryPage === 1}>Trước</button>
+                    <button type="button" onClick={() => setPaymentHistoryPage((page) => page + 1)} disabled={currentHistoryPage === paymentHistoryPages}>Sau</button>
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
           {(canEdit || canDelete) && (
             <div className="warehouse-modal-actions">
               {canEdit && (
@@ -201,7 +261,7 @@ function ImportDetail({ invoice, onClose, onEdit, onDelete, canEdit, canDelete, 
   );
 }
 
-function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = true }) {
+function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = false }) {
   const [suppliers, setSuppliers] = useState([]);
   const [products, setProducts] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
@@ -226,8 +286,6 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = true }) {
     })),
   );
   const [note, setNote] = useState(invoice?.note || "");
-  const [paymentAmount, setPaymentAmount] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useNotificationState();
@@ -335,19 +393,6 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = true }) {
         );
       productIds.add(item.product_id);
     }
-    const invoiceTotal = items.reduce(
-      (sum, item) => sum + Number(item.quantity) * Number(item.unit_price),
-      0,
-    );
-    const initialPayment = Number(paymentAmount || 0);
-    if (initialPayment > 0) {
-      if (initialPayment < 500)
-        return setError("Số tiền trả nhà cung cấp tối thiểu là 500 đ.");
-      if (initialPayment > invoiceTotal)
-        return setError("Số tiền trả không được vượt quá tổng tiền phiếu nhập.");
-      if (!paymentMethod)
-        return setError("Vui lòng chọn phương thức thanh toán.");
-    }
     try {
       setSaving(true);
       const payload = {
@@ -367,8 +412,6 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = true }) {
           quantity: Number(item.quantity),
           unit_price: Number(item.unit_price),
         })),
-        payment_amount: initialPayment,
-        payment_method: initialPayment > 0 ? paymentMethod : undefined,
       };
       const response = invoice?.id
         ? await authApis().put(
@@ -423,15 +466,15 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = true }) {
               </label>
               <div className="warehouse-field">
                 <span>Nhà cung cấp</span>
-                <div className="warehouse-supplier-mode">
-                  <button
-                    type="button"
-                    className={supplierMode === "existing" ? "is-active" : ""}
-                    onClick={() => setSupplierMode("existing")}
-                  >
-                    Nhà cung cấp đã lưu
-                  </button>
-                  {allowNewSupplier && (
+                {allowNewSupplier && (
+                  <div className="warehouse-supplier-mode">
+                    <button
+                      type="button"
+                      className={supplierMode === "existing" ? "is-active" : ""}
+                      onClick={() => setSupplierMode("existing")}
+                    >
+                      Nhà cung cấp đã lưu
+                    </button>
                     <button
                       type="button"
                       className={supplierMode === "new" ? "is-active" : ""}
@@ -442,8 +485,8 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = true }) {
                     >
                       Nhà cung cấp mới
                     </button>
-                  )}
-                </div>
+                  </div>
+                )}
                 {supplierMode === "existing" && (
                   <SharedSearchableDropdown
                     value={supplierId}
@@ -452,7 +495,9 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = true }) {
                     ariaLabel="Chọn nhà cung cấp"
                     searching={supplierSearchLoading}
                     searchingLabel="Đang tìm nhà cung cấp..."
-                    emptyLabel="Không tìm thấy nhà cung cấp."
+                    emptyLabel={allowNewSupplier
+                      ? "Không tìm thấy nhà cung cấp."
+                      : "Không có nhà cung cấp phù hợp. Liên hệ quản lý nếu cần thêm mới."}
                     onSearchChange={(value) => {
                       supplierSearchTouchedRef.current = true;
                       setSupplierSearchInput(value);
@@ -508,32 +553,6 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = true }) {
                   required
                 />
               </label>
-              {!invoice && (
-                <div className="warehouse-payment-fields">
-                  <label className="warehouse-field">
-                    <span>{"Số tiền trả ngay cho nhà cung cấp (tùy chọn)"}</span>
-                    <MoneyInput
-                      value={paymentAmount}
-                      onChange={setPaymentAmount}
-                      allowZero
-                      allowEmpty
-                      placeholder="0"
-                    />
-                  </label>
-                  <label className="warehouse-field">
-                    <span>{"Phương thức thanh toán"}</span>
-                    <select
-                      value={paymentMethod}
-                      onChange={(event) => setPaymentMethod(event.target.value)}
-                      disabled={!paymentAmount || Number(paymentAmount) <= 0}
-                    >
-                      <option value="">{"Chọn phương thức"}</option>
-                      <option value="cash">{"Tiền mặt"}</option>
-                      <option value="bank_transfer">{"Chuyển khoản"}</option>
-                    </select>
-                  </label>
-                </div>
-              )}
               <div className="warehouse-section-heading">
                 <h3>Sản phẩm nhập</h3>
                 <button type="button" onClick={addItem}>
@@ -551,7 +570,8 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = true }) {
                       key={`${item.product_id || "new"}-${index}`}
                     >
                       <div className="warehouse-product-field">
-                        <SharedSearchableDropdown
+                        <ProductEntryField label="Sản phẩm">
+                          <SharedSearchableDropdown
                           value={item.product_id}
                           placeholder="Chọn sản phẩm"
                           ariaLabel="Chọn sản phẩm nhập"
@@ -565,30 +585,33 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = true }) {
                               label: product.name,
                             })),
                           ]}
-                        />
-                        {selectedProduct && (
-                          <small>Đơn vị: {selectedProduct.unit}</small>
-                        )}
+                          />
+                        </ProductEntryField>
+                        <ProductEntryInfo product={selectedProduct} showUnit />
                       </div>
-                      <input
-                        type="number"
-                        min="1"
-                        step="1"
-                        value={item.quantity}
-                        onChange={(event) =>
-                          updateItem(index, "quantity", event.target.value)
-                        }
-                        placeholder="Số lượng"
-                        aria-label="Số lượng nhập"
-                      />
-                      <MoneyInput
-                        value={item.unit_price}
-                        onChange={(value) => updateItem(index, "unit_price", value)}
-                        label="Đơn giá"
-                        placeholder="Đơn giá từ 500 đ"
-                        aria-label="Đơn giá nhập"
-                        required
-                      />
+                      <ProductEntryField label="Số lượng nhập">
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={item.quantity}
+                          onChange={(event) =>
+                            updateItem(index, "quantity", event.target.value)
+                          }
+                          placeholder="Nhập số lượng"
+                          aria-label="Số lượng nhập"
+                        />
+                      </ProductEntryField>
+                      <ProductEntryField label="Đơn giá nhập">
+                        <MoneyInput
+                          value={item.unit_price}
+                          onChange={(value) => updateItem(index, "unit_price", value)}
+                          label="Đơn giá nhập"
+                          placeholder="Nhập đơn giá nhập"
+                          aria-label="Đơn giá nhập"
+                          required
+                        />
+                      </ProductEntryField>
                       <button
                         type="button"
                         className="warehouse-remove"
@@ -656,7 +679,7 @@ function ImportInvoices() {
   const canCreateImports = ["thủ kho", "quản lý"].includes(currentUser.role);
   const canEditImports = ["thủ kho", "kế toán", "quản lý"].includes(currentUser.role);
   const canDeleteImports = currentUser.role === "quản lý";
-  const canPayImports = ["kế toán", "quản lý"].includes(currentUser.role);
+  const canPayImports = currentUser.role === "kế toán";
 
   const fetchInvoices = useCallback(async () => {
     if (!localStorage.getItem("token"))
@@ -832,7 +855,7 @@ function ImportInvoices() {
       {editor && (
         <ImportEditor
           invoice={editor === "new" ? null : editor}
-          allowNewSupplier={canCreateImports}
+          allowNewSupplier={currentUser.role === "quản lý"}
           onClose={() => setEditor(null)}
           onSaved={handleSaved}
         />

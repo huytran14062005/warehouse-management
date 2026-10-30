@@ -1,12 +1,12 @@
 from sqlalchemy import func
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 from web import app, db
 from web.models import Customer, InvoiceStatus, Product, SalesInvoice, SalesInvoiceItem
 
 
 def apply_pagination(query, page, page_size=None):
                                         
-    total = query.count()
+    total = query.order_by(None).count()
 
     if not page or page < 1:
         page = 1
@@ -25,9 +25,9 @@ def get_customer_orders(customer_id, page=1, per_page=None, warehouse_id=None):
        
     query = (
         SalesInvoice.query.options(
-            selectinload(SalesInvoice.items).selectinload(SalesInvoiceItem.product),
-            selectinload(SalesInvoice.warehouse),
-            selectinload(SalesInvoice.created_by_employee),
+            selectinload(SalesInvoice.items),
+            joinedload(SalesInvoice.warehouse),
+            joinedload(SalesInvoice.created_by_employee),
         )
         .filter(SalesInvoice.customer_id == customer_id)
         .order_by(SalesInvoice.sold_at.desc())
@@ -44,23 +44,20 @@ def get_customer_orders(customer_id, page=1, per_page=None, warehouse_id=None):
 
 def get_customer_order_detail(customer_id, order_id, warehouse_id=None):
        
-    order = (
+    query = (
         SalesInvoice.query.options(
             selectinload(SalesInvoice.items).selectinload(SalesInvoiceItem.product),
-            selectinload(SalesInvoice.warehouse),
-            selectinload(SalesInvoice.created_by_employee),
+            joinedload(SalesInvoice.warehouse),
+            joinedload(SalesInvoice.created_by_employee),
         )
         .filter(
             SalesInvoice.id == order_id,
             SalesInvoice.customer_id == customer_id
         )
-        .first()
     )
-
-    if warehouse_id is not None and order is not None and order.warehouse_id != warehouse_id:
-        return None
-
-    return order
+    if warehouse_id is not None:
+        query = query.filter(SalesInvoice.warehouse_id == warehouse_id)
+    return query.first()
 
 
 def get_customer_purchased_products(customer_id, page=1, per_page=None, warehouse_id=None):
@@ -86,12 +83,14 @@ def get_customer_purchased_products(customer_id, page=1, per_page=None, warehous
     if warehouse_id is not None:
         query = query.filter(SalesInvoice.warehouse_id == warehouse_id)
 
-    total = query.count()
     page_size = per_page or app.config.get("APPLICATION_SIZE", 10)
     results = query.offset((page - 1) * page_size).limit(page_size).all()
-    total_amount_query = (
+    totals_query = (
         db.session.query(
-            func.coalesce(func.sum(SalesInvoiceItem.quantity * SalesInvoiceItem.unit_price), 0)
+            func.count(func.distinct(SalesInvoiceItem.product_id)).label("total_products"),
+            func.coalesce(
+                func.sum(SalesInvoiceItem.quantity * SalesInvoiceItem.unit_price), 0
+            ).label("total_amount"),
         )
         .join(SalesInvoice, SalesInvoiceItem.sales_invoice_id == SalesInvoice.id)
         .filter(
@@ -100,6 +99,6 @@ def get_customer_purchased_products(customer_id, page=1, per_page=None, warehous
         )
     )
     if warehouse_id is not None:
-        total_amount_query = total_amount_query.filter(SalesInvoice.warehouse_id == warehouse_id)
-    total_amount = total_amount_query.scalar()
-    return results, total, float(total_amount or 0)
+        totals_query = totals_query.filter(SalesInvoice.warehouse_id == warehouse_id)
+    totals = totals_query.one()
+    return results, int(totals.total_products or 0), float(totals.total_amount or 0)

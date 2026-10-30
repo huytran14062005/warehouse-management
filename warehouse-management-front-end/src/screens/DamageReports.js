@@ -4,10 +4,12 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { authApis, endpoints } from "../configs/Apis";
 import { getApiError } from "../utils/apiError";
 import useNotificationState from "../utils/useNotificationState";
+import { notifyInventoryChanged } from "../utils/inventoryEvents";
 import AutoDismissMessage from "../components/AutoDismissMessage";
 import ConfirmDialog from "../components/ConfirmDialog";
 import Pagination from "../components/Pagination";
 import SharedSearchableDropdown from "../components/SearchableDropdown";
+import { ProductEntryField, ProductEntryInfo } from "../components/ProductEntryFields";
 import Skeleton from "../components/Skeleton";
 import "../css/WarehouseOperations.css";
 
@@ -57,12 +59,18 @@ function DamageDetail({ report, onClose, canReview, onReview }) {
         <div className="warehouse-modal-body">
           <div className="warehouse-info-grid">
             <div>
+              <span>Nguồn hàng</span>
+              <strong>{report.stock_source === "employee_stock" ? "Hàng đi tỉnh" : report.warehouse?.name || "—"}</strong>
+            </div>
+            <div>
               <span>Ngày báo</span>
               <strong>{formatDate(report.reported_at)}</strong>
             </div>
             <div>
               <span>Trạng thái</span>
-              <strong>{statusLabel(report.status)}</strong>
+              <strong className={`warehouse-status warehouse-status-${report.status}`}>
+                {statusLabel(report.status)}
+              </strong>
             </div>
             <div>
               <span>Người báo</span>
@@ -81,7 +89,6 @@ function DamageDetail({ report, onClose, canReview, onReview }) {
                   <th>Sản phẩm</th>
                   <th>Đơn vị</th>
                   <th>Số lượng</th>
-                  <th>Lý do</th>
                 </tr>
               </thead>
               <tbody>
@@ -90,7 +97,6 @@ function DamageDetail({ report, onClose, canReview, onReview }) {
                     <td>{item.product_name}</td>
                     <td>{item.unit}</td>
                     <td>{item.quantity}</td>
-                    <td>{item.damage_reason || "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -133,7 +139,7 @@ function DamageDetail({ report, onClose, canReview, onReview }) {
   );
 }
 
-function DamageEditor({ onClose, onSaved }) {
+function DamageEditor({ onClose, onSaved, isFieldEmployee }) {
   const [products, setProducts] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   const [warehouseId, setWarehouseId] = useState("");
@@ -144,6 +150,32 @@ function DamageEditor({ onClose, onSaved }) {
   const [error, setError] = useNotificationState();
   useEffect(() => {
     let cancelled = false;
+    if (isFieldEmployee) {
+      const loadEmployeeStock = async () => {
+        try {
+          const allProducts = [];
+          let pageNumber = 1;
+          let totalPages = 1;
+          do {
+            const response = await authApis().get(endpoints.employeeStock, {
+              params: { page: pageNumber, per_page: 100 },
+            });
+            allProducts.push(...(response.data?.products || []));
+            totalPages = Number(response.data?.pagination?.total_pages || 1);
+            pageNumber += 1;
+          } while (!cancelled && pageNumber <= totalPages);
+          if (!cancelled) setProducts(allProducts.map((product) => ({
+            ...product, available_stock: product.quantity,
+          })));
+        } catch (requestError) {
+          if (!cancelled) setError(getApiError(requestError));
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+      };
+      loadEmployeeStock();
+      return () => { cancelled = true; };
+    }
     authApis().get(endpoints.warehouses)
       .then((response) => {
         if (cancelled) return;
@@ -159,9 +191,9 @@ function DamageEditor({ onClose, onSaved }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isFieldEmployee]);
   useEffect(() => {
-    if (!warehouseId) return undefined;
+    if (isFieldEmployee || !warehouseId) return undefined;
     let cancelled = false;
     authApis().get(endpoints.productsInventory, {
       params: { warehouse_id: warehouseId, page: 1, per_page: 1000 },
@@ -171,7 +203,7 @@ function DamageEditor({ onClose, onSaved }) {
       if (!cancelled) setError(getApiError(requestError));
     });
     return () => { cancelled = true; };
-  }, [warehouseId]);
+  }, [isFieldEmployee, warehouseId]);
   const updateItem = (index, field, value) =>
     setItems((current) =>
       current.map((item, itemIndex) =>
@@ -181,7 +213,7 @@ function DamageEditor({ onClose, onSaved }) {
   const submit = async (event) => {
     event.preventDefault();
     setError("");
-    if (!warehouseId) return setError("Vui lòng chọn kho xuất hàng.");
+    if (!isFieldEmployee && !warehouseId) return setError("Vui lòng chọn kho xuất hàng.");
     if (!items.length)
       return setError("Vui lòng thêm ít nhất một sản phẩm để báo hư.");
     const ids = new Set();
@@ -201,12 +233,11 @@ function DamageEditor({ onClose, onSaved }) {
     try {
       setSaving(true);
       const response = await authApis().post(endpoints.damageReports, {
-        warehouse_id: Number(warehouseId),
+        ...(isFieldEmployee ? {} : { warehouse_id: Number(warehouseId) }),
         note: note.trim(),
         items: items.map((item) => ({
           product_id: Number(item.product_id),
           quantity: Number(item.quantity),
-          damage_reason: item.damage_reason.trim() || null,
         })),
       });
       onSaved(response.data?.report);
@@ -241,7 +272,16 @@ function DamageEditor({ onClose, onSaved }) {
             <Skeleton variant="form" rows={3} />
           ) : (
             <>
-              <label className="warehouse-field">
+              {isFieldEmployee ? (
+                <>
+                  <p className="damage-source-note">Nguồn hàng: Hàng đi tỉnh bạn đang giữ</p>
+                  {products.length === 0 && (
+                    <p className="damage-empty-stock" role="status">
+                      Bạn không còn sản phẩm nào trong tồn kho nhân viên. Chỉ hàng đã được cấp và còn số lượng mới có thể báo hư.
+                    </p>
+                  )}
+                </>
+              ) : <label className="warehouse-field">
                 <span>Kho xuất hàng</span>
                 <select value={warehouseId} onChange={(event) => {
                   setWarehouseId(event.target.value);
@@ -252,15 +292,16 @@ function DamageEditor({ onClose, onSaved }) {
                     <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>
                   ))}
                 </select>
-              </label>
+              </label>}
               <div className="warehouse-section-heading">
                 <h3>Sản phẩm hư hỏng</h3>
                 <button
                   type="button"
+                  disabled={isFieldEmployee && products.length === 0}
                   onClick={() =>
                     setItems((current) => [
                       ...current,
-                      { product_id: "", quantity: "1", damage_reason: "" },
+                      { product_id: "", quantity: "1" },
                     ])
                   }
                 >
@@ -278,7 +319,8 @@ function DamageEditor({ onClose, onSaved }) {
                       key={`${item.product_id || "new"}-${index}`}
                     >
                       <div className="warehouse-product-field">
-                        <SharedSearchableDropdown
+                        <ProductEntryField label="Sản phẩm">
+                          <SharedSearchableDropdown
                           value={item.product_id}
                           placeholder="Chọn sản phẩm"
                           ariaLabel="Chọn sản phẩm hư"
@@ -292,33 +334,27 @@ function DamageEditor({ onClose, onSaved }) {
                               label: product.name,
                             })),
                           ]}
+                          />
+                        </ProductEntryField>
+                        <ProductEntryInfo
+                          product={selected}
+                          stockLabel="Tồn kho hiện tại"
+                          stockQuantity={selected?.available_stock}
                         />
-                        {selected && (
-                          <small>
-                            Tồn hiện tại: {selected.available_stock}{" "}
-                            {selected.unit}
-                          </small>
-                        )}
                       </div>
-                      <input
-                        type="number"
-                        min="1"
-                        step="1"
-                        value={item.quantity}
-                        onChange={(event) =>
-                          updateItem(index, "quantity", event.target.value)
-                        }
-                        placeholder="Số lượng"
-                        aria-label="Số lượng hư"
-                      />
-                      <input
-                        value={item.damage_reason}
-                        onChange={(event) =>
-                          updateItem(index, "damage_reason", event.target.value)
-                        }
-                        placeholder="Lý do hư hỏng"
-                        aria-label="Lý do hư hỏng"
-                      />
+                      <ProductEntryField label="Số lượng hư">
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={item.quantity}
+                          onChange={(event) =>
+                            updateItem(index, "quantity", event.target.value)
+                          }
+                          placeholder="Nhập số lượng"
+                          aria-label="Số lượng hư"
+                        />
+                      </ProductEntryField>
                       <button
                         type="button"
                         className="warehouse-remove"
@@ -389,7 +425,8 @@ function DamageReports() {
       return {};
     }
   })();
-  const canCreateDamageReport = currentUser.role === "thủ kho";
+  const isFieldEmployee = currentUser.role === "nhân viên bán hàng";
+  const canCreateDamageReport = ["thủ kho", "nhân viên bán hàng"].includes(currentUser.role);
   const canReviewDamageReport = currentUser.role === "quản lý";
   const fetchReports = useCallback(async () => {
     if (!localStorage.getItem("token"))
@@ -453,6 +490,7 @@ function DamageReports() {
       setReviewAction(null);
       setReviewNote("");
       setReviewValidationError("");
+      notifyInventoryChanged();
       await fetchReports();
     } catch (requestError) {
       setError(getApiError(requestError));
@@ -555,9 +593,11 @@ function DamageReports() {
       )}
       {editor && (
         <DamageEditor
+          isFieldEmployee={isFieldEmployee}
           onClose={() => setEditor(false)}
           onSaved={() => {
             setEditor(false);
+            notifyInventoryChanged();
             fetchReports();
           }}
         />
@@ -569,7 +609,7 @@ function DamageReports() {
           <div className="warehouse-review-dialog-content">
             <p>
               {reviewAction?.decision === "approved"
-                ? "Phiếu sẽ được ghi nhận là đã duyệt và cập nhật tồn kho."
+                ? "Xác nhận phiếu hàng hư đã được ghi nhận vào tồn kho."
                 : "Vui lòng nhập lý do để người lập phiếu biết vì sao phiếu bị từ chối."}
             </p>
             {reviewAction?.decision === "rejected" && (

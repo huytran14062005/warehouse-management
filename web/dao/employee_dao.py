@@ -88,7 +88,7 @@ def get_manageable_employees(page=1, per_page=None, keyword=None, status=None):
         query = query.filter(Employee.is_approved.is_(True), Employee.is_locked.is_(False))
 
     query = query.order_by(Employee.is_approved.asc(), Employee.created_at.desc(), Employee.id.desc())
-    total = query.count()
+    total = query.order_by(None).count()
     if per_page is None:
         per_page = Config.APPLICATION_SIZE
     rows = query.offset((page - 1) * per_page).limit(per_page).all()

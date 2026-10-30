@@ -33,7 +33,7 @@ def get_employee_stock_list(employee_id, page=1, per_page=10):
         .filter(EmployeeStock.employee_id == employee_id, EmployeeStock.quantity > 0)
         .order_by(Product.name.asc())
     )
-    total = query.count()
+    total = query.order_by(None).count()
     total_quantity = (
         db.session.query(func.coalesce(func.sum(EmployeeStock.quantity), 0))
         .filter(EmployeeStock.employee_id == employee_id, EmployeeStock.quantity > 0)

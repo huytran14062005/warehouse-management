@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from sqlalchemy import and_, case, func, or_, select
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm import joinedload
 from sqlalchemy.exc import IntegrityError
 from web import app, db
 from web.models import (
@@ -15,7 +15,7 @@ from web.models import (
 
 def apply_pagination(query, page, page_size=None):
                                         
-    total = query.count()
+    total = query.order_by(None).count()
 
     if not page or page < 1:
         page = 1
@@ -86,17 +86,31 @@ def get_all_customers(
         )
 
                                                
-    # Keep the filtered customer ids separate from the paged result so the
-    # summary cards describe the whole filtered set, not only the current page.
-    filtered_customer_ids = [
-        row[0]
-        for row in query.order_by(None).with_entities(Customer.id).all()
-    ]
-    total = len(filtered_customer_ids)
+    # Keep the summary over the full filtered set without materializing every
+    # customer id (or counting the same result twice for pagination).
+    summary_counts = query.order_by(None).with_entities(
+        func.count(Customer.id).label("total"),
+        func.coalesce(func.sum(Customer.debt_amount), 0).label("total_debt"),
+    ).one()
+    total = int(summary_counts.total or 0)
+    if total == 0:
+        return [], 0, {
+            "total_customers": 0,
+            "total_collected": 0.0,
+            "total_sales": 0.0,
+            "total_debt": 0.0,
+        }
+    filtered_customer_ids = query.order_by(None).with_entities(Customer.id).subquery()
 
-    query = query.options(selectinload(Customer.sales_area_ref)).order_by(Customer.id.desc())
-    page_query, _ = apply_pagination(query, page, page_size=per_page)
-    customers = page_query.all()
+    page_size = per_page or app.config.get("APPLICATION_SIZE", 10)
+    page = page if page and page > 0 else 1
+    customers = (
+        query.options(joinedload(Customer.sales_area_ref))
+        .order_by(Customer.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
 
     page_customer_ids = [customer.id for customer in customers]
 
@@ -114,10 +128,8 @@ def get_all_customers(
             .all()
         }
 
-    def sales_totals(customer_ids):
-        if not customer_ids:
-            return {}
-        completed_invoice_totals = (
+    def completed_invoice_totals(customer_filter):
+        return (
             db.session.query(
                 SalesInvoice.id.label("invoice_id"),
                 SalesInvoice.customer_id.label("customer_id"),
@@ -133,7 +145,7 @@ def get_all_customers(
                 SalesInvoiceItem.sales_invoice_id == SalesInvoice.id,
             )
             .filter(
-                SalesInvoice.customer_id.in_(customer_ids),
+                customer_filter,
                 SalesInvoice.status == InvoiceStatus.COMPLETED,
             )
             .group_by(
@@ -143,15 +155,22 @@ def get_all_customers(
             )
             .subquery()
         )
+
+    def sales_totals(customer_ids):
+        if not customer_ids:
+            return {}
+        invoice_totals = completed_invoice_totals(
+            SalesInvoice.customer_id.in_(customer_ids)
+        )
         return {
             row.customer_id: float(row.total_sales or 0)
             for row in db.session.query(
-                completed_invoice_totals.c.customer_id,
+                invoice_totals.c.customer_id,
                 func.coalesce(
-                    func.sum(completed_invoice_totals.c.final_amount), 0
+                    func.sum(invoice_totals.c.final_amount), 0
                 ).label("total_sales"),
             )
-            .group_by(completed_invoice_totals.c.customer_id)
+            .group_by(invoice_totals.c.customer_id)
             .all()
         }
 
@@ -163,24 +182,22 @@ def get_all_customers(
         customer._total_paid_amount = page_paid.get(customer.id, 0.0)
         customer._total_sales_amount = page_sales.get(customer.id, 0.0)
 
-    all_paid = payment_totals(filtered_customer_ids)
-    all_sales = sales_totals(filtered_customer_ids)
-    total_debt = 0.0
-    if filtered_customer_ids:
-        total_debt = float(
-            db.session.query(
-                func.coalesce(func.sum(Customer.debt_amount), 0)
-            )
-            .filter(Customer.id.in_(filtered_customer_ids))
-            .scalar()
-            or 0
-        )
+    filtered_ids = select(filtered_customer_ids.c.id)
+    all_paid = db.session.query(
+        func.coalesce(func.sum(CustomerPayment.amount), 0)
+    ).filter(CustomerPayment.customer_id.in_(filtered_ids)).scalar()
+    all_invoice_totals = completed_invoice_totals(
+        SalesInvoice.customer_id.in_(filtered_ids)
+    )
+    all_sales = db.session.query(
+        func.coalesce(func.sum(all_invoice_totals.c.final_amount), 0)
+    ).scalar()
 
     summary = {
         "total_customers": total,
-        "total_collected": sum(all_paid.values()),
-        "total_sales": sum(all_sales.values()),
-        "total_debt": total_debt,
+        "total_collected": float(all_paid or 0),
+        "total_sales": float(all_sales or 0),
+        "total_debt": float(summary_counts.total_debt or 0),
     }
 
     return customers, total, summary

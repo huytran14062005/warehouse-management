@@ -12,7 +12,9 @@ from web.models import (
     PaymentType,
     SalesInvoice,
 )
-from web.services.exceptions import NotFoundError, ValidationError
+from web.services.exceptions import AppError, NotFoundError, ValidationError
+from web.services.authorization import require_accountant
+from web.services.company_fund_service import record_fund_movement
 from web.services.validators import validate_money_amount
 
 
@@ -34,8 +36,9 @@ def parse_payment_method(value, required=True):
 def _allocate_payment_to_open_invoices(customer_id, payment_amount):
     """Allocate debt collection to the oldest due invoices in one locked batch."""
     amount_left = Decimal(str(payment_amount))
+    allocations = []
     if amount_left <= 0:
-        return
+        return allocations, amount_left
 
     invoices = (
         SalesInvoice.query
@@ -72,12 +75,15 @@ def _allocate_payment_to_open_invoices(customer_id, payment_amount):
             if invoice.paid_amount >= total
             else PaymentStatus.PARTIAL
         )
+        allocations.append((invoice.id, allocated))
         amount_left -= allocated
         if amount_left <= 0:
             break
+    return allocations, amount_left
 
 
 def record_old_debt_payment_service(customer_id, employee_id, amount, payment_method=None, note=""):
+    require_accountant(employee_id)
     payment_amount = validate_payment_amount(amount)
     if payment_amount <= 0:
         raise ValidationError("Số tiền trả nợ phải lớn hơn 0")
@@ -101,18 +107,43 @@ def record_old_debt_payment_service(customer_id, employee_id, amount, payment_me
     try:
         old_debt = Decimal(str(customer.debt_amount))
         customer.debt_amount = old_debt - payment_amount
-        _allocate_payment_to_open_invoices(customer.id, payment_amount)
-        payment = CustomerPayment(
-            customer_id=customer.id,
-            employee_id=collector.id,
-            amount=payment_amount,
-            payment_type=PaymentType.OLD_DEBT,
-            payment_method=payment_method,
-            note=str(note or "").strip() or None,
+        allocations, unallocated = _allocate_payment_to_open_invoices(customer.id, payment_amount)
+        payment_note = str(note or "").strip() or None
+        payments = [
+            CustomerPayment(
+                customer_id=customer.id,
+                sales_invoice_id=invoice_id,
+                employee_id=collector.id,
+                amount=allocated,
+                payment_type=PaymentType.OLD_DEBT,
+                payment_method=payment_method,
+                note=payment_note,
+            )
+            for invoice_id, allocated in allocations
+        ]
+        if unallocated > 0:
+            payments.append(CustomerPayment(
+                customer_id=customer.id,
+                employee_id=collector.id,
+                amount=unallocated,
+                payment_type=PaymentType.OLD_DEBT,
+                payment_method=payment_method,
+                note=payment_note,
+            ))
+        db.session.add_all(payments)
+        db.session.flush()
+        # One cash receipt can be allocated to several sales invoices. It is
+        # still one money movement in the company fund.
+        record_fund_movement(
+            payment_method, "in", payment_amount,
+            "customer_receipt", payments[0].id, employee_id,
+            f"Thu nợ khách hàng  {customer.full_name}", payment_note,
         )
-        db.session.add(payment)
         db.session.commit()
-        return payment, old_debt, customer.debt_amount, customer
+        return payments, old_debt, customer.debt_amount, customer
+    except AppError:
+        db.session.rollback()
+        raise
     except Exception as error:
         db.session.rollback()
         raise Exception(f"Lỗi ghi nhận trả nợ cũ: {error}")

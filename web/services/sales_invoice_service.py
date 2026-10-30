@@ -1,8 +1,8 @@
 import math
-from datetime import date, datetime, time
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from sqlalchemy import func
-from zoneinfo import ZoneInfo
+from datetime import date, datetime, time, timedelta, timezone
+from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP
+from sqlalchemy import and_, func, or_
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from web import dao, db
 from web.models import (
@@ -13,20 +13,24 @@ from web.models import (
     EmployeeRole,
     EmployeeStock,
     InvoiceStatus,
+    PaymentMethod,
     PaymentStatus,
     PaymentType,
     Product,
     SaleSource,
     SalesInvoice,
+    SalesInvoiceWorkflowEvent,
     Warehouse,
 )
-from web.services.exceptions import AppError, NotFoundError, ValidationError
+from web.services.exceptions import AppError, ForbiddenError, NotFoundError, ValidationError
+from web.services.company_fund_service import record_fund_movement
 from web.services.authorization import (
     ensure_bounded_items,
     ensure_warehouse_access,
     get_central_warehouse,
+    require_accountant,
 )
-from web.services.validators import require_text, validate_money_amount, validate_phone
+from web.services.validators import MIN_MONEY_AMOUNT, require_text, validate_money_amount, validate_phone
 from web.services.payment_service import parse_payment_method
 from web.services.sales_area_service import resolve_sales_area_id
 from web.services.promotion_service import (
@@ -42,8 +46,88 @@ ACTIVE_CANCEL_REQUEST_STATUSES = frozenset(
     {InvoiceStatus.PROCESSING, InvoiceStatus.DELIVERING}
 )
 
+
+def workflow_stage(invoice):
+    if invoice.status == InvoiceStatus.DRAFT and invoice.warehouse_submitted_at:
+        return "chờ kho"
+    if invoice.status == InvoiceStatus.DELIVERING and invoice.delivered_at:
+        return "đã giao"
+    return invoice.status.value
+
+
+def _log_workflow_event(invoice, actor_id, action, detail=None):
+    db.session.add(SalesInvoiceWorkflowEvent(
+        sales_invoice_id=invoice.id, actor_id=actor_id,
+        action=action, detail=detail,
+    ))
+
+
+def get_sales_invoice_action_count_service(employee_id, employee_role):
+    """Count actionable orders for one role without loading invoice rows."""
+    role = EmployeeRole(employee_role)
+    active_cancel = and_(
+        SalesInvoice.cancel_requested.is_(True),
+        SalesInvoice.status.in_(ACTIVE_CANCEL_REQUEST_STATUSES),
+    )
+    draft_to_send = and_(
+        SalesInvoice.status == InvoiceStatus.DRAFT,
+        SalesInvoice.warehouse_submitted_at.is_(None),
+    )
+    waiting_warehouse = and_(
+        SalesInvoice.status == InvoiceStatus.DRAFT,
+        SalesInvoice.warehouse_submitted_at.isnot(None),
+    )
+    processing = SalesInvoice.status == InvoiceStatus.PROCESSING
+    awaiting_delivery = and_(
+        SalesInvoice.status == InvoiceStatus.DELIVERING,
+        SalesInvoice.delivered_at.is_(None),
+    )
+    delivered = and_(
+        SalesInvoice.status == InvoiceStatus.DELIVERING,
+        SalesInvoice.delivered_at.isnot(None),
+    )
+    if role == EmployeeRole.NHAN_VIEN_BAN_HANG:
+        condition = and_(
+            SalesInvoice.employee_id == employee_id,
+            SalesInvoice.cancel_requested.is_(False),
+            or_(draft_to_send, awaiting_delivery),
+        )
+    elif role == EmployeeRole.THU_KHO:
+        condition = and_(
+            SalesInvoice.cancel_requested.is_(False),
+            or_(waiting_warehouse, processing),
+        )
+    elif role == EmployeeRole.KE_TOAN:
+        condition = or_(
+            active_cancel,
+            and_(
+                SalesInvoice.cancel_requested.is_(False), delivered,
+                SalesInvoice.discount_status.notin_({
+                    DiscountStatus.PENDING_APPROVAL, DiscountStatus.REJECTED,
+                }),
+            ),
+        )
+    else:
+        condition = or_(
+            active_cancel,
+            SalesInvoice.status == InvoiceStatus.DRAFT,
+            and_(SalesInvoice.cancel_requested.is_(False), or_(processing, awaiting_delivery)),
+            and_(
+                SalesInvoice.discount_status == DiscountStatus.PENDING_APPROVAL,
+                SalesInvoice.employee_id != employee_id,
+            ),
+        )
+    return int(db.session.query(func.count(SalesInvoice.id)).filter(condition).scalar() or 0)
+
+
 PAYMENT_DUE_SOON_DAYS = 7
-BUSINESS_TIMEZONE = ZoneInfo("Asia/Bangkok")
+SALE_PRICE_TOLERANCE = Decimal("0.10")
+try:
+    BUSINESS_TIMEZONE = ZoneInfo("Asia/Bangkok")
+except ZoneInfoNotFoundError:
+    # Windows may not provide an IANA timezone database in a fresh venv.
+    # Bangkok uses UTC+7 without daylight saving time for business dates.
+    BUSINESS_TIMEZONE = timezone(timedelta(hours=7))
 
 
 def business_today():
@@ -196,6 +280,27 @@ def _validate_sales_items(items):
     if missing_product_ids:
         raise NotFoundError(f"Sáº£n pháº©m ID {missing_product_ids[0]} khÃ´ng tá»“n táº¡i")
 
+    for item in normalized:
+        product = products_by_id[item["product_id"]]
+        default_price = Decimal(str(product.default_sale_price or 0))
+        if default_price < MIN_MONEY_AMOUNT:
+            raise ValidationError(
+                f"Sản phẩm '{product.name}' chưa có giá bán mặc định hợp lệ (từ 500 đ). "
+                "Vui lòng cập nhật giá sản phẩm trước khi bán."
+            )
+        minimum = max(MIN_MONEY_AMOUNT, default_price * (1 - SALE_PRICE_TOLERANCE))
+        maximum = default_price * (1 + SALE_PRICE_TOLERANCE)
+        if not minimum <= item["unit_price"] <= maximum:
+            minimum_display = int(minimum.to_integral_value(rounding=ROUND_CEILING))
+            maximum_display = int(maximum.to_integral_value(rounding=ROUND_FLOOR))
+            minimum_text = f"{minimum_display:,}".replace(",", ".")
+            maximum_text = f"{maximum_display:,}".replace(",", ".")
+            raise ValidationError(
+                f"Giá bán '{product.name}' phải từ "
+                f"{minimum_text} đến {maximum_text} đ "
+                "(±10% giá bán mặc định)."
+            )
+
     return normalized
 
 
@@ -315,8 +420,34 @@ def _consume_employee_stock(employee_id, items):
         )
 
 
-def _apply_invoice_payment(invoice, employee_id, payment_amount, final_amount, payment_method=None):
-    payment_amount = validate_money(payment_amount, "Số tiền khách thanh toán")
+def _normalize_invoice_tender(tendered_amount, payment_method, amount_due):
+    """Return the amount credited to the invoice and any cash change."""
+    tendered = validate_money(tendered_amount, "Số tiền khách đưa")
+    amount_due = Decimal(str(amount_due))
+    method = parse_payment_method(payment_method, required=tendered > 0)
+    if tendered > amount_due:
+        if amount_due <= 0:
+            raise ValidationError("Đơn hàng đã thanh toán đủ")
+        if method != PaymentMethod.CASH:
+            raise ValidationError("Số tiền chuyển khoản không được vượt quá số tiền còn phải thu")
+        return amount_due, tendered - amount_due, method
+    return tendered, Decimal("0"), method
+
+
+def _format_vnd(amount):
+    whole, cents = f"{amount:.2f}".split(".")
+    formatted = f"{int(whole):,}".replace(",", ".")
+    return f"{formatted}{',' + cents if cents != '00' else ''} đ"
+
+
+def _apply_invoice_payment(invoice, employee_id, payment_amount, final_amount, payment_method=None, cash_received=None):
+    is_cash_change = cash_received is not None and cash_received > payment_amount
+    payment_amount = validate_money_amount(
+        payment_amount, "Số tiền khách thanh toán",
+        minimum=None if is_cash_change else MIN_MONEY_AMOUNT,
+    )
+    if payment_amount > 0:
+        require_accountant(employee_id)
     already_paid = Decimal(str(invoice.paid_amount or 0))
     if already_paid > 0:
         raise ValidationError(
@@ -344,18 +475,45 @@ def _apply_invoice_payment(invoice, employee_id, payment_amount, final_amount, p
     invoice.paid_amount = total_paid
     invoice.payment_status = get_payment_status(total_paid, final_amount)
     if payment_amount > 0:
-        db.session.add(
-            CustomerPayment(
+        payment_note = "Thanh toán khi hoàn thành đơn hàng"
+        if cash_received is not None and cash_received > payment_amount:
+            change_amount = cash_received - payment_amount
+            payment_note = (
+                f"Khách đưa {_format_vnd(cash_received)}; "
+                f"tiền thối lại {_format_vnd(change_amount)}"
+            )
+        payment = CustomerPayment(
                 customer_id=customer.id,
                 sales_invoice_id=invoice.id,
                 employee_id=employee_id,
                 amount=payment_amount,
                 payment_type=PaymentType.INVOICE,
                 payment_method=payment_method,
-                note="Thanh toán khi hoàn thành đơn hàng",
-            )
+                note=payment_note,
+        )
+        db.session.add(payment)
+        db.session.flush()
+        record_fund_movement(
+            payment.payment_method, "in", payment.amount,
+            "customer_receipt", payment.id, employee_id,
+            f"Thu tiền đơn bán #{invoice.id}", payment.note,
         )
     return remaining_amount
+
+
+def serialize_sales_invoice_payment(payment):
+    return {
+        "id": payment.id,
+        "amount": float(payment.amount),
+        "payment_type": payment.payment_type.value,
+        "payment_method": payment.payment_method.value if payment.payment_method else None,
+        "paid_at": payment.paid_at.isoformat() if payment.paid_at else None,
+        "note": payment.note,
+        "confirmed_by": {
+            "id": payment.collected_by_employee.id,
+            "full_name": payment.collected_by_employee.full_name,
+        } if payment.collected_by_employee else None,
+    }
 
 
 def serialize_sales_invoice(invoice):
@@ -372,6 +530,7 @@ def serialize_sales_invoice(invoice):
             "product_id": item.product_id,
             "product_name": item.product.name,
             "unit": item.product.unit,
+            "default_sale_price": float(item.product.default_sale_price),
             "quantity": int(item.quantity),
             "unit_price": float(item.unit_price),
             "total": item_total
@@ -383,6 +542,7 @@ def serialize_sales_invoice(invoice):
     remaining_amount = max(0, final_amount - float(invoice.paid_amount))
     payment_due = get_payment_due_info(invoice, remaining_amount)
     promotion_snapshot = promotion_snapshot_from_note(invoice.discount_note)
+    payments, payments_total = dao.get_sales_invoice_payments_page(invoice.id)
 
     return {
         "id": invoice.id,
@@ -393,6 +553,11 @@ def serialize_sales_invoice(invoice):
             "name": invoice.warehouse.name,
         },
         "status": invoice.status.value,
+        "workflow_stage": workflow_stage(invoice),
+        "warehouse_submitted_at": invoice.warehouse_submitted_at.isoformat() if invoice.warehouse_submitted_at else None,
+        "delivered_at": invoice.delivered_at.isoformat() if invoice.delivered_at else None,
+        "delivery_recipient": invoice.delivery_recipient,
+        "delivery_note": invoice.delivery_note,
         "sale_source": invoice.sale_source.value,
         "payment_status": invoice.payment_status.value,
         "paid_amount": float(invoice.paid_amount),
@@ -435,16 +600,18 @@ def serialize_sales_invoice(invoice):
         "items": items_data,
         "total_amount": total_amount,
         "final_amount": final_amount,
-        "payments": [
+        "payments": [serialize_sales_invoice_payment(payment) for payment in payments],
+        "payments_total": payments_total,
+        "payments_page": 1,
+        "workflow_events": [
             {
-                "id": payment.id,
-                "amount": float(payment.amount),
-                "payment_type": payment.payment_type.value,
-                "payment_method": payment.payment_method.value if payment.payment_method else None,
-                "paid_at": payment.paid_at.isoformat() if payment.paid_at else None,
-                "note": payment.note,
+                "id": event.id,
+                "action": event.action,
+                "detail": event.detail,
+                "occurred_at": event.occurred_at.isoformat() if event.occurred_at else None,
+                "actor": event.actor.full_name if event.actor else None,
             }
-            for payment in invoice.payments
+            for event in reversed(dao.get_recent_sales_invoice_workflow_events(invoice.id))
         ],
     }
 
@@ -531,7 +698,12 @@ def create_sales_invoice_service(
         is_promotion=promotion_id not in (None, ""),
     )
     final_amount = total_amount - discount_amount
-    clean_payment_due_date = parse_payment_due_date(payment_due_date)
+    if validate_money(payment_amount, "Số tiền khách đưa") > 0 or payment_method not in (None, ""):
+        raise ValidationError("Kế toán ghi nhận thanh toán sau khi đơn hoàn thành")
+    clean_payment_due_date = (
+        parse_payment_due_date(payment_due_date)
+        if sale_source == SaleSource.CENTRAL_WAREHOUSE else None
+    )
 
     if sale_source == SaleSource.EMPLOYEE_STOCK:
         if employee.role != EmployeeRole.NHAN_VIEN_BAN_HANG:
@@ -539,12 +711,7 @@ def create_sales_invoice_service(
         stock_employee_id = employee_id
         if discount_status in {DiscountStatus.PENDING_APPROVAL, DiscountStatus.REJECTED}:
             raise ValidationError("Đơn bán từ hàng nhân viên không thể hoàn thành khi khuyến mãi chưa được duyệt")
-        payment_amount = validate_money(payment_amount, "Số tiền khách thanh toán")
-        if payment_amount > final_amount:
-            raise ValidationError("Số tiền khách thanh toán không được lớn hơn tổng tiền đơn")
-
-        if payment_amount < final_amount and clean_payment_due_date is None:
-            raise ValidationError("Vui lòng chọn hạn thanh toán cho phần tiền còn nợ")
+        clean_payment_due_date = parse_payment_due_date(payment_due_date)
 
     if customer_id in (None, ""):
         db.session.add(customer)
@@ -552,9 +719,6 @@ def create_sales_invoice_service(
         customer_id = customer.id
 
                                     
-    if sale_source == SaleSource.CENTRAL_WAREHOUSE and validate_money(payment_amount, "Số tiền khách thanh toán") > 0:
-        raise ValidationError("Chỉ ghi nhận thanh toán khi đơn được hoàn thành")
-
     if sale_source == SaleSource.EMPLOYEE_STOCK:
         try:
             _consume_employee_stock(stock_employee_id, validated_items)
@@ -570,10 +734,10 @@ def create_sales_invoice_service(
                 sale_source=sale_source,
                 status=InvoiceStatus.COMPLETED,
                 sales_area_id=customer.sales_area_id,
-                payment_due_date=clean_payment_due_date if payment_amount < final_amount else None,
+                payment_due_date=clean_payment_due_date,
                 commit=False,
             )
-            _apply_invoice_payment(invoice, employee_id, payment_amount, final_amount, payment_method)
+            _apply_invoice_payment(invoice, employee_id, 0, final_amount)
             db.session.commit()
             return dao.get_sales_invoice_by_id(invoice.id)
         except Exception:
@@ -601,7 +765,7 @@ def create_sales_invoice_service(
 def update_sales_invoice_service(invoice_id, employee_id, warehouse_id, customer_id, note, items, discount_amount=0, discount_note="", promotion_id=None, payment_due_date=None):
        
                               
-    invoice = SalesInvoice.query.get(invoice_id)
+    invoice = SalesInvoice.query.filter_by(id=invoice_id).with_for_update().first()
     if not invoice:
         raise NotFoundError("Đơn hàng không tồn tại")
 
@@ -612,8 +776,8 @@ def update_sales_invoice_service(invoice_id, employee_id, warehouse_id, customer
     # requested warehouse to be changed.
     ensure_warehouse_access(employee_id, invoice.warehouse_id)
 
-    if invoice.status != InvoiceStatus.DRAFT:
-        raise ValidationError("Không thể sửa đơn hàng đã xuất kho")
+    if invoice.status != InvoiceStatus.DRAFT or invoice.warehouse_submitted_at:
+        raise ValidationError("Chỉ có thể sửa đơn nháp chưa gửi kho")
 
     # Customer, warehouse, creator and sale source identify the original
     # transaction. They must not be transferred to another party while editing.
@@ -708,21 +872,21 @@ def update_sales_invoice_service(invoice_id, employee_id, warehouse_id, customer
 
 
 def complete_sales_invoice_service(invoice_id, employee_id, payment_amount=0, payment_method=None, payment_due_date=None):
-       
-                              
-    invoice = dao.get_sales_invoice_by_id(invoice_id)
-    if not invoice:
+    require_accountant(employee_id)
+    invoice_ref = SalesInvoice.query.get(invoice_id)
+    if not invoice_ref:
         raise NotFoundError("Đơn hàng không tồn tại")
-
-                         
-    ensure_warehouse_access(employee_id, invoice.warehouse_id)
+    ensure_warehouse_access(employee_id, invoice_ref.warehouse_id)
+    # Payment and debt updates use the same lock order as later debt payments.
+    Customer.query.filter(Customer.id == invoice_ref.customer_id).with_for_update().one()
+    invoice = SalesInvoice.query.filter_by(id=invoice_id).with_for_update().first()
 
     if invoice.status == InvoiceStatus.COMPLETED:
         raise ValidationError("Đơn hàng đã được xuất kho trước đó")
     
                                                    
-    if invoice.status not in {InvoiceStatus.PROCESSING, InvoiceStatus.DELIVERING}:
-        raise ValidationError("Chá»‰ cÃ³ thá»ƒ hoÃ n thÃ nh Ä‘Æ¡n Ä‘ang xá»­ lÃ½ hoáº·c Ä‘ang giao")
+    if invoice.status != InvoiceStatus.DELIVERING or not invoice.delivered_at:
+        raise ValidationError("Chỉ có thể hoàn thành đơn đã xác nhận giao hàng")
 
     if invoice.discount_status == DiscountStatus.PENDING_APPROVAL:
         raise ValidationError(
@@ -741,6 +905,17 @@ def complete_sales_invoice_service(invoice_id, employee_id, payment_amount=0, pa
             "Không thể hoàn thành đơn đang có yêu cầu hủy chờ duyệt. "
             "Vui lòng xử lý yêu cầu hủy trước."
         )
+
+    # The default price may have changed while a central-warehouse order was
+    # still a draft or in delivery. Check the agreed range at completion too.
+    _validate_sales_items([
+        {
+            "product_id": item.product_id,
+            "quantity": int(item.quantity),
+            "unit_price": item.unit_price,
+        }
+        for item in invoice.items
+    ])
 
                                             
     try:
@@ -771,18 +946,24 @@ def complete_sales_invoice_service(invoice_id, employee_id, payment_amount=0, pa
             for item in invoice.items
         )
         final_amount = total_amount - Decimal(str(invoice.discount_amount))
-        clean_payment_amount = validate_money(payment_amount, "Số tiền khách thanh toán")
-        remaining_amount = final_amount - clean_payment_amount
+        amount_due = final_amount - Decimal(str(invoice.paid_amount or 0))
+        tendered = validate_money(payment_amount, "Số tiền khách đưa")
+        credited, _, method = _normalize_invoice_tender(tendered, payment_method, amount_due)
+        remaining_amount = amount_due - credited
         requested_due_date = payment_due_date or (
             invoice.payment_due_date.isoformat() if invoice.payment_due_date else None
         )
-        clean_payment_due_date = parse_payment_due_date(
-            requested_due_date,
-            required=remaining_amount > 0,
+        clean_payment_due_date = (
+            parse_payment_due_date(requested_due_date, required=True)
+            if remaining_amount > 0 else None
         )
         invoice.status = InvoiceStatus.COMPLETED
         invoice.payment_due_date = clean_payment_due_date if remaining_amount > 0 else None
-        _apply_invoice_payment(invoice, employee_id, clean_payment_amount, final_amount, payment_method)
+        _apply_invoice_payment(
+            invoice, employee_id, credited, final_amount,
+            payment_method=method, cash_received=tendered,
+        )
+        _log_workflow_event(invoice, employee_id, "completed")
         db.session.commit()
         return dao.get_sales_invoice_by_id(invoice.id)
     except AppError:
@@ -792,6 +973,74 @@ def complete_sales_invoice_service(invoice_id, employee_id, payment_amount=0, pa
         db.session.rollback()
         raise Exception(f"Lỗi cập nhật trạng thái đơn hàng: {str(ex)}")
 
+
+
+def record_sales_invoice_payment_service(invoice_id, employee_id, amount, payment_method, payment_due_date=None):
+    accountant = require_accountant(employee_id)
+    invoice_ref = SalesInvoice.query.get(invoice_id)
+    if not invoice_ref:
+        raise NotFoundError("Đơn hàng không tồn tại")
+    ensure_warehouse_access(employee_id, invoice_ref.warehouse_id)
+
+    # Match the lock order used by customer debt payments: customer, then invoice.
+    customer = Customer.query.filter_by(id=invoice_ref.customer_id).with_for_update().first()
+    invoice = SalesInvoice.query.filter_by(id=invoice_id).with_for_update().first()
+    if not customer or not invoice:
+        raise NotFoundError("Đơn hàng hoặc khách hàng không tồn tại")
+    if invoice.status != InvoiceStatus.COMPLETED:
+        raise ValidationError("Chỉ ghi nhận thanh toán cho đơn đã hoàn thành")
+
+    total = sum(
+        Decimal(str(item.quantity)) * Decimal(str(item.unit_price))
+        for item in invoice.items
+    ) - Decimal(str(invoice.discount_amount or 0))
+    remaining = total - Decimal(str(invoice.paid_amount or 0))
+    if remaining <= 0:
+        raise ValidationError("Đơn hàng đã thanh toán đủ")
+    tendered = validate_money(amount, "Số tiền khách đưa")
+    credited, change, method = _normalize_invoice_tender(tendered, payment_method, remaining)
+    if credited <= 0:
+        raise ValidationError("Số tiền thanh toán phải lớn hơn 0")
+    if Decimal(str(customer.debt_amount or 0)) < credited:
+        raise ValidationError("Công nợ khách hàng không đủ để ghi nhận khoản thanh toán này")
+    updated_due_date = (
+        parse_payment_due_date(payment_due_date, allow_past=True)
+        if payment_due_date and credited < remaining else None
+    )
+
+    try:
+        customer.debt_amount = Decimal(str(customer.debt_amount)) - credited
+        invoice.paid_amount = Decimal(str(invoice.paid_amount or 0)) + credited
+        invoice.payment_status = get_payment_status(invoice.paid_amount, total)
+        if invoice.payment_status == PaymentStatus.PAID:
+            invoice.payment_due_date = None
+        elif updated_due_date is not None:
+            invoice.payment_due_date = updated_due_date
+        note = (
+            f"Khách đưa {_format_vnd(tendered)}; tiền thối lại {_format_vnd(change)}"
+            if change > 0 else None
+        )
+        payment = CustomerPayment(
+            customer_id=customer.id,
+            sales_invoice_id=invoice.id,
+            employee_id=accountant.id,
+            amount=credited,
+            payment_type=PaymentType.INVOICE,
+            payment_method=method,
+            note=note,
+        )
+        db.session.add(payment)
+        db.session.flush()
+        record_fund_movement(
+            payment.payment_method, "in", payment.amount,
+            "customer_receipt", payment.id, accountant.id,
+            f"Thu tiền đơn bán #{invoice.id}", payment.note,
+        )
+        db.session.commit()
+        return dao.get_sales_invoice_by_id(invoice.id), payment
+    except Exception:
+        db.session.rollback()
+        raise
 
 
 def parse_invoice_status_filter(status_value):
@@ -861,6 +1110,9 @@ def serialize_invoice_summary(invoice):
         "warehouse": {"id": invoice.warehouse.id, "name": invoice.warehouse.name},
         "sold_at": invoice.sold_at.isoformat() if invoice.sold_at else None,
         "status": invoice.status.value,
+        "workflow_stage": workflow_stage(invoice),
+        "warehouse_submitted_at": invoice.warehouse_submitted_at.isoformat() if invoice.warehouse_submitted_at else None,
+        "delivered_at": invoice.delivered_at.isoformat() if invoice.delivered_at else None,
         "cancel_requested": has_active_cancel_request(invoice),
         "sale_source": invoice.sale_source.value,
         "payment_status": invoice.payment_status.value,
@@ -917,6 +1169,9 @@ def get_sales_invoices_list_service(
     page = parse_page(page_value)
     per_page = parse_per_page(per_page_value, default_size)
     status = parse_invoice_status_filter(status_value)
+    stage = str(status_value or "").strip().lower()
+    if stage not in {"", "chờ kho", "đã giao"} and status is None:
+        raise ValidationError("Trạng thái đơn hàng không hợp lệ")
     from_date, to_date = parse_invoice_date_range(from_date_value, to_date_value)
     keyword = str(keyword or '').strip()
     debt_status = str(debt_status or "").strip().lower() or None
@@ -935,6 +1190,7 @@ def get_sales_invoices_list_service(
         debt_status=debt_status,
         today=business_today(),
         due_soon_days=PAYMENT_DUE_SOON_DAYS,
+        workflow_stage_filter=stage if stage in {"chờ kho", "đã giao"} else None,
     )
     
     pages = math.ceil(total / per_page) if per_page > 0 else 0
@@ -969,8 +1225,25 @@ def get_status_tracking_board_service():
     )
     for status, total in rows:
         groups[status.value]["total"] = int(total or 0)
-
-    return [groups[status.value] for status in tracking_statuses]
+    submitted = db.session.query(func.count(SalesInvoice.id)).filter(
+        SalesInvoice.status == InvoiceStatus.DRAFT,
+        SalesInvoice.warehouse_submitted_at.isnot(None),
+    ).scalar() or 0
+    delivered = db.session.query(func.count(SalesInvoice.id)).filter(
+        SalesInvoice.status == InvoiceStatus.DELIVERING,
+        SalesInvoice.delivered_at.isnot(None),
+    ).scalar() or 0
+    groups[InvoiceStatus.DRAFT.value]["total"] -= int(submitted)
+    groups[InvoiceStatus.DELIVERING.value]["total"] -= int(delivered)
+    return [
+        groups[InvoiceStatus.DRAFT.value],
+        {"status": "chờ kho", "total": int(submitted), "invoices": []},
+        groups[InvoiceStatus.PROCESSING.value],
+        groups[InvoiceStatus.DELIVERING.value],
+        {"status": "đã giao", "total": int(delivered), "invoices": []},
+        groups[InvoiceStatus.COMPLETED.value],
+        groups[InvoiceStatus.CANCELLED.value],
+    ]
 
 
 
@@ -981,6 +1254,56 @@ def get_sales_invoice_detail_service(invoice_id):
         raise NotFoundError("Đơn hàng không tồn tại")
     
     return invoice
+
+
+def submit_sales_invoice_to_warehouse_service(invoice_id, employee_id):
+    invoice = SalesInvoice.query.filter_by(id=invoice_id).with_for_update().first()
+    if not invoice:
+        raise NotFoundError("Đơn hàng không tồn tại")
+    employee = Employee.query.get(employee_id)
+    if not employee or employee.role not in {EmployeeRole.NHAN_VIEN_BAN_HANG, EmployeeRole.QUAN_LY}:
+        raise ForbiddenError("Bạn không có quyền gửi đơn cho kho")
+    if employee.role == EmployeeRole.NHAN_VIEN_BAN_HANG and invoice.employee_id != employee_id:
+        raise ForbiddenError("Chỉ được gửi đơn do mình tạo")
+    ensure_warehouse_access(employee_id, invoice.warehouse_id)
+    if invoice.status != InvoiceStatus.DRAFT or invoice.warehouse_submitted_at:
+        raise ValidationError("Đơn không còn là bản nháp chưa gửi kho")
+    if invoice.sale_source != SaleSource.CENTRAL_WAREHOUSE:
+        raise ValidationError("Chỉ gửi kho các đơn bán từ kho trung tâm")
+    if not invoice.items:
+        raise ValidationError("Đơn hàng chưa có sản phẩm")
+    if invoice.cancel_requested:
+        raise ValidationError("Đơn đang chờ xử lý yêu cầu hủy")
+    invoice.warehouse_submitted_at = datetime.now()
+    _log_workflow_event(invoice, employee_id, "submitted_to_warehouse")
+    db.session.commit()
+    return dao.get_sales_invoice_by_id(invoice.id)
+
+
+def confirm_sales_invoice_delivery_service(invoice_id, employee_id, recipient, note=None):
+    invoice = SalesInvoice.query.filter_by(id=invoice_id).with_for_update().first()
+    if not invoice:
+        raise NotFoundError("Đơn hàng không tồn tại")
+    employee = Employee.query.get(employee_id)
+    if not employee or employee.role not in {EmployeeRole.NHAN_VIEN_BAN_HANG, EmployeeRole.QUAN_LY}:
+        raise ForbiddenError("Bạn không có quyền xác nhận giao hàng")
+    if employee.role == EmployeeRole.NHAN_VIEN_BAN_HANG and invoice.employee_id != employee_id:
+        raise ForbiddenError("Chỉ được xác nhận đơn do mình tạo")
+    ensure_warehouse_access(employee_id, invoice.warehouse_id)
+    if invoice.status != InvoiceStatus.DELIVERING or invoice.delivered_at:
+        raise ValidationError("Chỉ xác nhận đơn đang giao và chưa xác nhận")
+    if invoice.cancel_requested:
+        raise ValidationError("Đơn đang chờ xử lý yêu cầu hủy")
+    clean_recipient = require_text(recipient, "Người nhận", max_length=120)
+    clean_note = str(note or "").strip()
+    if len(clean_note) > 500:
+        raise ValidationError("Ghi chú giao hàng tối đa 500 ký tự")
+    invoice.delivered_at = datetime.now()
+    invoice.delivery_recipient = clean_recipient
+    invoice.delivery_note = clean_note or None
+    _log_workflow_event(invoice, employee_id, "delivery_confirmed", clean_recipient)
+    db.session.commit()
+    return dao.get_sales_invoice_by_id(invoice.id)
 
 
 def update_payment_due_date_service(invoice_id, employee_id, payment_due_date):
@@ -1015,11 +1338,14 @@ def update_payment_due_date_service(invoice_id, employee_id, payment_due_date):
 
 def update_invoice_status_service(invoice_id, employee_id, status_value):
        
-    invoice = SalesInvoice.query.get(invoice_id)
+    invoice = SalesInvoice.query.filter_by(id=invoice_id).with_for_update().first()
     if not invoice:
         raise NotFoundError("Đơn hàng không tồn tại")
 
     ensure_warehouse_access(employee_id, invoice.warehouse_id)
+    employee = Employee.query.get(employee_id)
+    if not employee or employee.role not in {EmployeeRole.THU_KHO, EmployeeRole.QUAN_LY}:
+        raise ForbiddenError("Bạn không có quyền chuyển trạng thái kho")
     
                   
     text = str(status_value).strip().lower()
@@ -1053,12 +1379,19 @@ def update_invoice_status_service(invoice_id, employee_id, status_value):
     allowed_transitions = {
         InvoiceStatus.DRAFT: {InvoiceStatus.PROCESSING},
         InvoiceStatus.PROCESSING: {InvoiceStatus.DELIVERING},
-        InvoiceStatus.DELIVERING: {InvoiceStatus.COMPLETED},
+        InvoiceStatus.DELIVERING: set(),
         InvoiceStatus.COMPLETED: set(),
         InvoiceStatus.CANCELLED: set(),
     }
     if new_status not in allowed_transitions[invoice.status]:
         raise ValidationError("Chuyá»ƒn tráº¡ng thÃ¡i Ä‘Æ¡n hÃ ng khÃ´ng há»£p lá»‡")
+
+    if invoice.status == InvoiceStatus.DRAFT and not invoice.warehouse_submitted_at:
+        raise ValidationError("Nhân viên bán hàng chưa gửi đơn cho kho")
+    if new_status == InvoiceStatus.DELIVERING and invoice.discount_status in {
+        DiscountStatus.PENDING_APPROVAL, DiscountStatus.REJECTED,
+    }:
+        raise ValidationError("Chưa thể giao đơn khi khuyến mãi chưa được duyệt")
 
     if invoice.status == InvoiceStatus.CANCELLED:
         raise ValidationError("Không thể thay đổi trạng thái đơn đã hủy")
@@ -1082,6 +1415,8 @@ def update_invoice_status_service(invoice_id, employee_id, status_value):
                 exclude_invoice_id=invoice.id,
             )
         invoice.status = new_status
+        _log_workflow_event(invoice, employee_id,
+                            "warehouse_processing" if new_status == InvoiceStatus.PROCESSING else "dispatched")
         db.session.commit()
         db.session.refresh(invoice)
         return invoice
@@ -1127,6 +1462,7 @@ def cancel_invoice_service(invoice_id, employee_id):
     try:
         invoice.status = InvoiceStatus.CANCELLED
         invoice.cancel_requested = False
+        _log_workflow_event(invoice, employee_id, "cancelled")
         if employee.role == EmployeeRole.QUAN_LY:
             current_note = invoice.cancel_note or ""
             invoice.cancel_note = (
@@ -1308,6 +1644,7 @@ def approve_cancel_request_service(invoice_id, manager_id, approved, note=""):
         if approved:
             invoice.status = InvoiceStatus.CANCELLED
             invoice.cancel_requested = False
+            _log_workflow_event(invoice, manager_id, "cancelled")
             
                            
             approve_note = note.strip() if note else "Đã duyệt hủy đơn"

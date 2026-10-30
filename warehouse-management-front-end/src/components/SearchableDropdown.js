@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import DropdownChevron from "./DropdownChevron";
 import "../css/SearchableDropdown.css";
 
 /**
@@ -19,6 +20,7 @@ function SearchableDropdown({
   emptyLabel = "Không tìm thấy kết quả.",
   emptyAction = null,
   filterLocally = false,
+  disabled = false,
 }) {
   const [open, setOpen] = useState(false);
   const [localSearch, setLocalSearch] = useState("");
@@ -75,6 +77,7 @@ function SearchableDropdown({
   };
 
   const handleToggle = () => {
+    if (disabled) return;
     setOpen((current) => {
       if (!current && !controlledSearch) setLocalSearch("");
       return !current;
@@ -100,6 +103,7 @@ function SearchableDropdown({
           value={open ? query : selected?.label || ""}
           placeholder={placeholder}
           aria-label={ariaLabel}
+          disabled={disabled}
           onFocus={handleFocus}
           onChange={handleSearchChange}
         />
@@ -107,24 +111,10 @@ function SearchableDropdown({
           type="button"
           className="searchable-dropdown-arrow-button"
           aria-label={open ? "Thu gọn danh sách" : "Mở danh sách"}
+          disabled={disabled}
           onClick={handleToggle}
         >
-          <svg
-            className={`searchable-dropdown-arrow${open ? " is-open" : ""}`}
-            width="17"
-            height="17"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            aria-hidden="true"
-          >
-            <polyline
-              points="6 9 12 15 18 9"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+          <DropdownChevron open={open} />
         </button>
       </div>
       {open && (

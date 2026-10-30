@@ -5,6 +5,7 @@ from web.middleware.auth_middleware import verify_role, verify_token
 from web.models import EmployeeRole
 from web.models import DamageReport
 from web.services.authorization import ensure_warehouse_access, scoped_warehouse_id
+from web.services.exceptions import ForbiddenError
 from web.services.damage_report_service import (
     create_damage_report_service,
     get_damage_report_detail_service,
@@ -24,7 +25,7 @@ damage_reports_bp = Blueprint(
 
 @damage_reports_bp.route("", methods=["GET"])
 @verify_token
-@verify_role(EmployeeRole.THU_KHO, EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY)
+@verify_role(EmployeeRole.NHAN_VIEN_BAN_HANG, EmployeeRole.THU_KHO, EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY)
 @handle_api_errors
 def get_damage_reports():
     reports, total, page, per_page = get_damage_reports_service(
@@ -32,6 +33,7 @@ def get_damage_reports():
         per_page_value=request.args.get("per_page"),
         status_value=request.args.get("status"),
         warehouse_id_value=scoped_warehouse_id(request.employee_id, request.args.get("warehouse_id")),
+        reporter_id=request.employee_id if request.employee_role == EmployeeRole.NHAN_VIEN_BAN_HANG.value else None,
     )
     return jsonify(
         {
@@ -43,7 +45,7 @@ def get_damage_reports():
 
 @damage_reports_bp.route("", methods=["POST"])
 @verify_token
-@verify_role(EmployeeRole.THU_KHO)
+@verify_role(EmployeeRole.NHAN_VIEN_BAN_HANG, EmployeeRole.THU_KHO)
 @handle_api_errors
 def create_damage_report():
     data = request.get_json(silent=True) or {}
@@ -55,7 +57,7 @@ def create_damage_report():
     )
     return jsonify(
         {
-            "message": "Đã tạo phiếu báo hàng hư, chờ quản lý duyệt",
+            "message": "Đã ghi nhận hàng hư và gửi phiếu chờ quản lý duyệt",
             "report": serialize_damage_report(report),
         }
     ), 201
@@ -63,11 +65,14 @@ def create_damage_report():
 
 @damage_reports_bp.route("/<int:report_id>", methods=["GET"])
 @verify_token
-@verify_role(EmployeeRole.THU_KHO, EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY)
+@verify_role(EmployeeRole.NHAN_VIEN_BAN_HANG, EmployeeRole.THU_KHO, EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY)
 @handle_api_errors
 def get_damage_report_detail(report_id):
     report_record = DamageReport.query.get(report_id)
     if report_record:
+        if (request.employee_role == EmployeeRole.NHAN_VIEN_BAN_HANG.value
+                and report_record.reported_by_employee_id != request.employee_id):
+            raise ForbiddenError("Chỉ được xem phiếu hàng hư của chính mình")
         ensure_warehouse_access(request.employee_id, report_record.warehouse_id)
     report = get_damage_report_detail_service(report_id)
     return jsonify(serialize_damage_report(report)), 200

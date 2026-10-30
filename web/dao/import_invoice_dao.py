@@ -2,24 +2,27 @@ from datetime import datetime
 
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 from web import app, db
 from web.models import ImportInvoice, ImportInvoiceItem, Supplier, SupplierPayment
 
 
-def _invoice_load_options():
+def _invoice_load_options(for_list=False):
+    items_option = selectinload(ImportInvoice.items)
+    if not for_list:
+        items_option = items_option.selectinload(ImportInvoiceItem.product)
     return (
-        selectinload(ImportInvoice.items).selectinload(ImportInvoiceItem.product),
-        selectinload(ImportInvoice.warehouse),
-        selectinload(ImportInvoice.supplier),
-        selectinload(ImportInvoice.created_by_employee),
+        items_option,
+        joinedload(ImportInvoice.warehouse),
+        joinedload(ImportInvoice.supplier),
+        joinedload(ImportInvoice.created_by_employee),
         selectinload(ImportInvoice.payments),
     )
 
 
 def apply_pagination(query, page, page_size=None):
                                         
-    total = query.count()
+    total = query.order_by(None).count()
 
     if not page or page < 1:
         page = 1
@@ -36,7 +39,7 @@ def apply_pagination(query, page, page_size=None):
 
 def get_all_import_invoices(page=1, per_page=None, warehouse_id=None, supplier_id=None, from_date=None, to_date=None, keyword=None):
        
-    query = ImportInvoice.query.options(*_invoice_load_options())
+    query = ImportInvoice.query.options(*_invoice_load_options(for_list=True))
 
                      
     if warehouse_id:

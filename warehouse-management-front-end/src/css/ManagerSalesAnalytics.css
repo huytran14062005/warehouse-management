@@ -3,8 +3,12 @@
 .manager-analytics-header p { margin: 8px 0 22px; color: #7186a1; }
 .manager-analytics-filter { display: flex; align-items: end; gap: 14px; padding: 16px; margin-bottom: 18px; border: 1px solid #d7e1ed; border-radius: 8px; background: #fff; }
 .manager-analytics-filter label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #687d98; font-weight: 600; }
-.manager-analytics-filter input { min-width: 180px; padding: 11px 12px; border: 1px solid #c8d6e6; border-radius: 6px; color: #263e59; font-size: 15px; }
-.manager-analytics-filter button { padding: 12px 20px; border: 0; border-radius: 6px; background: #0d3863; color: white; font-weight: 700; cursor: pointer; }
+.manager-analytics-filter label > input { min-width: 180px; padding: 11px 12px; border: 1px solid #c8d6e6; border-radius: 6px; color: #263e59; font-size: 15px; }
+.manager-analytics-filter .searchable-dropdown { min-width: 250px; }
+.manager-analytics-filter .searchable-dropdown-trigger { min-height: 44px; border-radius: 6px; }
+.manager-analytics-filter .searchable-dropdown-input { min-height: 42px; font-size: 15px; }
+.manager-analytics-filter label > input:disabled { background: #f1f5f9; color: #899bb0; cursor: not-allowed; }
+.manager-analytics-filter > button[type="submit"] { padding: 12px 20px; border: 0; border-radius: 6px; background: #0d3863; color: white; font-weight: 700; cursor: pointer; }
 .manager-analytics-error { margin-bottom: 16px; }
 .manager-analytics-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
 .manager-summary-card, .manager-analytics-card { border: 1px solid #d7e1ed; border-radius: 8px; background: #fff; }
@@ -24,6 +28,7 @@
 .manager-analytics-card-heading h2 { margin: 0; font-size: 20px; }
 .manager-analytics-card-heading small { display: block; margin-top: 5px; color: #7186a1; font-size: 12px; }
 .manager-chart-box { position: relative; width: 100%; padding: 18px 20px 12px; box-sizing: border-box; }
+.manager-trend-chart-scroll { width: 100%; max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: thin; }
 .manager-debt-chart-box { height: 390px; }
 .manager-monthly-chart-box { height: 360px; }
 .manager-revenue-chart-box { height: 390px; max-width: 520px; margin: 0 auto; }

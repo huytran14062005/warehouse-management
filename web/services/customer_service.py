@@ -4,6 +4,7 @@ from web import app, dao
 from web.services.exceptions import NotFoundError, ValidationError
 from web.services.validators import require_text, validate_money_amount, validate_phone
 from web.services.sales_area_service import resolve_sales_area_id
+from web.services.authorization import require_accountant
 
 
 def parse_page(value):
@@ -162,23 +163,25 @@ def update_customer_service(
             raise ValidationError("Số điện thoại này đã tồn tại!")
     
                                        
-    clean_debt_amount = None
     if debt_amount is not None:
-        clean_debt_amount = validate_debt_amount(debt_amount, enforce_minimum=True)
+        requested_debt = validate_debt_amount(debt_amount)
+        if requested_debt != Decimal(str(customer.debt_amount or 0)):
+            raise ValidationError("Công nợ chỉ được thay đổi qua ghi nhận thanh toán")
 
     updated_customer = dao.update_customer(
         customer_id=customer_id,
         full_name=clean_full_name,
         phone=clean_phone,
         address=clean_address,
-        debt_amount=clean_debt_amount,
+        debt_amount=None,
         sales_area_id=clean_sales_area_id,
     )
     
     return updated_customer
 
 
-def customer_payment_service(customer_id, payment_amount, note):
+def customer_payment_service(customer_id, employee_id, payment_amount, note):
+    require_accountant(employee_id)
        
     customer = dao.get_customer_by_id(customer_id)
     

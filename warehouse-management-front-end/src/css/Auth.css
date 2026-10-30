@@ -47,6 +47,13 @@
   font-weight: 600;
 }
 
+.auth-field-hint {
+  margin: 0;
+  color: #61758a;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .auth-field input,
 .auth-field select {
   width: 100%;
@@ -133,15 +140,6 @@
 .role-dropdown-trigger[aria-expanded="true"] {
   outline: 2px solid rgba(11, 49, 88, 0.16);
   border-color: #0b3158;
-}
-
-.role-dropdown-arrow {
-  flex-shrink: 0;
-  transition: transform 0.2s ease;
-}
-
-.role-dropdown-arrow.is-open {
-  transform: rotate(180deg);
 }
 
 .role-dropdown-menu {

@@ -1,5 +1,5 @@
-from datetime import date
-from sqlalchemy import case, func, literal
+from datetime import date, timedelta
+from sqlalchemy import case, extract, func, literal
 from sqlalchemy.orm import selectinload
 
 from web import db, app
@@ -112,37 +112,46 @@ def _current_financial_totals():
     }
 
 
-def _build_monthly_trend(from_date, to_date):
-    """Return one comparable row per calendar month in the selected period."""
+def _build_period_trend(from_date, to_date, granularity="month"):
+    """Return one comparable row per month or day in the selected period."""
+    def period_columns(timestamp):
+        year = extract("year", timestamp)
+        month = extract("month", timestamp)
+        expressions = [year, month]
+        if granularity == "day":
+            expressions.append(extract("day", timestamp))
+        names = ["year", "month", "day"]
+        return [value.label(names[index]) for index, value in enumerate(expressions)], expressions
+
+    def period_key(row):
+        key = f"{int(row.year):04d}-{int(row.month):02d}"
+        return f"{key}-{int(row.day):02d}" if granularity == "day" else key
+
     totals = _invoice_total_subquery()
     invoice_filters = _completed_invoice_filters(from_date, to_date)
-    month_year = func.year(SalesInvoice.sold_at)
-    month_number = func.month(SalesInvoice.sold_at)
+    invoice_columns, invoice_groups = period_columns(SalesInvoice.sold_at)
     revenue_rows = (
         db.session.query(
-            month_year.label("year"),
-            month_number.label("month"),
+            *invoice_columns,
             func.count(SalesInvoice.id).label("orders"),
             func.coalesce(func.sum(totals.c.gross_amount - SalesInvoice.discount_amount), 0).label("revenue"),
         )
         .join(totals, totals.c.invoice_id == SalesInvoice.id)
         .filter(*invoice_filters, SalesInvoice.sold_at.isnot(None))
-        .group_by(month_year, month_number)
+        .group_by(*invoice_groups)
         .all()
     )
     quantity_rows = (
         db.session.query(
-            month_year.label("year"),
-            month_number.label("month"),
+            *invoice_columns,
             func.coalesce(func.sum(SalesInvoiceItem.quantity), 0).label("quantity"),
         )
         .join(SalesInvoice, SalesInvoice.id == SalesInvoiceItem.sales_invoice_id)
         .filter(*invoice_filters, SalesInvoice.sold_at.isnot(None))
-        .group_by(month_year, month_number)
+        .group_by(*invoice_groups)
         .all()
     )
-    payment_year = func.year(CustomerPayment.paid_at)
-    payment_month = func.month(CustomerPayment.paid_at)
+    payment_columns, payment_groups = period_columns(CustomerPayment.paid_at)
     payment_filters = []
     if from_date:
         payment_filters.append(CustomerPayment.paid_at >= from_date)
@@ -150,18 +159,16 @@ def _build_monthly_trend(from_date, to_date):
         payment_filters.append(CustomerPayment.paid_at <= to_date)
     payment_rows = (
         db.session.query(
-            payment_year.label("year"),
-            payment_month.label("month"),
+            *payment_columns,
             func.coalesce(func.sum(CustomerPayment.amount), 0).label("paid"),
             func.coalesce(func.sum(case((CustomerPayment.payment_method == PaymentMethod.CASH, CustomerPayment.amount), else_=0)), 0).label("cash_paid"),
             func.coalesce(func.sum(case((CustomerPayment.payment_method == PaymentMethod.BANK_TRANSFER, CustomerPayment.amount), else_=0)), 0).label("bank_paid"),
         )
         .filter(*payment_filters)
-        .group_by(payment_year, payment_month)
+        .group_by(*payment_groups)
         .all()
     )
-    supplier_payment_year = func.year(SupplierPayment.paid_at)
-    supplier_payment_month = func.month(SupplierPayment.paid_at)
+    supplier_columns, supplier_groups = period_columns(SupplierPayment.paid_at)
     supplier_payment_filters = []
     if from_date:
         supplier_payment_filters.append(SupplierPayment.paid_at >= from_date)
@@ -169,103 +176,169 @@ def _build_monthly_trend(from_date, to_date):
         supplier_payment_filters.append(SupplierPayment.paid_at <= to_date)
     supplier_payment_rows = (
         db.session.query(
-            supplier_payment_year.label("year"),
-            supplier_payment_month.label("month"),
+            *supplier_columns,
             func.coalesce(func.sum(SupplierPayment.amount), 0).label("paid"),
             func.coalesce(func.sum(case((SupplierPayment.payment_method == PaymentMethod.CASH, SupplierPayment.amount), else_=0)), 0).label("cash_paid"),
             func.coalesce(func.sum(case((SupplierPayment.payment_method == PaymentMethod.BANK_TRANSFER, SupplierPayment.amount), else_=0)), 0).label("bank_paid"),
         )
         .filter(*supplier_payment_filters)
-        .group_by(supplier_payment_year, supplier_payment_month)
+        .group_by(*supplier_groups)
         .all()
     )
 
-    revenue_by_month = {
-        f"{int(row.year):04d}-{int(row.month):02d}": {
+    revenue_by_period = {
+        period_key(row): {
             "orders": int(row.orders or 0),
             "revenue": float(row.revenue or 0),
         }
         for row in revenue_rows
     }
-    quantity_by_month = {
-        f"{int(row.year):04d}-{int(row.month):02d}": int(row.quantity or 0)
+    quantity_by_period = {
+        period_key(row): int(row.quantity or 0)
         for row in quantity_rows
     }
-    paid_by_month = {
-        f"{int(row.year):04d}-{int(row.month):02d}": float(row.paid or 0)
+    paid_by_period = {
+        period_key(row): float(row.paid or 0)
         for row in payment_rows
     }
-    cash_paid_by_month = {
-        f"{int(row.year):04d}-{int(row.month):02d}": float(row.cash_paid or 0)
+    cash_paid_by_period = {
+        period_key(row): float(row.cash_paid or 0)
         for row in payment_rows
     }
-    bank_paid_by_month = {
-        f"{int(row.year):04d}-{int(row.month):02d}": float(row.bank_paid or 0)
+    bank_paid_by_period = {
+        period_key(row): float(row.bank_paid or 0)
         for row in payment_rows
     }
-    supplier_paid_by_month = {
-        f"{int(row.year):04d}-{int(row.month):02d}": float(row.paid or 0)
+    supplier_paid_by_period = {
+        period_key(row): float(row.paid or 0)
         for row in supplier_payment_rows
     }
-    supplier_cash_paid_by_month = {
-        f"{int(row.year):04d}-{int(row.month):02d}": float(row.cash_paid or 0)
+    supplier_cash_paid_by_period = {
+        period_key(row): float(row.cash_paid or 0)
         for row in supplier_payment_rows
     }
-    supplier_bank_paid_by_month = {
-        f"{int(row.year):04d}-{int(row.month):02d}": float(row.bank_paid or 0)
+    supplier_bank_paid_by_period = {
+        period_key(row): float(row.bank_paid or 0)
         for row in supplier_payment_rows
     }
 
-    def to_month_start(value):
+    def to_period_start(value):
         if not value:
             return None
         value = value.date() if hasattr(value, "date") else value
-        return date(value.year, value.month, 1)
+        return value if granularity == "day" else date(value.year, value.month, 1)
 
-    start = to_month_start(from_date)
-    end = to_month_start(to_date)
+    start = to_period_start(from_date)
+    end = to_period_start(to_date)
     observed_keys = (
-        set(revenue_by_month)
-        | set(quantity_by_month)
-        | set(paid_by_month)
-        | set(supplier_paid_by_month)
+        set(revenue_by_period)
+        | set(quantity_by_period)
+        | set(paid_by_period)
+        | set(supplier_paid_by_period)
     )
     if not start and observed_keys:
-        start = date.fromisoformat(min(observed_keys) + "-01")
+        start = date.fromisoformat(min(observed_keys) + ("" if granularity == "day" else "-01"))
     if not end and observed_keys:
-        end = date.fromisoformat(max(observed_keys) + "-01")
+        end = date.fromisoformat(max(observed_keys) + ("" if granularity == "day" else "-01"))
 
     keys = []
     if start and end:
         cursor = start
         while cursor <= end:
-            keys.append(f"{cursor.year:04d}-{cursor.month:02d}")
-            cursor = date(cursor.year + (1 if cursor.month == 12 else 0), 1 if cursor.month == 12 else cursor.month + 1, 1)
+            keys.append(cursor.isoformat() if granularity == "day" else f"{cursor.year:04d}-{cursor.month:02d}")
+            cursor = (
+                cursor + timedelta(days=1)
+                if granularity == "day"
+                else date(cursor.year + (1 if cursor.month == 12 else 0), 1 if cursor.month == 12 else cursor.month + 1, 1)
+            )
     else:
         keys = sorted(observed_keys)
 
     rows = []
-    for month_key in keys:
-        revenue = revenue_by_month.get(month_key, {})
+    for period in keys:
+        revenue = revenue_by_period.get(period, {})
         orders = int(revenue.get("orders", 0))
         revenue_value = float(revenue.get("revenue", 0))
         rows.append({
-            "month": month_key,
+            "period": period,
+            "month": period if granularity == "month" else None,
+            "day": period if granularity == "day" else None,
             "orders": orders,
-            "sold_quantity": quantity_by_month.get(month_key, 0),
+            "sold_quantity": quantity_by_period.get(period, 0),
             "revenue": revenue_value,
-            "paid": paid_by_month.get(month_key, 0.0),
-            "cash_paid": cash_paid_by_month.get(month_key, 0.0),
-            "bank_paid": bank_paid_by_month.get(month_key, 0.0),
-            "supplier_paid": supplier_paid_by_month.get(month_key, 0.0),
-            "supplier_cash_paid": supplier_cash_paid_by_month.get(month_key, 0.0),
-            "supplier_bank_paid": supplier_bank_paid_by_month.get(month_key, 0.0),
+            "paid": paid_by_period.get(period, 0.0),
+            "cash_paid": cash_paid_by_period.get(period, 0.0),
+            "bank_paid": bank_paid_by_period.get(period, 0.0),
+            "supplier_paid": supplier_paid_by_period.get(period, 0.0),
+            "supplier_cash_paid": supplier_cash_paid_by_period.get(period, 0.0),
+            "supplier_bank_paid": supplier_bank_paid_by_period.get(period, 0.0),
             "average_order_value": revenue_value / orders if orders else 0,
         })
     peak = max(rows, key=lambda row: row["revenue"], default=None)
     if peak and peak["revenue"] <= 0:
         peak = None
     return rows, peak
+
+
+def _build_customer_period_debts(from_date, to_date):
+    """Outstanding amounts from invoices sold in the selected period, as of its end."""
+    totals = _invoice_total_subquery()
+    invoice_filters = _completed_invoice_filters(from_date, to_date)
+    invoices = (
+        db.session.query(
+            SalesInvoice.id.label("invoice_id"),
+            SalesInvoice.customer_id,
+            (totals.c.gross_amount - SalesInvoice.discount_amount).label("amount"),
+        )
+        .join(totals, totals.c.invoice_id == SalesInvoice.id)
+        .filter(*invoice_filters)
+        .all()
+    )
+    if not invoices:
+        return []
+
+    payment_query = (
+        db.session.query(
+            CustomerPayment.sales_invoice_id,
+            func.coalesce(func.sum(CustomerPayment.amount), 0).label("paid"),
+        )
+        .join(SalesInvoice, SalesInvoice.id == CustomerPayment.sales_invoice_id)
+        .filter(*invoice_filters)
+    )
+    if to_date:
+        payment_query = payment_query.filter(CustomerPayment.paid_at <= to_date)
+    paid_by_invoice = {
+        row.sales_invoice_id: float(row.paid or 0)
+        for row in payment_query.group_by(CustomerPayment.sales_invoice_id).all()
+    }
+
+    by_customer = {}
+    for invoice in invoices:
+        total = max(0.0, float(invoice.amount or 0))
+        paid = min(total, paid_by_invoice.get(invoice.invoice_id, 0.0))
+        values = by_customer.setdefault(invoice.customer_id, {"period_paid": 0.0, "period_debt": 0.0})
+        values["period_paid"] += paid
+        values["period_debt"] += total - paid
+
+    customers = (
+        Customer.query
+        .options(selectinload(Customer.sales_area_ref))
+        .filter(Customer.id.in_(by_customer))
+        .all()
+    )
+    rows = [
+        {
+            "customer_id": customer.id,
+            "customer_name": customer.full_name,
+            "phone": customer.phone,
+            "area": customer.sales_area_ref.name if customer.sales_area_ref else "Chưa xác định",
+            "period_paid": by_customer[customer.id]["period_paid"],
+            "period_debt": by_customer[customer.id]["period_debt"],
+        }
+        for customer in customers
+    ]
+    rows.sort(key=lambda row: (-row["period_debt"], row["customer_name"]))
+    return rows
 
 
 def _get_manager_sales_table_page(
@@ -275,62 +348,12 @@ def _get_manager_sales_table_page(
     page,
     per_page,
     inventory_warehouse_id=None,
+    granularity="month",
 ):
     """Load only the requested statistics table for an independent page change."""
-    if table == "debt":
-        totals = _invoice_total_subquery()
-        invoice_filters = _completed_invoice_filters(from_date, to_date)
-        sales_rows = (
-            db.session.query(
-                SalesInvoice.customer_id,
-                func.coalesce(func.sum(totals.c.gross_amount - SalesInvoice.discount_amount), 0).label("period_sales"),
-            )
-            .join(totals, totals.c.invoice_id == SalesInvoice.id)
-            .filter(*invoice_filters)
-            .group_by(SalesInvoice.customer_id)
-            .all()
-        )
-        payment_filters = []
-        if from_date:
-            payment_filters.append(CustomerPayment.paid_at >= from_date)
-        if to_date:
-            payment_filters.append(CustomerPayment.paid_at <= to_date)
-        payment_rows = (
-            db.session.query(
-                CustomerPayment.customer_id,
-                func.coalesce(func.sum(CustomerPayment.amount), 0).label("period_paid"),
-            )
-            .filter(*payment_filters)
-            .group_by(CustomerPayment.customer_id)
-            .all()
-        )
-        sales_by_customer = {row.customer_id: float(row.period_sales or 0) for row in sales_rows}
-        paid_by_customer = {row.customer_id: float(row.period_paid or 0) for row in payment_rows}
-        customer_ids = set(sales_by_customer) | set(paid_by_customer)
-        customers = (
-            Customer.query
-            .options(selectinload(Customer.sales_area_ref))
-            .order_by(Customer.debt_amount.desc(), Customer.id.asc())
-            .all()
-        )
-        rows = []
-        for customer in customers:
-            period_sales = sales_by_customer.get(customer.id, 0.0)
-            period_paid = paid_by_customer.get(customer.id, 0.0)
-            if customer.id not in customer_ids and float(customer.debt_amount or 0) == 0:
-                continue
-            rows.append({
-                "customer_id": customer.id,
-                "customer_name": customer.full_name,
-                "phone": customer.phone,
-                "area": customer.sales_area_ref.name if customer.sales_area_ref else "ChÆ°a xÃ¡c Ä‘á»‹nh",
-                "period_sales": period_sales,
-                "period_paid": period_paid,
-                "net_debt_change": period_sales - period_paid,
-                "current_debt": float(customer.debt_amount or 0),
-            })
-        rows.sort(key=lambda row: (-row["current_debt"], -row["net_debt_change"], row["customer_name"]))
-        key = "debts"
+    if table == 'debt':
+        rows = _build_customer_period_debts(from_date, to_date)
+        key = 'debts'
     elif table == "revenue":
         totals = _invoice_total_subquery()
         invoice_filters = _completed_invoice_filters(from_date, to_date)
@@ -392,13 +415,14 @@ def _get_manager_sales_table_page(
         rows.sort(key=lambda row: (-row["quantity"], row["product_name"]))
         key = "inventory_table"
     elif table == "monthly":
-        rows, peak = _build_monthly_trend(from_date, to_date)
+        rows, peak = _build_period_trend(from_date, to_date, granularity)
         page_rows, total = _paginate_rows(rows, page, per_page)
         return {
             "table": "monthly",
             "monthly_table": page_rows,
             "monthly_pagination": build_pagination(page, per_page, total),
             "monthly_peak": peak,
+            "trend_granularity": granularity,
         }
     else:
         invoice_filters = _completed_invoice_filters(from_date, to_date)
@@ -447,8 +471,14 @@ def get_manager_sales_analytics_service(
     table_value=None,
     table_page_value=1,
     table_per_page_value=None,
+    granularity_value=None,
 ):
     from_date, to_date = _date_range(from_date_value, to_date_value)
+    granularity = str(granularity_value or "month").strip().lower()
+    if granularity not in {"month", "day"}:
+        raise ValidationError("Kiểu thống kê thời gian không hợp lệ")
+    if granularity == "day" and (not from_date or not to_date):
+        raise ValidationError("Cần chọn từ ngày và đến ngày để thống kê theo ngày")
     try:
         page = max(1, int(page_value or 1))
     except (TypeError, ValueError):
@@ -481,88 +511,33 @@ def get_manager_sales_analytics_service(
             table_page,
             table_per_page,
             inventory_warehouse_id=inventory_warehouse_id,
+            granularity=granularity,
         )
 
     totals = _invoice_total_subquery()
     invoice_filters = _completed_invoice_filters(from_date, to_date)
 
-    # Công nợ theo khách hàng: doanh số phát sinh trong kỳ, tiền đã thu trong kỳ
-    # và số dư công nợ hiện tại. Số dư lịch sử đầu kỳ không được suy diễn vì hệ thống
-    # chưa lưu sổ công nợ theo từng thời điểm.
-    sales_rows = (
-        db.session.query(
-            SalesInvoice.customer_id,
-            func.coalesce(func.sum(totals.c.gross_amount - SalesInvoice.discount_amount), 0).label("period_sales"),
-        )
-        .join(totals, totals.c.invoice_id == SalesInvoice.id)
-        .filter(*invoice_filters)
-        .group_by(SalesInvoice.customer_id)
-        .all()
-    )
-    payment_filters = []
-    if from_date:
-        payment_filters.append(CustomerPayment.paid_at >= from_date)
-    if to_date:
-        payment_filters.append(CustomerPayment.paid_at <= to_date)
-    payment_rows = (
-        db.session.query(
-            CustomerPayment.customer_id,
-            func.coalesce(func.sum(CustomerPayment.amount), 0).label("period_paid"),
-        )
-        .filter(*payment_filters)
-        .group_by(CustomerPayment.customer_id)
-        .all()
-    )
-    sales_by_customer = {row.customer_id: float(row.period_sales or 0) for row in sales_rows}
-    paid_by_customer = {row.customer_id: float(row.period_paid or 0) for row in payment_rows}
-
-    customer_ids = set(sales_by_customer) | set(paid_by_customer)
-    customers = (
-        Customer.query
-        .options(selectinload(Customer.sales_area_ref))
-        .order_by(Customer.debt_amount.desc(), Customer.id.asc())
-        .all()
-    )
-    debt_rows = []
-    for customer in customers:
-        period_sales = sales_by_customer.get(customer.id, 0.0)
-        period_paid = paid_by_customer.get(customer.id, 0.0)
-        if customer.id not in customer_ids and float(customer.debt_amount or 0) == 0:
-            continue
-        debt_rows.append({
-            "customer_id": customer.id,
-            "customer_name": customer.full_name,
-            "phone": customer.phone,
-            "area": customer.sales_area_ref.name if customer.sales_area_ref else "Chưa xác định",
-            "period_sales": period_sales,
-            "period_paid": period_paid,
-            "net_debt_change": period_sales - period_paid,
-            "current_debt": float(customer.debt_amount or 0),
-        })
-    debt_rows.sort(key=lambda row: (-row["current_debt"], -row["net_debt_change"], row["customer_name"]))
+    # The chart and table show unpaid amounts from invoices sold in the filter period.
+    debt_rows = _build_customer_period_debts(from_date, to_date)
     debt_total = len(debt_rows)
     debt_chart_rows = [
         {
-            "customer_name": row["customer_name"],
-            "current_debt": row["current_debt"],
+            'customer_name': row['customer_name'],
+            'period_debt': row['period_debt'],
         }
         for row in debt_rows[:8]
-        if row["current_debt"] > 0
+        if row['period_debt'] > 0
     ]
-    remaining_debt = sum(
-        float(row["current_debt"] or 0)
-        for row in debt_rows[8:]
-    )
+    remaining_debt = sum(row['period_debt'] for row in debt_rows[8:])
     if remaining_debt > 0:
         debt_chart_rows.append({
-            "customer_name": "Khách còn lại",
-            "current_debt": remaining_debt,
+            'customer_name': 'Khách còn lại',
+            'period_debt': remaining_debt,
         })
     start = (page - 1) * per_page
     paged_debts = debt_rows[start:start + per_page]
 
-    # Doanh thu theo khu vực sử dụng snapshot trên đơn. Nhờ subquery tổng tiền,
-    # chiết khấu của một đơn chỉ được trừ một lần, không bị nhân theo số dòng hàng.
+    # Revenue by area uses the area snapshot stored on each completed invoice.
     area_id_expr = func.coalesce(SalesInvoice.sales_area_id, Customer.sales_area_id)
     area_expr = func.coalesce(SalesArea.name, literal("Chưa xác định"))
     revenue_rows = (
@@ -664,17 +639,18 @@ def get_manager_sales_analytics_service(
     ]
     total_period_sold = sum(row["quantity"] for row in sold_chart)
 
-    total_current_debt = sum(float(customer.debt_amount or 0) for customer in customers)
-    total_period_sales = sum(sales_by_customer.values())
-    total_period_paid = sum(paid_by_customer.values())
+    monthly_trend, monthly_peak = _build_period_trend(from_date, to_date, granularity)
+    total_current_debt = float(db.session.query(func.coalesce(func.sum(Customer.debt_amount), 0)).scalar() or 0)
+    total_period_sales = sum(row["revenue"] for row in monthly_trend)
+    total_period_paid = sum(row["paid"] for row in monthly_trend)
     current_financials = _current_financial_totals()
-    monthly_trend, monthly_peak = _build_monthly_trend(from_date, to_date)
     period_supplier_paid = sum(row.get("supplier_paid", 0) for row in monthly_trend)
     revenue_table, revenue_total = _paginate_rows(revenue_by_area, 1, per_page)
     inventory_table, inventory_total = _paginate_rows(inventory_chart, 1, per_page)
     sold_table, sold_total = _paginate_rows(sold_chart, 1, per_page)
 
     return {
+        "trend_granularity": granularity,
         "period": {
             "from": from_date.strftime("%Y-%m-%d") if from_date else None,
             "to": to_date.strftime("%Y-%m-%d") if to_date else None,

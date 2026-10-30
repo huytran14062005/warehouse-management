@@ -1,4 +1,5 @@
 import axios from "axios";
+import { getAppPath } from "../utils/appPath";
 
 const baseURL = process.env.REACT_APP_API_URL || "http://localhost:5000/api";
 
@@ -12,18 +13,26 @@ export const endpoints = {
   forgotPasswordReset: "/auth/forgot-password/reset",
   customers: "/customers",
   products: "/products",
+  productCombos: "/products/combos",
+  productComboCatalog: "/products/combos/catalog",
+  productComboDetail: (comboId) => `/products/combos/${comboId}`,
   productDetail: (productId) => `/products/${productId}`,
   productsInventory: "/products/inventory",
+  inventoryThreshold: "/products/inventory-threshold",
   productRequests: "/products/requests",
   priceListExport: "/products/price-list/export",
   salesInvoices: "/sales-invoices",
   salesInvoiceStatusBoard: "/sales-invoices/status-board",
+  salesInvoiceActionCount: "/sales-invoices/action-count",
+  submitSalesInvoiceToWarehouse: (invoiceId) => `/sales-invoices/${invoiceId}/submit-to-warehouse`,
+  confirmSalesInvoiceDelivery: (invoiceId) => `/sales-invoices/${invoiceId}/confirm-delivery`,
   pendingDiscountInvoices: "/sales-invoices/pending-discount",
   approveSalesInvoiceDiscount: (invoiceId) => `/sales-invoices/${invoiceId}/approve-discount`,
   salesInvoiceDetail: (invoiceId) => `/sales-invoices/${invoiceId}`,
   salesInvoiceCancelRequest: (invoiceId) => `/sales-invoices/${invoiceId}/cancel-request`,
   salesInvoiceStatus: (invoiceId) => `/sales-invoices/${invoiceId}/status`,
   completeSalesInvoice: (invoiceId) => `/sales-invoices/${invoiceId}/complete`,
+  salesInvoicePayments: (invoiceId) => `/sales-invoices/${invoiceId}/payments`,
   salesInvoicePaymentDueDate: (invoiceId) => `/sales-invoices/${invoiceId}/payment-due-date`,
   promotions: "/promotions",
   promotionDetail: (promotionId) => `/promotions/${promotionId}`,
@@ -37,6 +46,10 @@ export const endpoints = {
   importInvoices: "/import-invoices",
   importInvoiceDetail: (invoiceId) => `/import-invoices/${invoiceId}`,
   importInvoicePayments: (invoiceId) => `/import-invoices/${invoiceId}/payments`,
+  companyFunds: "/company-funds",
+  companyFundsOpening: "/company-funds/opening",
+  companyFundsAdjustment: "/company-funds/adjustments",
+  companyFundEntries: "/company-funds/entries",
   importInvoiceDelete: (invoiceId) => `/import-invoices/${invoiceId}`,
   damageReports: "/damage-reports",
   damageReportDetail: (reportId) => `/damage-reports/${reportId}`,
@@ -179,8 +192,8 @@ const clearSession = () => {
 
 const redirectToLoginAfterRefreshFailure = () => {
   clearSession();
-  if (window.location.hash !== "#/login") {
-    window.location.hash = "#/login";
+  if (window.location.pathname !== getAppPath("/login")) {
+    window.location.replace(getAppPath("/login"));
   }
 };
 

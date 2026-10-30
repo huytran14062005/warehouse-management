@@ -1,0 +1,10 @@
+.product-entry-field { display: grid; align-content: start; gap: 6px; min-width: 0; }
+.product-entry-label { color: #61748a; font-size: 11px; font-weight: 600; line-height: 1.2; }
+.product-entry-field > input { box-sizing: border-box; width: 100%; min-height: 40px; padding: 9px 10px; color: #1b2d40; border: 1px solid #cbd7e2; border-radius: 5px; background: #fff; outline: none; font: inherit; font-size: 13px; }
+.product-entry-field > input:focus { border-color: #0b3158; box-shadow: 0 0 0 2px rgba(11, 49, 88, .1); }
+.product-entry-field .money-input { min-width: 0; }
+.product-entry-field .money-input input { box-sizing: border-box; width: 100%; min-height: 40px; }
+.product-entry-info { display: flex; flex-wrap: wrap; gap: 3px 14px; margin-top: 6px; color: #61748a; font-size: 11px; line-height: 1.4; }
+.product-entry-info span { min-width: 0; }
+.product-entry-range { color: #61748a; font-size: 11px; font-weight: 400; line-height: 1.4; }
+.product-entry-range.is-invalid { color: #a33a3a; }

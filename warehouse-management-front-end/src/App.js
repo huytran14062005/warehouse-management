@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { HashRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import Footer from "./components/Footer";
 import Header from "./components/Header";
 import BackToTop from "./components/BackToTop";
@@ -14,6 +14,7 @@ import SalesInvoices from "./screens/SalesInvoices";
 import StockTransfers from "./screens/StockTransfers";
 import EmployeeStock from "./screens/EmployeeStock";
 import ImportInvoices from "./screens/ImportInvoices";
+import CompanyFunds from "./screens/CompanyFunds";
 import DamageReports from "./screens/DamageReports";
 import Suppliers from "./screens/Suppliers";
 import WarehouseReports from "./screens/WarehouseReports";
@@ -31,6 +32,7 @@ import {
   stopTokenRefresh,
 } from "./configs/Apis";
 import "./css/Responsive.css";
+import { getAppBasePath, getAppPath } from "./utils/appPath";
 
 const PUBLIC_AUTH_PATHS = ["/login", "/register", "/forgot-password"];
 
@@ -82,6 +84,7 @@ function PublicOnlyRoute({ children, currentUser, authReady }) {
 
 function AppFrame() {
   const location = useLocation();
+  const navigate = useNavigate();
   const currentUserRef = useRef(null);
   const storageSyncTimerRef = useRef(null);
   const [authReady, setAuthReady] = useState(false);
@@ -139,13 +142,17 @@ function AppFrame() {
       const nextUser = readStoredUser();
       const hasToken = Boolean(localStorage.getItem("token"));
       const previousUser = currentUserRef.current;
-      const currentPath = window.location.hash.replace(/^#/, "").split("?")[0] || "/";
+      const basePath = getAppBasePath();
+      const pathname = window.location.pathname;
+      const currentPath = basePath && pathname.startsWith(basePath)
+        ? pathname.slice(basePath.length) || "/"
+        : pathname;
 
       if (!nextUser || !hasToken) {
         stopTokenRefresh();
         setCurrentUser(null);
         if (!PUBLIC_AUTH_PATHS.includes(currentPath)) {
-          window.location.hash = "#/login";
+          navigate("/login", { replace: true });
         }
         return;
       }
@@ -157,8 +164,7 @@ function AppFrame() {
         previousUser.id !== nextUser.id || previousUser.username !== nextUser.username
       );
       if (identityChanged) {
-        window.location.hash = "#/";
-        window.location.reload();
+        window.location.replace(getAppPath("/"));
       }
     };
 
@@ -189,7 +195,7 @@ function AppFrame() {
       window.removeEventListener("storage", handleStorage);
       stopTokenRefresh();
     };
-  }, []);
+  }, [navigate]);
 
   useEffect(() => {
     const isManager = currentUser?.role === "quản lý";
@@ -327,6 +333,7 @@ function AppFrame() {
                   <Route path="/stock-transfers" element={requireAuth(<StockTransfers />)} />
                   <Route path="/employee-stock" element={requireAuth(<EmployeeStock />)} />
                   <Route path="/import-invoices" element={requireAuth(<ImportInvoices />)} />
+                  <Route path="/company-funds" element={requireAuth(<CompanyFunds />)} />
                   <Route path="/damage-reports" element={requireAuth(<DamageReports />)} />
                   <Route path="/suppliers" element={requireAuth(<Suppliers />)} />
                   <Route path="/warehouse-reports" element={requireAuth(<WarehouseReports />)} />
@@ -347,9 +354,9 @@ function AppFrame() {
 
 function App() {
   return (
-    <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <BrowserRouter basename={getAppBasePath() || "/"} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <AppFrame />
-    </HashRouter>
+    </BrowserRouter>
   );
 }
 

@@ -1,0 +1,2 @@
+.dropdown-chevron { flex-shrink: 0; transition: transform .18s ease; }
+.dropdown-chevron.is-open { transform: rotate(180deg); }

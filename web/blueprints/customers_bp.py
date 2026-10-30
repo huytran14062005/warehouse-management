@@ -111,13 +111,13 @@ def update_customer(customer_id):
 
 @customers_bp.route("/<int:customer_id>/payment", methods=["POST"])
 @verify_token
-@verify_role(EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY)
+@verify_role(EmployeeRole.KE_TOAN)
 @handle_api_errors
 def customer_payment(customer_id):
        
     data = request.get_json(silent=True) or {}
 
-    payment, old_debt, new_debt, customer = record_old_debt_payment_service(
+    payments, old_debt, new_debt, customer = record_old_debt_payment_service(
         customer_id=customer_id,
         employee_id=request.employee_id,
         amount=data.get("amount"),
@@ -134,8 +134,8 @@ def customer_payment(customer_id):
             "address": customer.address,
             "debt_amount_old": float(old_debt),
             "debt_amount_new": float(new_debt),
-            "payment_amount": float(payment.amount),
-            "payment_type": payment.payment_type.value,
-            "payment_method": payment.payment_method.value if payment.payment_method else None,
+            "payment_amount": float(sum(payment.amount for payment in payments)),
+            "payment_type": payments[0].payment_type.value,
+            "payment_method": payments[0].payment_method.value if payments[0].payment_method else None,
         }
     }), 200

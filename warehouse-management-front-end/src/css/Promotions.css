@@ -30,8 +30,11 @@
 .promotion-form .promotion-alert { grid-column: 1 / -1; margin: 0; }
 .promotion-field { display: block; min-width: 0; color: #52657a; font-size: 12px; font-weight: 600; }
 .promotion-field > span { display: block; margin-bottom: 6px; }
-.promotion-field input, .promotion-field select { box-sizing: border-box; width: 100%; min-height: 42px; padding: 9px 10px; color: #1b2d40; border: 1px solid #cbd7e2; border-radius: 5px; background: #fff; outline: none; font: inherit; font-size: 13px; font-weight: 400; }
-.promotion-field input:focus, .promotion-field select:focus { border-color: #0b3158; box-shadow: 0 0 0 2px rgba(11, 49, 88, .1); }
+.promotion-field > input, .promotion-field .money-input > input { box-sizing: border-box; width: 100%; min-height: 42px; padding: 9px 10px; color: #1b2d40; border: 1px solid #cbd7e2; border-radius: 5px; background: #fff; outline: none; font: inherit; font-size: 13px; font-weight: 400; }
+.promotion-field > input:focus, .promotion-field .money-input > input:focus { border-color: #0b3158; box-shadow: 0 0 0 2px rgba(11, 49, 88, .1); }
+.promotion-field .searchable-dropdown-trigger { min-height: 42px; }
+.promotion-field .searchable-dropdown-input { min-height: 40px; }
+.promotion-discount-field .searchable-dropdown-menu { top: auto; bottom: calc(100% + 4px); }
 .promotion-field-wide { grid-column: 1 / -1; }
 .promotion-form-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 14px; border-top: 1px solid #e8edf2; }
 .promotion-form-actions button { min-width: 108px; padding: 9px 13px; color: #0b3158; border: 1px solid #b7c8d8; border-radius: 5px; background: #fff; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }

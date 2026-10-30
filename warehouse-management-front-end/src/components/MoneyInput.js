@@ -4,14 +4,22 @@ import "../css/MoneyInput.css";
 
 export const MIN_MONEY_AMOUNT = 500;
 
-function getMoneyWarning(value, label, { allowZero = false, allowEmpty = false } = {}) {
+function getMoneyWarning(value, label, {
+  allowZero = false,
+  allowEmpty = false,
+  minAmount = MIN_MONEY_AMOUNT,
+  maxAmount = null,
+} = {}) {
   const digits = digitsOnly(value);
   if (!digits) return allowEmpty ? "" : `${label} không được để trống.`;
   const amount = Number(digits);
   if (!Number.isFinite(amount)) return `${label} không hợp lệ.`;
   if (amount === 0 && allowZero) return "";
-  if (amount < MIN_MONEY_AMOUNT) {
-    return `${label} phải từ ${MIN_MONEY_AMOUNT.toLocaleString("vi-VN")} đồng trở lên.`;
+  if (amount < minAmount) {
+    return `${label} phải từ ${minAmount.toLocaleString("vi-VN")} đồng trở lên.`;
+  }
+  if (maxAmount != null && amount > maxAmount) {
+    return `${label} không được vượt quá ${maxAmount.toLocaleString("vi-VN")} đồng.`;
   }
   return "";
 }
@@ -22,6 +30,8 @@ function MoneyInput({
   label = "Số tiền",
   allowZero = false,
   allowEmpty = false,
+  minAmount = MIN_MONEY_AMOUNT,
+  maxAmount = null,
   className = "",
   ...inputProps
 }) {
@@ -29,8 +39,8 @@ function MoneyInput({
   // warning after the first actual edit (including typing and deleting).
   const [hasEdited, setHasEdited] = useState(false);
   const warning = useMemo(
-    () => getMoneyWarning(value, label, { allowZero, allowEmpty }),
-    [allowEmpty, allowZero, label, value],
+    () => getMoneyWarning(value, label, { allowZero, allowEmpty, minAmount, maxAmount }),
+    [allowEmpty, allowZero, label, maxAmount, minAmount, value],
   );
 
   return (

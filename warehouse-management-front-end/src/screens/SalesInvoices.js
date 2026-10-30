@@ -10,6 +10,10 @@ import AutoDismissMessage from "../components/AutoDismissMessage";
 import MoneyInput from "../components/MoneyInput";
 import ProductRequestModal from "../components/ProductRequestModal";
 import SharedSearchableDropdown from "../components/SearchableDropdown";
+import CustomerFields from "../components/CustomerFields";
+import PaymentMethodDropdown from "../components/PaymentMethodDropdown";
+import { ProductEntryField, ProductEntryInfo } from "../components/ProductEntryFields";
+import { getSalePriceBounds } from "../utils/salePrice";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import "../css/SalesInvoices.css";
@@ -38,20 +42,17 @@ async function getSalesAreasOnce() {
 const STATUS_OPTIONS = [
   { value: "", label: "Tất cả trạng thái" },
   { value: "nháp", label: "Nháp" },
+  { value: "chờ kho", label: "Chờ kho" },
   { value: "đang xử lý", label: "Đang xử lý" },
   { value: "đang giao", label: "Đang giao" },
+  { value: "đã giao", label: "Đã giao" },
   { value: "hoàn thành", label: "Hoàn thành" },
   { value: "đã hủy", label: "Đã hủy" },
 ];
 
-const CANCEL_REQUEST_OPTIONS = [
-  { value: "", label: "Tất cả yêu cầu hủy" },
-  { value: "pending", label: "Chờ duyệt hủy" },
-];
-
 const DEBT_STATUS_OPTIONS = [
-  { value: "", label: "Tất cả hạn thanh toán" },
-  { value: "overdue", label: "Đã quá hạn" },
+  { value: "", label: "Không lọc hạn thanh toán" },
+  { value: "overdue", label: "Quá hạn thanh toán" },
   { value: "due_today", label: "Đến hạn hôm nay" },
   { value: "due_soon", label: "Sắp đến hạn (7 ngày)" },
 ];
@@ -68,6 +69,10 @@ function formatQuantity(value) {
   return new Intl.NumberFormat("vi-VN", {
     maximumFractionDigits: 0,
   }).format(Number(value || 0));
+}
+
+function notifySalesActionCountChanged() {
+  window.dispatchEvent(new Event("sales-invoices:action-count-refresh"));
 }
 
 function formatDateTime(value) {
@@ -89,16 +94,48 @@ function getPaymentDueLabel(invoice) {
     return `Quá hạn ${Number(invoice.days_overdue || 0)} ngày`;
   }
   if (invoice.payment_due_status === "due_today") return "Đến hạn hôm nay";
-  if (invoice.payment_due_status === "due_soon") {
+  if (["due_soon", "not_due"].includes(invoice.payment_due_status)) {
     return `Còn ${Number(invoice.days_until_due || 0)} ngày`;
   }
-  if (invoice.payment_due_status === "not_due") return "Chưa đến hạn";
   return invoice.payment_due_date ? "Đã có hạn thanh toán" : "Chưa đặt hạn";
+}
+
+function getPaymentDueUrgencyClass(invoice) {
+  if (invoice.payment_due_status === "overdue") return "is-overdue";
+  const days = Number(invoice.days_until_due);
+  if (invoice.payment_due_status === "due_today" || days <= 1) return "is-due-red";
+  if (days <= 3) return "is-due-orange-dark";
+  if (days <= 6) return "is-due-orange-light";
+  return "is-due-yellow";
+}
+
+export function SalesInvoiceDueCell({ invoice }) {
+  if (!isCompletedStatus(invoice.status) || isCancelledStatus(invoice.status)) {
+    return <span className="sales-due-empty">—</span>;
+  }
+  if (Number(invoice.remaining_amount || 0) <= 0) {
+    return <span className="sales-due-empty">Đã thanh toán</span>;
+  }
+  if (!invoice.payment_due_date) {
+    return <span className="sales-due-empty">Chưa đặt hạn</span>;
+  }
+  return (
+    <div className="sales-due-cell">
+      <span>{formatDate(invoice.payment_due_date)}</span>
+      {["overdue", "due_today", "due_soon", "not_due"].includes(invoice.payment_due_status) && (
+        <span className={`sales-due-badge ${getPaymentDueUrgencyClass(invoice)}`}>
+          {getPaymentDueLabel(invoice)}
+        </span>
+      )}
+    </div>
+  );
 }
 
 function getStatusClass(status) {
   const value = String(status || "").toLowerCase();
   if (value === "nháp" || value === "draft") return "sales-status-draft";
+  if (value === "chờ kho") return "sales-status-processing";
+  if (value === "đã giao") return "sales-status-completed";
   if (value === "đang xử lý" || value === "processing")
     return "sales-status-processing";
   if (value === "đang giao" || value === "delivering")
@@ -113,6 +150,23 @@ function getStatusClass(status) {
 function getStatusLabel(status) {
   const option = STATUS_OPTIONS.find((item) => item.value === status);
   return option?.label || status || "Không xác định";
+}
+
+export function requiresSalesInvoiceAction(invoice, user) {
+  const role = user?.role;
+  const ownsInvoice = Number(user?.id) === Number(invoice.employee?.id) && user?.id != null;
+  if (invoice.cancel_requested) return ["kế toán", "quản lý"].includes(role);
+  if (role === "quản lý" && invoice.discount?.status === "chờ duyệt" && !ownsInvoice) return true;
+  if (invoice.status === "nháp") {
+    if (invoice.warehouse_submitted_at) return ["thủ kho", "quản lý"].includes(role);
+    return role === "quản lý" || (role === "nhân viên bán hàng" && ownsInvoice);
+  }
+  if (invoice.status === "đang xử lý") return ["thủ kho", "quản lý"].includes(role);
+  if (invoice.status === "đang giao") {
+    if (invoice.delivered_at) return role === "kế toán" && !["chờ duyệt", "từ chối"].includes(invoice.discount?.status);
+    return role === "quản lý" || (role === "nhân viên bán hàng" && ownsInvoice);
+  }
+  return false;
 }
 
 function isCompletedStatus(status) {
@@ -131,7 +185,7 @@ function getPaymentStatusLabel(status) {
   if (value === "thanh toán một phần" || value === "partial") {
     return "Đã thanh toán một phần";
   }
-  return "Chưa thanh toán";
+  return "Chưa ghi nhận thanh toán";
 }
 
 function getPaymentStatusClass(status) {
@@ -207,7 +261,61 @@ function validateSaleDateRange(fromDate, toDate) {
   return "";
 }
 
-function SalesInvoiceDetail({
+function SalesDetailLine({ label, children, className = "" }) {
+  return (
+    <div className={`sales-detail-line ${className}`.trim()}>
+      <dt>{label}:</dt>
+      <dd>{children}</dd>
+    </div>
+  );
+}
+
+function SalesPaymentFields({
+  amount,
+  onAmountChange,
+  method,
+  onMethodChange,
+  total,
+  amountLabel,
+  dueDate,
+  onDueDateChange,
+}) {
+  const changeAmount = method === "cash" ? Math.max(0, (Number(amount) || 0) - total) : 0;
+  return (
+    <div className={`sales-payment-entry-fields${dueDate === undefined ? " is-two-columns" : ""}`}>
+      <label className="sales-payment-entry-field">
+        <span>{amountLabel}</span>
+        <MoneyInput
+          value={amount}
+          onChange={onAmountChange}
+          label={amountLabel}
+          allowZero
+          allowEmpty
+          maxAmount={method === "cash" ? null : total}
+          placeholder="Ví dụ: 500.000"
+          aria-label={amountLabel}
+        />
+        {changeAmount > 0 && (
+          <small className="sales-payment-change" role="status">
+            Tiền thối lại: <strong>{formatCurrency(changeAmount)}</strong>
+          </small>
+        )}
+      </label>
+      <div className="sales-payment-entry-field">
+        <span>Phương thức thanh toán</span>
+        <PaymentMethodDropdown value={method} onChange={onMethodChange} />
+      </div>
+      {dueDate !== undefined && (
+        <label className="sales-payment-entry-field">
+          <span>Hạn thanh toán</span>
+          <input type="date" value={dueDate} onChange={onDueDateChange} />
+        </label>
+      )}
+    </div>
+  );
+}
+
+export function SalesInvoiceDetail({
   invoice,
   onClose,
   canEdit,
@@ -215,8 +323,13 @@ function SalesInvoiceDetail({
   canRequestCancel,
   canCancelDirect,
   canManageStatus,
+  canComplete,
   canApproveCancel,
   canManageDueDate,
+  canRecordPayment,
+  canSubmitWarehouse,
+  canConfirmDelivery,
+  needsAction,
   actionLoading,
   actionError,
   onEdit,
@@ -227,19 +340,41 @@ function SalesInvoiceDetail({
   onComplete,
   onApproveCancel,
   onUpdateDueDate,
+  onRecordPayment,
+  onSubmitWarehouse,
+  onConfirmDelivery,
+  onLoadMorePayments,
+  paymentHistoryLoading,
 }) {
-  const [completionPayment, setCompletionPayment] = useState(
-    String(invoice.paid_amount || ""),
-  );
+  const [completionPayment, setCompletionPayment] = useState("");
   const [completionPaymentMethod, setCompletionPaymentMethod] = useState("");
+  const [deliveryRecipient, setDeliveryRecipient] = useState("");
+  const [deliveryNote, setDeliveryNote] = useState("");
   const [paymentDueDate, setPaymentDueDate] = useState(
     invoice.payment_due_date || "",
   );
   const discountAmount = Number(invoice.discount?.amount || 0);
   const paidAmount = Number(invoice.paid_amount || 0);
   const remainingAmount = Number(invoice.remaining_amount || 0);
+  const draft = ["nháp", "draft"].includes(String(invoice.status || "").toLowerCase());
+  const completed = isCompletedStatus(invoice.status);
   const cancelled = isCancelledStatus(invoice.status);
   const discountPending = invoice.discount?.status === "chờ duyệt";
+  const awaitingAccounting = canComplete && invoice.status === "đang giao" && Boolean(invoice.delivered_at) &&
+    !invoice.cancel_requested && !["chờ duyệt", "từ chối"].includes(invoice.discount?.status);
+  const showPaymentDetails = !draft && !cancelled && (completed || paidAmount > 0 || awaitingAccounting);
+  const enteredPayment = Number(completionPayment) || 0;
+  const unpaidAfterEntry = Math.max(0, remainingAmount - Math.min(enteredPayment, remainingAmount));
+  const invalidPaymentEntry = actionLoading ||
+    (enteredPayment > 0 && !completionPaymentMethod) ||
+    (completionPaymentMethod !== "cash" && enteredPayment > remainingAmount) ||
+    (awaitingAccounting
+      ? (unpaidAfterEntry > 0 && !paymentDueDate)
+      : enteredPayment <= 0);
+  useEffect(() => {
+    setCompletionPayment("");
+    setCompletionPaymentMethod("");
+  }, [invoice.paid_amount]);
   return createPortal(
     <div className="sales-detail-overlay">
       <div
@@ -253,15 +388,13 @@ function SalesInvoiceDetail({
           <div>
             <p className="sales-detail-eyebrow">ĐƠN BÁN HÀNG</p>
             <h2 id="sales-detail-title">Đơn hàng #{invoice.id}</h2>
-            <p className="sales-detail-created-at">
-              Lập lúc {formatDateTime(invoice.sold_at)}
-            </p>
           </div>
           <div className="sales-detail-header-tools">
             <strong
-              className={`sales-status-badge ${getStatusClass(invoice.status)}`}
+              className={`sales-status-badge sales-detail-status ${getStatusClass(invoice.workflow_stage || invoice.status)}`}
             >
-              {getStatusLabel(invoice.status)}
+              {getStatusLabel(invoice.workflow_stage || invoice.status)}
+              {needsAction && <span className="sales-action-dot" aria-label="Đơn hàng cần xử lý" />}
             </strong>
             <button
               type="button"
@@ -276,39 +409,25 @@ function SalesInvoiceDetail({
         <div className="sales-detail-body">
           <AutoDismissMessage message={actionError} className="sales-alert" />
           <div className="sales-detail-overview">
-            <section className="sales-detail-card">
+            <section className="sales-detail-info-section">
               <h3>Thông tin đơn</h3>
               <dl>
-                <div>
-                  <dt>Nhân viên lập đơn</dt>
-                  <dd>{invoice.employee?.full_name || "—"}</dd>
-                </div>
-                <div>
-                  <dt>Nguồn hàng</dt>
-                  <dd>
-                    {invoice.sale_source === "hàng nhân viên"
-                      ? "Hàng nhân viên đi tỉnh"
-                      : invoice.warehouse?.name || "Kho"}
-                  </dd>
-                </div>
+                <SalesDetailLine label="Thời gian lập đơn">{formatDateTime(invoice.sold_at)}</SalesDetailLine>
+                <SalesDetailLine label="Nhân viên lập đơn">{invoice.employee?.full_name || "—"}</SalesDetailLine>
+                <SalesDetailLine label="Nguồn hàng">
+                  {invoice.sale_source === "hàng nhân viên"
+                    ? "Hàng nhân viên đi tỉnh"
+                    : invoice.warehouse?.name || "Kho"}
+                </SalesDetailLine>
               </dl>
             </section>
 
-            <section className="sales-detail-card">
+            <section className="sales-detail-info-section">
               <h3>Khách hàng</h3>
               <dl>
-                <div>
-                  <dt>Họ và tên</dt>
-                  <dd>{invoice.customer?.full_name || "—"}</dd>
-                </div>
-                <div>
-                  <dt>Số điện thoại</dt>
-                  <dd>{invoice.customer?.phone || "—"}</dd>
-                </div>
-                <div className="sales-detail-card-wide">
-                  <dt>Địa chỉ giao hàng</dt>
-                  <dd>{invoice.customer?.address || "—"}</dd>
-                </div>
+                <SalesDetailLine label="Họ và tên">{invoice.customer?.full_name || "—"}</SalesDetailLine>
+                <SalesDetailLine label="Số điện thoại">{invoice.customer?.phone || "—"}</SalesDetailLine>
+                <SalesDetailLine label="Địa chỉ giao hàng">{invoice.customer?.address || "—"}</SalesDetailLine>
               </dl>
             </section>
           </div>
@@ -350,86 +469,47 @@ function SalesInvoiceDetail({
             )}
           </div>
 
-          <section className="sales-payment-card">
-            <div className="sales-payment-header">
-              <div className="sales-payment-title-row">
+          <section className="sales-detail-payment">
+            {showPaymentDetails && (
+              <div className="sales-detail-section-heading">
                 <h3>Thanh toán</h3>
-                <span
-                  className={`sales-payment-status ${
-                    cancelled
-                      ? "is-cancelled"
-                      : getPaymentStatusClass(invoice.payment_status)
-                  }`}
-                >
-                  {cancelled
-                    ? "Không cần thanh toán"
-                    : getPaymentStatusLabel(invoice.payment_status)}
+                <span className={`sales-payment-status ${getPaymentStatusClass(invoice.payment_status)}`}>
+                  {getPaymentStatusLabel(invoice.payment_status)}
                 </span>
               </div>
-              {invoice.payments?.length > 0 && (
-                <div className="sales-payment-header-history">
-                  {invoice.payments.map((payment) => (
-                    <div key={payment.id}>
-                      <strong>
-                        {payment.payment_method === "cash"
-                          ? "Tiền mặt"
-                          : payment.payment_method === "bank_transfer"
-                            ? "Chuyển khoản"
-                            : "Chưa xác định"}
-                      </strong>
-                      <small>{formatDateTime(payment.paid_at)}</small>
-                    </div>
-                  ))}
-                </div>
+            )}
+            <dl>
+              {!draft && !cancelled && discountAmount > 0 && (
+                <SalesDetailLine label={`Khuyến mãi${discountPending ? " (chờ duyệt)" : ""}`}>
+                  -{formatCurrency(discountAmount)}
+                </SalesDetailLine>
               )}
-              {invoice.discount?.promotion && (
-                <div className="sales-payment-promotion">
-                  <strong>{invoice.discount.promotion.name}</strong>
-                  <small>{invoice.discount.promotion.condition_summary}</small>
-                  <small>{invoice.discount.promotion.benefit_summary}</small>
-                </div>
+              <SalesDetailLine
+                label={cancelled ? "Giá trị đơn trước khi hủy" : "Tổng tiền đơn"}
+                className="sales-payment-total"
+              >
+                {formatCurrency(invoice.final_amount)}
+              </SalesDetailLine>
+              {!draft && paidAmount > 0 && (
+                <SalesDetailLine label="Khách đã trả">{formatCurrency(paidAmount)}</SalesDetailLine>
               )}
-            </div>
-            <div className="sales-payment-breakdown">
-              {discountAmount > 0 && (
-                <div>
-                  <span>
-                    Khuyến mãi{discountPending ? " (chờ duyệt)" : ""}
-                  </span>
-                  <strong>-{formatCurrency(discountAmount)}</strong>
-                </div>
+              {showPaymentDetails && (completed || awaitingAccounting) && remainingAmount > 0 && (
+                <SalesDetailLine label="Số tiền cần trả" className="sales-payment-remaining">
+                  {formatCurrency(remainingAmount)}
+                </SalesDetailLine>
               )}
-              <div className="sales-payment-total">
-                <span>
-                  {cancelled ? "Giá trị đơn trước khi hủy" : "Tổng tiền đơn"}
-                </span>
-                <strong>{formatCurrency(invoice.final_amount)}</strong>
-              </div>
-              {!cancelled && (
-                <div>
-                  <span>Khách đã trả</span>
-                  <strong>{formatCurrency(paidAmount)}</strong>
-                </div>
+              {showPaymentDetails && completed && remainingAmount > 0 && invoice.payment_due_date && (
+                <SalesDetailLine label="Hạn thanh toán">{formatDate(invoice.payment_due_date)}</SalesDetailLine>
               )}
-              <div className="sales-payment-remaining">
-                <span>Số tiền cần trả</span>
-                <strong>{formatCurrency(cancelled ? 0 : remainingAmount)}</strong>
-              </div>
-              {!cancelled && remainingAmount > 0 && (
-                <div className="sales-payment-due-summary">
-                  <span>Hạn thanh toán</span>
-                  <strong>{formatDate(invoice.payment_due_date)}</strong>
-                </div>
-              )}
-              {!cancelled && remainingAmount > 0 && invoice.payment_due_date && (
-                <div className={`sales-payment-due-status is-${invoice.payment_due_status}`}>
-                  <span>Nhắc nợ</span>
-                  <strong>{getPaymentDueLabel(invoice)}</strong>
-                </div>
-              )}
-            </div>
+              {showPaymentDetails && completed && remainingAmount > 0 && invoice.payment_due_date &&
+                ["overdue", "due_today", "due_soon", "not_due"].includes(invoice.payment_due_status) && (
+                  <SalesDetailLine label="Tình trạng hạn" className={`sales-payment-due-status ${getPaymentDueUrgencyClass(invoice)}`}>
+                    {getPaymentDueLabel(invoice)}
+                  </SalesDetailLine>
+                )}
+            </dl>
           </section>
-          {canManageDueDate && isCompletedStatus(invoice.status) && remainingAmount > 0 && (
+          {canManageDueDate && isCompletedStatus(invoice.status) && remainingAmount > 0 && !canRecordPayment && (
             <div className="sales-due-date-editor">
               <label>
                 <span>Hạn thanh toán</span>
@@ -448,21 +528,101 @@ function SalesInvoiceDetail({
               </button>
             </div>
           )}
+          {((canRecordPayment && completed && remainingAmount > 0) || awaitingAccounting) && (
+            <div className="sales-detail-actions sales-complete-actions">
+              <div className="sales-completion-heading">
+                <strong>Ghi nhận thanh toán</strong>
+              </div>
+              <SalesPaymentFields
+                amount={completionPayment}
+                onAmountChange={setCompletionPayment}
+                method={completionPaymentMethod}
+                onMethodChange={setCompletionPaymentMethod}
+                total={remainingAmount}
+                amountLabel="Số tiền khách trả"
+                dueDate={canManageDueDate || awaitingAccounting ? paymentDueDate : undefined}
+                onDueDateChange={(event) => setPaymentDueDate(event.target.value)}
+              />
+              {awaitingAccounting && unpaidAfterEntry > 0 && !paymentDueDate && (
+                <small className="sales-payment-hint">Chọn hạn thanh toán cho số tiền còn nợ.</small>
+              )}
+              <div className="sales-completion-actions">
+                <button
+                  type="button"
+                  onClick={() => awaitingAccounting
+                    ? onComplete(enteredPayment, completionPaymentMethod || null, paymentDueDate)
+                    : onRecordPayment(enteredPayment, completionPaymentMethod, paymentDueDate)}
+                  disabled={invalidPaymentEntry}
+                >
+                  Lưu thanh toán
+                </button>
+              </div>
+            </div>
+          )}
+          {!draft && invoice.payments?.length > 0 && (
+            <section className="sales-payment-history" aria-label="Lịch sử thanh toán">
+              <h4>Lịch sử thanh toán{invoice.payments_total > 0 ? ` (${invoice.payments_total})` : ""}</h4>
+              {invoice.payments.map((payment) => (
+                <div key={payment.id}>
+                  <span>
+                    {payment.payment_method === "cash"
+                      ? "Tiền mặt"
+                      : payment.payment_method === "bank_transfer"
+                        ? "Chuyển khoản"
+                        : "Chưa xác định"}
+                    {" ("}<time dateTime={payment.paid_at}>{formatDateTime(payment.paid_at)}</time>{")"}
+                    <small>Người xác nhận thanh toán: {payment.confirmed_by?.full_name || "Chưa có thông tin"}</small>
+                    {payment.note?.startsWith("Khách đưa ") && <small>{payment.note}</small>}
+                  </span>
+                  <strong>{formatCurrency(payment.amount)}</strong>
+                </div>
+              ))}
+              {invoice.payments.length < Number(invoice.payments_total || invoice.payments.length) &&
+                Number(invoice.payments_page || 1) < Math.ceil(Number(invoice.payments_total || 0) / 20) && (
+                <button type="button" className="sales-payment-more" onClick={onLoadMorePayments} disabled={paymentHistoryLoading}>
+                  {paymentHistoryLoading ? "Đang tải..." : "Xem thêm thanh toán"}
+                </button>
+              )}
+            </section>
+          )}
           {invoice.cancel_note && (
             <div className="sales-detail-cancel-note">
-              <span>Lý do hủy</span>
+              <span>Lý do hủy:</span>
               <p>{invoice.cancel_note}</p>
             </div>
           )}
           {invoice.note && (
             <div className="sales-detail-note">
-              <span>Ghi chú</span>
+              <span>Ghi chú:</span>
               <p>{invoice.note}</p>
             </div>
           )}
+          {Boolean(invoice.workflow_events?.length) && (
+            <details className="sales-workflow-history">
+              <summary>Lịch sử xử lý ({invoice.workflow_events.length} gần nhất)</summary>
+              <ol>
+                {[...invoice.workflow_events].reverse().map((event) => (
+                  <li key={event.id}>
+                    <div className="sales-workflow-entry-line">
+                      <span>{({
+                        submitted_to_warehouse: "Đã gửi kho",
+                        warehouse_processing: "Kho bắt đầu xử lý",
+                        dispatched: "Đã xuất xe giao hàng",
+                        delivery_confirmed: "Đã xác nhận giao hàng",
+                        completed: "Kế toán hoàn thành đơn",
+                        cancelled: "Đã hủy đơn",
+                      })[event.action] || event.action}</span>
+                      <time dateTime={event.occurred_at}>({formatDateTime(event.occurred_at)})</time>
+                    </div>
+                    <small>{event.actor || "Nhân viên"}{event.detail ? ` · ${event.detail}` : ""}</small>
+                  </li>
+                ))}
+              </ol>
+            </details>
+          )}
           {(canEdit || canCancel || canApproveCancel) && (
             <div className="sales-detail-actions">
-              {canEdit && invoice.status === "nháp" && (
+              {canEdit && invoice.status === "nháp" && !invoice.warehouse_submitted_at && (
                 <button type="button" onClick={onEdit} disabled={actionLoading}>
                   Chỉnh sửa đơn nháp
                 </button>
@@ -508,7 +668,14 @@ function SalesInvoiceDetail({
               )}
             </div>
           )}
-          {canManageStatus && invoice.status === "nháp" && (
+          {canSubmitWarehouse && invoice.status === "nháp" && !invoice.warehouse_submitted_at && (
+            <div className="sales-detail-actions">
+              <button type="button" onClick={onSubmitWarehouse} disabled={actionLoading}>
+                Gửi đơn cho kho
+              </button>
+            </div>
+          )}
+          {canManageStatus && invoice.status === "nháp" && Boolean(invoice.warehouse_submitted_at) && (
             <div className="sales-detail-actions">
               <button
                 type="button"
@@ -530,56 +697,25 @@ function SalesInvoiceDetail({
               </button>
             </div>
           )}
-          {canManageStatus && invoice.status === "đang giao" && (
-            <div className="sales-detail-actions sales-complete-actions">
-              <div className="sales-completion-heading">
-                <strong>Ghi nhận thanh toán</strong>
-                <span>Nhập số tiền khách trả và chọn phương thức tương ứng.</span>
-              </div>
-              <label className="sales-completion-field">
-                <span>Số tiền khách trả</span>
-                <MoneyInput
-                  value={completionPayment}
-                  onChange={setCompletionPayment}
-                  label="Số tiền khách thanh toán"
-                  allowZero
-                  allowEmpty
-                  placeholder="Ví dụ: 500.000"
-                  aria-label="Số tiền khách thanh toán"
-                />
-              </label>
-              <label className="sales-completion-field">
-                <span>Phương thức thanh toán</span>
-                <select
-                  value={completionPaymentMethod}
-                  onChange={(event) => setCompletionPaymentMethod(event.target.value)}
-                  required={Number(completionPayment) > 0}
-                >
-                  <option value="">Chọn phương thức</option>
-                  <option value="cash">Tiền mặt</option>
-                  <option value="bank_transfer">Chuyển khoản</option>
-                </select>
-              </label>
-              {(Number(invoice.final_amount || 0) - (Number(completionPayment) || 0)) > 0 && (
-                <label className="sales-completion-due-date">
-                  <span>Hạn thanh toán</span>
-                  <input
-                    type="date"
-                    min={new Date().toLocaleDateString("en-CA")}
-                    value={paymentDueDate}
-                    onChange={(event) => setPaymentDueDate(event.target.value)}
-                    required
-                  />
+          {canConfirmDelivery && invoice.status === "đang giao" && !invoice.delivered_at && (
+            <form className="sales-delivery-confirm" onSubmit={(event) => {
+              event.preventDefault();
+              onConfirmDelivery(deliveryRecipient, deliveryNote);
+            }}>
+              <h3>Xác nhận đã giao hàng</h3>
+              <div className="sales-delivery-fields">
+                <label>Người nhận
+                  <input value={deliveryRecipient} onChange={(event) => setDeliveryRecipient(event.target.value)} maxLength={120} required placeholder="Tên người nhận hàng" />
                 </label>
-              )}
-              <button
-                type="button"
-                onClick={() => onComplete(Number(completionPayment) || 0, paymentDueDate, completionPaymentMethod)}
-                disabled={actionLoading}
-              >
-                Hoàn thành đơn
-              </button>
-            </div>
+                <label>Ghi chú giao hàng (nếu có)
+                  <input value={deliveryNote} onChange={(event) => setDeliveryNote(event.target.value)} maxLength={500} placeholder="Ví dụ: Đã kiểm đủ hàng" />
+                </label>
+              </div>
+              <button type="submit" disabled={actionLoading}>Xác nhận đã giao</button>
+            </form>
+          )}
+          {invoice.delivered_at && (
+            <p className="sales-delivery-proof">Đã giao cho {invoice.delivery_recipient} lúc {formatDateTime(invoice.delivered_at)}{invoice.delivery_note ? ` · ${invoice.delivery_note}` : ""}</p>
           )}
           {canApproveCancel && hasActiveCancelRequest(invoice) && (
             <div className="sales-detail-actions">
@@ -614,7 +750,7 @@ function SalesInvoiceDetail({
   );
 }
 
-function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
+export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
   const isEditing = Boolean(invoice?.id);
   const activeUser = (() => {
     try {
@@ -651,10 +787,6 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
   const [warehouseId, setWarehouseId] = useState(String(invoice?.warehouse_id || ""));
   const [employeeStock, setEmployeeStock] = useState([]);
   const [employeeStockLoading, setEmployeeStockLoading] = useState(false);
-  const [paymentAmount, setPaymentAmount] = useState(
-    String(invoice?.paid_amount || ""),
-  );
-  const [paymentMethod, setPaymentMethod] = useState("");
   const [paymentDueDate, setPaymentDueDate] = useState(
     invoice?.payment_due_date || "",
   );
@@ -669,6 +801,7 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
       productId: String(item.product_id),
       productSearch: item.product_name || "",
       unit: item.unit || "",
+      defaultPrice: item.default_sale_price != null ? String(item.default_sale_price) : "",
       quantity: String(item.quantity),
       unitPrice: String(item.unit_price),
     })),
@@ -684,6 +817,11 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
   const [productSearchLoading, setProductSearchLoading] = useState({});
   const [productRequestName, setProductRequestName] = useState("");
   const [productRequestOpen, setProductRequestOpen] = useState(false);
+  const [combos, setCombos] = useState([]);
+  const [comboSuggestion, setComboSuggestion] = useState(null);
+  const [comboSets, setComboSets] = useState("1");
+  const [applyingCombo, setApplyingCombo] = useState(false);
+  const [comboNotice, setComboNotice] = useState("");
   const customerSearchTimerRef = useRef(null);
   const customerSearchTouchedRef = useRef(false);
   const productSearchTimerRefs = useRef({});
@@ -750,6 +888,18 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
       cancelled = true;
     };
   }, [isEditing, saleSource]);
+
+  useEffect(() => {
+    let active = true;
+    authApis().get(endpoints.productCombos)
+      .then((response) => {
+        if (active) setCombos(response.data?.combos || []);
+      })
+      .catch((requestError) => {
+        if (active) setFormError(getApiError(requestError));
+      });
+    return () => { active = false; };
+  }, [setFormError]);
 
   useEffect(() => {
     if (!customerSearchTouchedRef.current) return undefined;
@@ -833,6 +983,10 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
           available_stock: product.quantity,
         }))
       : [];
+  const suggestedCombos = comboSuggestion
+    ? combos.filter((combo) => combo.items.some((part) =>
+        String(part.product_id) === comboSuggestion.productId))
+    : [];
 
   const openPromotionPicker = async () => {
     setPromotionPickerOpen(true);
@@ -853,7 +1007,7 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
     setItems((current) =>
       current.map((item, itemIndex) =>
         itemIndex === index
-          ? { ...item, productId: "", productSearch: value, unitPrice: "" }
+          ? { ...item, productId: "", productSearch: value, defaultPrice: "", unitPrice: "" }
           : item,
       ),
     );
@@ -921,12 +1075,97 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
           productId: value,
           productSearch: selectedProduct?.name || "",
           unit: selectedProduct?.unit || item.unit,
-          unitPrice: selectedProduct
+          defaultPrice: selectedProduct?.default_sale_price != null
             ? String(selectedProduct.default_sale_price)
-            : item.unitPrice,
+            : "",
+          unitPrice: selectedProduct
+            ? String(selectedProduct.default_sale_price ?? "")
+            : "",
         };
       }),
     );
+  };
+
+  const handleProductSelect = (index, value) => {
+    const productId = String(value);
+    updateItem(index, "productId", productId);
+    setComboNotice("");
+    setComboSets("1");
+    setComboSuggestion(productId ? { index, productId } : null);
+  };
+
+  const applyCombo = async (combo) => {
+    if (!comboSuggestion) return;
+    const { index, productId } = comboSuggestion;
+    if (String(items[index]?.productId) !== productId) {
+      setComboSuggestion(null);
+      return;
+    }
+    const numberOfSets = Number(comboSets);
+    if (!Number.isInteger(numberOfSets) || numberOfSets < 1 || numberOfSets > 1000) {
+      setFormError("Số bộ combo phải là số nguyên từ 1 đến 1.000.");
+      return;
+    }
+    if (items.some((item, itemIndex) => itemIndex !== index && String(item.productId) === productId)) {
+      setFormError("Sản phẩm đang chọn đã có ở dòng khác. Hãy gộp về một dòng trước khi dùng combo.");
+      return;
+    }
+    try {
+      setApplyingCombo(true);
+      setFormError("");
+      const productDetails = await Promise.all(combo.items.map(async (part) => {
+        if (saleSource === "employee_stock") {
+          return saleProducts.find((product) => String(product.id) === String(part.product_id));
+        }
+        const response = await authApis().get(endpoints.productDetail(part.product_id), {
+          params: { warehouse_id: warehouseId },
+        });
+        return response.data?.product;
+      }));
+      if (productDetails.some((product) => !product)) {
+        setFormError("Một số sản phẩm của combo chưa có trong nguồn hàng đã chọn.");
+        return;
+      }
+      const unpricedProduct = productDetails.find((product) => !getSalePriceBounds(product.default_sale_price));
+      if (unpricedProduct) {
+        setFormError(`${unpricedProduct.name} cần có giá bán mặc định từ 500 đ trước khi thêm combo.`);
+        return;
+      }
+      const next = [...items];
+      for (const [partIndex, part] of combo.items.entries()) {
+        const product = productDetails[partIndex];
+        const rowIndex = String(part.product_id) === productId
+          ? index
+          : next.findIndex((row) => String(row.productId) === String(part.product_id));
+        const currentQuantity = rowIndex >= 0 && rowIndex !== index
+          ? Number(next[rowIndex].quantity || 0) : 0;
+        const requestedQuantity = currentQuantity + Number(part.quantity) * numberOfSets;
+        if (Number(product.available_stock || 0) < requestedQuantity) {
+          setFormError(`${product.name} không đủ tồn kho để thêm combo (${requestedQuantity} cần, ${product.available_stock || 0} còn).`);
+          return;
+        }
+        const row = {
+          productId: String(product.id),
+          productSearch: product.name,
+          unit: product.unit,
+          defaultPrice: String(product.default_sale_price ?? ""),
+          unitPrice: rowIndex >= 0 && next[rowIndex].unitPrice
+            ? next[rowIndex].unitPrice
+            : String(product.default_sale_price ?? ""),
+          quantity: String(requestedQuantity),
+          availableStock: product.available_stock,
+        };
+        if (rowIndex >= 0) next[rowIndex] = { ...next[rowIndex], ...row };
+        else next.push(row);
+      }
+      setItems(next);
+      setComboSuggestion(null);
+      setComboNotice(`Đã thêm combo “${combo.name}” (${numberOfSets} bộ). Bạn có thể chỉnh số lượng và giá của từng sản phẩm trước khi lưu đơn.`);
+    } catch (requestError) {
+      setFormError(getApiError(requestError));
+    } finally {
+      setApplyingCombo(false);
+    }
   };
 
   const addItem = () => {
@@ -938,16 +1177,19 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
 
   const handleSaleSourceChange = (value) => {
     setSaleSource(String(value));
+    setComboSuggestion(null);
+    setComboNotice("");
     setItems([
       { productId: "", productSearch: "", quantity: "1", unitPrice: "" },
     ]);
     setProductSearchResults({});
     setProductSearchLoading({});
-    setPaymentAmount("");
   };
 
   const handleWarehouseChange = (value) => {
     setWarehouseId(String(value));
+    setComboSuggestion(null);
+    setComboNotice("");
     Object.values(productSearchTimerRefs.current).forEach(clearTimeout);
     Object.keys(productSearchRequestRefs.current).forEach((key) => {
       productSearchRequestRefs.current[key] += 1;
@@ -958,6 +1200,7 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
   };
 
   const removeItem = (index) => {
+    setComboSuggestion(null);
     setItems((current) =>
       current.filter((_, itemIndex) => itemIndex !== index),
     );
@@ -1001,6 +1244,17 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
         setFormError("Vui lòng nhập sản phẩm, số lượng và giá bán hợp lệ.");
         return;
       }
+      const priceBounds = getSalePriceBounds(item.defaultPrice);
+      if (!priceBounds) {
+        setFormError("Sản phẩm đã chọn chưa có giá bán mặc định hợp lệ từ 500 đ. Vui lòng cập nhật giá sản phẩm trước khi bán.");
+        return;
+      }
+      if (Number(item.unitPrice) < priceBounds.min || Number(item.unitPrice) > priceBounds.max) {
+        setFormError(
+          `Giá bán sản phẩm phải từ ${formatCurrency(priceBounds.min)} đến ${formatCurrency(priceBounds.max)} (±10% giá bán mặc định).`,
+        );
+        return;
+      }
       if (productIds.has(item.productId)) {
         setFormError("Mỗi sản phẩm chỉ được xuất hiện một lần trong đơn.");
         return;
@@ -1011,30 +1265,6 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
       setFormError(promotionEvaluation.reason);
       return;
     }
-    const enteredPayment = Number(paymentAmount) || 0;
-    const finalAmount = subtotal - discount;
-    if (
-      saleSource === "employee_stock" &&
-      (enteredPayment < 0 || enteredPayment > finalAmount)
-    ) {
-      setFormError(
-        "Số tiền khách thanh toán không được lớn hơn tổng tiền đơn.",
-      );
-      return;
-    }
-    if (
-      saleSource === "employee_stock" &&
-      enteredPayment < finalAmount &&
-      !paymentDueDate
-    ) {
-      setFormError("Vui lòng chọn hạn thanh toán cho phần tiền khách còn nợ.");
-      return;
-    }
-    if (saleSource === "employee_stock" && enteredPayment > 0 && !paymentMethod) {
-      setFormError("Vui lòng chọn phương thức thanh toán.");
-      return;
-    }
-
     try {
       setSaving(true);
       const payload = {
@@ -1057,8 +1287,6 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
         discount_amount: 0,
         promotion_id: selectedPromotion?.id || null,
         sale_source: saleSource,
-        payment_amount: saleSource === "employee_stock" ? enteredPayment : 0,
-        payment_method: saleSource === "employee_stock" && enteredPayment > 0 ? paymentMethod : null,
         payment_due_date: paymentDueDate || null,
         items: items.map((item) => ({
           product_id: Number(item.productId),
@@ -1141,19 +1369,17 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                 </div>
               )}
               {saleSource === "central_warehouse" && (
-                <label className="sales-editor-field">
+                <div className="sales-editor-field">
                   <span>Kho xuất hàng</span>
-                  <select
+                  <SharedSearchableDropdown
                     value={warehouseId}
-                    onChange={(event) => handleWarehouseChange(event.target.value)}
+                    onChange={handleWarehouseChange}
+                    options={warehouses.map((warehouse) => ({ value: warehouse.id, label: warehouse.name }))}
+                    placeholder="Chọn kho xuất hàng"
+                    ariaLabel="Chọn kho xuất hàng"
                     disabled={isEditing}
-                    required
-                  >
-                    {warehouses.map((warehouse) => (
-                      <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>
-                    ))}
-                  </select>
-                </label>
+                  />
+                </div>
               )}
               <div className="sales-editor-field">
                 <span>Khách hàng</span>
@@ -1241,55 +1467,15 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                     )}
                   </>
                 ) : (
-                  <div className="sales-new-customer-fields">
-                    <input
-                      value={newCustomer.full_name}
-                      onChange={(event) =>
-                        setNewCustomer((current) => ({
-                          ...current,
-                          full_name: event.target.value,
-                        }))
-                      }
-                      placeholder="Họ và tên"
-                    />
-                    <input
-                      value={newCustomer.phone}
-                      onChange={(event) =>
-                        setNewCustomer((current) => ({
-                          ...current,
-                          phone: event.target.value,
-                        }))
-                      }
-                      placeholder="Số điện thoại"
-                    />
-                    <input
-                      value={newCustomer.address}
-                      onChange={(event) =>
-                        setNewCustomer((current) => ({
-                          ...current,
-                          address: event.target.value,
-                        }))
-                      }
-                      placeholder="Địa chỉ"
-                    />
-                    <select
-                      value={newCustomer.sales_area_id}
-                      disabled={salesAreasLoading}
-                      onChange={(event) =>
-                        setNewCustomer((current) => ({
-                          ...current,
-                          sales_area_id: event.target.value,
-                        }))
-                      }
-                    >
-                      <option value="">
-                        {salesAreasLoading
-                          ? "Đang tải khu vực bán hàng..."
-                          : "Chọn khu vực bán hàng"}
-                      </option>
-                      {salesAreas.map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}
-                    </select>
-                  </div>
+                  <CustomerFields
+                    value={newCustomer}
+                    onChange={(field, value) =>
+                      setNewCustomer((current) => ({ ...current, [field]: value }))
+                    }
+                    salesAreas={salesAreas}
+                    salesAreasLoading={salesAreasLoading}
+                    requireSalesArea
+                  />
                 )}
               </div>
 
@@ -1317,6 +1503,8 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                           id: item.productId,
                           name: item.productSearch,
                           unit: item.unit,
+                          default_sale_price: item.defaultPrice || undefined,
+                          available_stock: item.availableStock,
                         }
                       : null);
                   const productOptions =
@@ -1327,12 +1515,20 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                     )
                       ? [selectedProduct, ...searchedProducts]
                       : searchedProducts;
+                  const priceBounds = getSalePriceBounds(
+                    selectedProduct?.default_sale_price ?? item.defaultPrice,
+                  );
+                  const warehouseName = warehouses.find(
+                    (warehouse) => String(warehouse.id) === warehouseId,
+                  )?.name;
                   return (
                     <div
                       className="sales-editor-item"
                       key={`${item.productId || "new"}-${index}`}
                     >
-                      <SharedSearchableDropdown
+                      <div className="sales-editor-product-field">
+                        <ProductEntryField label="Sản phẩm">
+                          <SharedSearchableDropdown
                         value={item.productId}
                         placeholder="Chọn sản phẩm"
                         ariaLabel="Chọn sản phẩm"
@@ -1360,9 +1556,7 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                             </button>
                           ) : null
                         }
-                        onChange={(value) =>
-                          updateItem(index, "productId", String(value))
-                        }
+                        onChange={(value) => handleProductSelect(index, value)}
                         options={[
                           { value: "", label: "Chọn sản phẩm" },
                           ...productOptions.map((product) => ({
@@ -1370,27 +1564,51 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                             label: product.name,
                           })),
                         ]}
-                      />
-                      <input
-                        type="number"
-                        min="1"
-                        step="1"
-                        value={item.quantity}
-                        onChange={(event) =>
-                          updateItem(index, "quantity", event.target.value)
-                        }
-                        placeholder="Số lượng"
-                        aria-label="Số lượng"
-                        required
-                      />
-                      <MoneyInput
-                        value={item.unitPrice}
-                        onChange={(value) => updateItem(index, "unitPrice", value)}
-                        label="Giá bán"
-                        placeholder="Giá bán từ 500 đ"
-                        aria-label="Giá bán"
-                        required
-                      />
+                          />
+                        </ProductEntryField>
+                        <ProductEntryInfo
+                          product={selectedProduct}
+                          stockLabel={saleSource === "employee_stock"
+                            ? "Tồn kho của bạn"
+                            : `Số lượng còn lại ở ${warehouseName === "Kho trung tâm"
+                              ? "kho trung tâm"
+                              : warehouseName || "kho đã chọn"}`}
+                          stockQuantity={selectedProduct?.available_stock}
+                        />
+                      </div>
+                      <ProductEntryField label="Số lượng">
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={item.quantity}
+                          onChange={(event) =>
+                            updateItem(index, "quantity", event.target.value)
+                          }
+                          placeholder="Nhập số lượng"
+                          aria-label="Số lượng"
+                          required
+                        />
+                      </ProductEntryField>
+                      <ProductEntryField label="Giá bán">
+                        <MoneyInput
+                          value={item.unitPrice}
+                          onChange={(value) => updateItem(index, "unitPrice", value)}
+                          label="Giá bán"
+                          minAmount={priceBounds?.min || 500}
+                          maxAmount={priceBounds?.max || null}
+                          placeholder="Nhập giá bán"
+                          aria-label="Giá bán"
+                          required
+                        />
+                        {selectedProduct && (
+                          <small className={priceBounds ? "product-entry-range" : "product-entry-range is-invalid"}>
+                            {priceBounds
+                              ? `Cho phép: ${formatCurrency(priceBounds.min)} – ${formatCurrency(priceBounds.max)} (±10%)`
+                              : "Cần đặt giá bán mặc định từ 500 đ trước khi bán."}
+                          </small>
+                        )}
+                      </ProductEntryField>
                       <button
                         type="button"
                         className="sales-editor-remove"
@@ -1399,18 +1617,43 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                       >
                         ×
                       </button>
-                      {selectedProduct?.available_stock != null && (
-                        <small>
-                          {saleSource === "employee_stock"
-                            ? "Tồn kho của bạn"
-                            : `Tồn kho ${warehouses.find((warehouse) => String(warehouse.id) === warehouseId)?.name || "đã chọn"}`}: {formatQuantity(selectedProduct.available_stock)}{" "}
-                          {selectedProduct.unit}
-                        </small>
-                      )}
                     </div>
                   );
                 })}
               </div>
+
+              {suggestedCombos.length > 0 && (
+                <section className="sales-combo-suggestion" aria-label="Gợi ý combo">
+                  <div className="sales-combo-suggestion-heading">
+                    <div>
+                      <span>GỢI Ý BÁN THEO BỘ</span>
+                      <h4>Sản phẩm này có trong combo</h4>
+                      <p>Chọn một bộ để tự thêm sản phẩm đi kèm, hoặc giữ sản phẩm đang chọn để bán lẻ.</p>
+                    </div>
+                    <button type="button" onClick={() => setComboSuggestion(null)} disabled={applyingCombo}>Chỉ bán lẻ</button>
+                  </div>
+                  <label className="sales-combo-set-count">
+                    <span>Số bộ cần thêm</span>
+                    <input type="number" min="1" max="1000" step="1" value={comboSets}
+                      onChange={(event) => setComboSets(event.target.value)} aria-label="Số bộ combo" />
+                  </label>
+                  <div className="sales-combo-options">
+                    {suggestedCombos.map((combo) => (
+                      <article className="sales-combo-option" key={combo.id}>
+                        <div>
+                          <strong>{combo.name}</strong>
+                          <p>{combo.items.map((part) => `${part.quantity} ${part.unit} ${part.product_name}`).join(" + ")}</p>
+                          <small>Số lượng sản phẩm tự nhân theo số bộ; có thể chỉnh từng dòng sau khi thêm.</small>
+                        </div>
+                        <button type="button" onClick={() => applyCombo(combo)} disabled={applyingCombo}>
+                          {applyingCombo ? "Đang kiểm tra..." : "Dùng combo"}
+                        </button>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              )}
+              {comboNotice && <div className="sales-combo-notice" role="status">{comboNotice}</div>}
 
               <section className="sales-promotion-selector">
                 <div className="sales-promotion-selector-heading">
@@ -1497,60 +1740,34 @@ function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
 
               <div className="sales-editor-financials">
                 {saleSource === "employee_stock" && (
-                  <label className="sales-editor-field">
-                    <span>Khách thanh toán</span>
-                    <MoneyInput
-                      value={paymentAmount}
-                      onChange={setPaymentAmount}
-                      label="Khách thanh toán"
-                      allowZero
-                      allowEmpty
-                      placeholder="0 hoặc từ 500 đ"
+                  <label className="sales-editor-field sales-editor-debt-date">
+                    <span>Hạn thanh toán (nếu cho nợ)</span>
+                    <input
+                      type="date"
+                      aria-label="Hạn thanh toán (nếu cho nợ)"
+                      value={paymentDueDate}
+                      onChange={(event) => setPaymentDueDate(event.target.value)}
                     />
+                    <small>Kế toán sẽ ghi nhận tiền sau khi đơn được lập.</small>
                   </label>
                 )}
-                {saleSource === "employee_stock" && (
-                  <label className="sales-editor-field">
-                    <span>{"Phương thức thanh toán"}</span>
-                    <select
-                      value={paymentMethod}
-                      onChange={(event) => setPaymentMethod(event.target.value)}
-                      required={Number(paymentAmount) > 0}
-                    >
-                      <option value="">{"Chọn phương thức"}</option>
-                      <option value="cash">{"Tiền mặt"}</option>
-                      <option value="bank_transfer">{"Chuyển khoản"}</option>
-                    </select>
-                  </label>
-                )}
-                {saleSource === "employee_stock" &&
-                  (Number(paymentAmount) || 0) < Math.max(0, subtotal - discount) && (
-                    <label className="sales-editor-field">
-                      <span>Hạn thanh toán</span>
-                      <input
-                        type="date"
-                        min={new Date().toLocaleDateString("en-CA")}
-                        value={paymentDueDate}
-                        onChange={(event) => setPaymentDueDate(event.target.value)}
-                        required
-                      />
-                    </label>
-                  )}
-                <div className="sales-editor-total">
-                  <span>Tiền hàng</span>
-                  <strong>{formatCurrency(subtotal)}</strong>
-                </div>
-                {discount > 0 && (
-                  <div className="sales-editor-total sales-editor-discount">
-                    <span>Khuyến mãi</span>
-                    <strong>-{formatCurrency(discount)}</strong>
+                <div className="sales-editor-totals">
+                  <div className="sales-editor-total">
+                    <span>Tiền hàng</span>
+                    <strong>{formatCurrency(subtotal)}</strong>
                   </div>
-                )}
-                <div className="sales-editor-total">
-                  <span>Tổng tiền đơn</span>
-                  <strong>
-                    {formatCurrency(Math.max(0, subtotal - discount))}
-                  </strong>
+                  {discount > 0 && (
+                    <div className="sales-editor-total sales-editor-discount">
+                      <span>Khuyến mãi</span>
+                      <strong>-{formatCurrency(discount)}</strong>
+                    </div>
+                  )}
+                  <div className="sales-editor-total sales-editor-final-total">
+                    <span>Tổng tiền đơn</span>
+                    <strong>
+                      {formatCurrency(Math.max(0, subtotal - discount))}
+                    </strong>
+                  </div>
                 </div>
               </div>
               <label className="sales-editor-field">
@@ -1602,7 +1819,7 @@ function SalesInvoices() {
   const [searchParams] = useSearchParams();
   const initialCancelRequestFilter =
     searchParams.get("cancel_requested") === "pending" ? "pending" : "";
-  const initialDebtStatus = ["overdue", "due_today", "due_soon"].includes(
+  const initialDebtStatus = !initialCancelRequestFilter && ["overdue", "due_today", "due_soon"].includes(
     searchParams.get("debt_status"),
   ) ? searchParams.get("debt_status") : "";
   const [invoices, setInvoices] = useState([]);
@@ -1626,6 +1843,7 @@ function SalesInvoices() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useNotificationState();
   const [actionLoading, setActionLoading] = useState(false);
+  const [paymentHistoryLoading, setPaymentHistoryLoading] = useState(false);
   const [actionError, setActionError] = useNotificationState();
   const [confirmAction, setConfirmAction] = useState(null);
   const [showEditor, setShowEditor] = useState(false);
@@ -1647,6 +1865,7 @@ function SalesInvoices() {
   const [discountActionLoading, setDiscountActionLoading] = useState(false);
   const [discountActionError, setDiscountActionError] = useNotificationState();
   const debounceTimerRef = useRef(null);
+  const invoiceRequestIdRef = useRef(0);
   const currentUser = (() => {
     try {
       return JSON.parse(localStorage.getItem("user")) || {};
@@ -1666,6 +1885,10 @@ function SalesInvoices() {
   const canRequestCancel = currentUser.role === "nhân viên bán hàng";
   const canCancelDirect = currentUser.role === "quản lý";
   const canManageStatus = ["thủ kho", "quản lý"].includes(currentUser.role);
+  const canSubmitWarehouse = ["nhân viên bán hàng", "quản lý"].includes(currentUser.role);
+  const canConfirmDelivery = canSubmitWarehouse;
+  const canRecordPayment = currentUser.role === "kế toán";
+  const canCompleteSales = currentUser.role === "kế toán";
 
   const canApproveCancel = ["kế toán", "quản lý"].includes(currentUser.role);
   const canViewStatusBoard = currentUser.role === "quản lý";
@@ -1717,7 +1940,7 @@ function SalesInvoices() {
     }
   }, [canViewStatusBoard, pendingDiscountPage, setPendingDiscountError]);
 
-  const fetchInvoices = useCallback(async () => {
+  const fetchInvoices = useCallback(async (silent = false) => {
     if (!localStorage.getItem("token")) {
       navigate("/login", {
         replace: true,
@@ -1726,8 +1949,10 @@ function SalesInvoices() {
       return;
     }
 
+    const requestId = ++invoiceRequestIdRef.current;
+
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setError("");
       const response = await authApis().get(endpoints.salesInvoices, {
         params: {
@@ -1742,6 +1967,7 @@ function SalesInvoices() {
           debt_status: debtStatus || undefined,
         },
       });
+      if (requestId !== invoiceRequestIdRef.current) return;
       const data = response.data || {};
       setInvoices(data.invoices || []);
       setPagination({
@@ -1749,14 +1975,26 @@ function SalesInvoices() {
         totalPages: Number(data.pages || 1),
       });
     } catch (requestError) {
-      setError(getApiError(requestError));
+      if (requestId === invoiceRequestIdRef.current) setError(getApiError(requestError));
     } finally {
-      setLoading(false);
+      if (requestId === invoiceRequestIdRef.current) setLoading(false);
     }
   }, [cancelRequestFilter, debtStatus, fromDate, keyword, navigate, page, status, toDate]);
 
   useEffect(() => {
     fetchInvoices();
+  }, [fetchInvoices]);
+
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible") fetchInvoices(true);
+    };
+    const timer = window.setInterval(refresh, 60000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+    };
   }, [fetchInvoices]);
 
   useEffect(() => {
@@ -1831,11 +2069,24 @@ function SalesInvoices() {
   };
 
   const handleEditorSaved = (invoice) => {
+    if (!editingInvoice) {
+      setPage(1);
+      setKeywordInput("");
+      setKeyword("");
+      setStatus("");
+      setDebtStatus("");
+      setCancelRequestFilter("");
+      setFromDateInput("");
+      setToDateInput("");
+      setFromDate("");
+      setToDate("");
+    }
     setShowEditor(false);
     setEditingInvoice(null);
     setSelectedInvoice(invoice || null);
     fetchInvoices();
     fetchStatusBoard();
+    notifySalesActionCountChanged();
   };
 
   const handleCancelDraft = async () => {
@@ -1868,6 +2119,7 @@ function SalesInvoices() {
       }));
       await fetchInvoices();
       await fetchStatusBoard();
+      notifySalesActionCountChanged();
     } catch (requestError) {
       setActionError(getApiError(requestError));
     } finally {
@@ -1875,28 +2127,103 @@ function SalesInvoices() {
     }
   };
 
-  const completeInvoice = async (paymentAmount, paymentDueDate, paymentMethod) => {
+  const submitInvoiceToWarehouse = async () => {
+    if (!selectedInvoice) return;
+    try {
+      setActionLoading(true);
+      setActionError("");
+      const response = await authApis().post(endpoints.submitSalesInvoiceToWarehouse(selectedInvoice.id));
+      setSelectedInvoice(response.data?.invoice || selectedInvoice);
+      await Promise.all([fetchInvoices(), fetchStatusBoard()]);
+      notifySalesActionCountChanged();
+    } catch (requestError) {
+      setActionError(getApiError(requestError));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const confirmInvoiceDelivery = async (recipient, note) => {
+    if (!selectedInvoice) return;
+    try {
+      setActionLoading(true);
+      setActionError("");
+      const response = await authApis().post(endpoints.confirmSalesInvoiceDelivery(selectedInvoice.id), { recipient, note });
+      setSelectedInvoice(response.data?.invoice || selectedInvoice);
+      await Promise.all([fetchInvoices(), fetchStatusBoard()]);
+      notifySalesActionCountChanged();
+    } catch (requestError) {
+      setActionError(getApiError(requestError));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const completeInvoice = async (amount, method, paymentDueDate) => {
     if (!selectedInvoice) return;
     try {
       setActionLoading(true);
       setActionError("");
       const response = await authApis().put(
         endpoints.completeSalesInvoice(selectedInvoice.id),
-        {
-          payment_amount: paymentAmount,
-          payment_method: paymentMethod || null,
-          payment_due_date: paymentDueDate || null,
-        },
+        { payment_amount: amount, payment_method: method, payment_due_date: paymentDueDate || null },
       );
       notifyInventoryChanged();
       setSelectedInvoice(response.data?.invoice || selectedInvoice);
       await fetchInvoices();
       await fetchStatusBoard();
+      notifySalesActionCountChanged();
       window.dispatchEvent(new Event("pending-requests:refresh"));
     } catch (requestError) {
       setActionError(getApiError(requestError));
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const recordInvoicePayment = async (amount, paymentMethod, paymentDueDate) => {
+    if (!selectedInvoice) return;
+    try {
+      setActionLoading(true);
+      setActionError("");
+      const response = await authApis().post(endpoints.salesInvoicePayments(selectedInvoice.id), {
+        amount,
+        payment_method: paymentMethod,
+        payment_due_date: paymentDueDate || null,
+      });
+      setSelectedInvoice(response.data?.invoice || selectedInvoice);
+      await fetchInvoices();
+      window.dispatchEvent(new Event("pending-requests:refresh"));
+    } catch (requestError) {
+      setActionError(getApiError(requestError));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const loadMoreInvoicePayments = async () => {
+    if (!selectedInvoice || paymentHistoryLoading) return;
+    const invoiceId = selectedInvoice.id;
+    try {
+      setPaymentHistoryLoading(true);
+      setActionError("");
+      const response = await authApis().get(endpoints.salesInvoicePayments(invoiceId), {
+        params: { page: Number(selectedInvoice.payments_page || 1) + 1, per_page: 20 },
+      });
+      setSelectedInvoice((current) => {
+        if (current?.id !== invoiceId) return current;
+        const existingIds = new Set((current.payments || []).map((payment) => payment.id));
+        return {
+          ...current,
+          payments: [...(current.payments || []), ...(response.data?.payments || []).filter((payment) => !existingIds.has(payment.id))],
+          payments_total: Number(response.data?.total || 0),
+          payments_page: Number(response.data?.page || 1),
+        };
+      });
+    } catch (requestError) {
+      setActionError(getApiError(requestError));
+    } finally {
+      setPaymentHistoryLoading(false);
     }
   };
 
@@ -1954,6 +2281,7 @@ function SalesInvoices() {
       setConfirmAction(null);
       await fetchInvoices();
       await fetchStatusBoard();
+      notifySalesActionCountChanged();
     } catch (requestError) {
       setActionError(getApiError(requestError));
     } finally {
@@ -1983,6 +2311,7 @@ function SalesInvoices() {
         fetchInvoices(),
         fetchStatusBoard(),
       ]);
+      notifySalesActionCountChanged();
     } catch (requestError) {
       setDiscountActionError(getApiError(requestError));
     } finally {
@@ -2148,6 +2477,7 @@ function SalesInvoices() {
         className="sales-toolbar"
         onSubmit={(event) => event.preventDefault()}
       >
+        <div className="sales-toolbar-primary">
         <input
           type="search"
           value={keywordInput}
@@ -2163,34 +2493,32 @@ function SalesInvoices() {
             onChange={(value) => {
               setPage(1);
               setStatus(String(value));
+              if (value && value !== "hoàn thành") setDebtStatus("");
+              if (value && !["đang xử lý", "đang giao"].includes(value)) {
+                setCancelRequestFilter("");
+              }
             }}
             ariaLabel="Lọc theo trạng thái đơn hàng"
-          />
-        </div>
-        <div className="sales-cancel-dropdown">
-          <SharedSearchableDropdown
-            value={cancelRequestFilter}
-            options={CANCEL_REQUEST_OPTIONS}
-            placeholder="Tất cả yêu cầu hủy"
-            onChange={(value) => {
-              setPage(1);
-              setCancelRequestFilter(String(value));
-            }}
-            ariaLabel="Lọc theo yêu cầu hủy đơn"
           />
         </div>
         <div className="sales-debt-dropdown">
           <SharedSearchableDropdown
             value={debtStatus}
             options={DEBT_STATUS_OPTIONS}
-            placeholder="Tất cả hạn thanh toán"
+            placeholder="Không lọc hạn thanh toán"
             onChange={(value) => {
               setPage(1);
               setDebtStatus(String(value));
+              if (value) {
+                setCancelRequestFilter("");
+                setStatus("");
+              }
             }}
             ariaLabel="Lọc theo hạn thanh toán"
           />
         </div>
+        </div>
+        <div className="sales-toolbar-secondary">
         <div className="sales-date-range" role="group" aria-label="Lọc theo ngày bán">
           <label className="sales-date-field">
             <span>Từ ngày</span>
@@ -2212,7 +2540,31 @@ function SalesInvoices() {
             />
           </label>
         </div>
+        <label className="sales-cancel-filter">
+          <input
+            type="checkbox"
+            checked={cancelRequestFilter === "pending"}
+            onChange={(event) => {
+              setPage(1);
+              const pendingOnly = event.target.checked;
+              setCancelRequestFilter(pendingOnly ? "pending" : "");
+              if (pendingOnly) {
+                setDebtStatus("");
+                setStatus("");
+              }
+            }}
+          />
+          <span>Chỉ xem đơn chờ duyệt hủy</span>
+        </label>
+        </div>
       </form>
+
+      {cancelRequestFilter === "pending" && (
+        <p className="sales-filter-context">Chỉ hiển thị đơn đang xử lý hoặc đang giao có yêu cầu hủy chờ duyệt.</p>
+      )}
+      {debtStatus && (
+        <p className="sales-filter-context">Chỉ hiển thị đơn hoàn thành còn nợ có hạn thanh toán phù hợp.</p>
+      )}
 
       <AutoDismissMessage message={dateWarning} type="warning" className="sales-date-warning" />
       <AutoDismissMessage message={error} className="sales-alert" />
@@ -2220,7 +2572,13 @@ function SalesInvoices() {
         {loading ? (
           <Skeleton rows={7} columns={5} />
         ) : invoices.length === 0 ? (
-          <div className="sales-state">Không có đơn hàng phù hợp.</div>
+          <div className="sales-state">
+            {cancelRequestFilter === "pending"
+              ? "Không có đơn nào đang chờ duyệt hủy."
+              : debtStatus
+                ? "Không có đơn còn nợ phù hợp với hạn thanh toán đã chọn."
+                : "Không có đơn hàng phù hợp."}
+          </div>
         ) : (
           <div className="sales-table-wrap">
             <table className="sales-table">
@@ -2230,6 +2588,7 @@ function SalesInvoices() {
                   <th>Kho xuất</th>
                   <th>Khách hàng</th>
                   <th>Trạng thái</th>
+                  <th>Hạn thanh toán</th>
                   <th>Số sản phẩm</th>
                   <th className="sales-money">Tổng tiền</th>
                 </tr>
@@ -2245,7 +2604,12 @@ function SalesInvoices() {
                         openDetail(invoice.id);
                     }}
                   >
-                    <td>{formatDateTime(invoice.sold_at)}</td>
+                    <td className="sales-order-start-cell">
+                      {formatDateTime(invoice.sold_at)}
+                      {requiresSalesInvoiceAction(invoice, currentUser) && (
+                        <span className="sales-action-dot" aria-label={`Đơn hàng #${invoice.id} cần xử lý`} title="Đơn hàng cần xử lý" />
+                      )}
+                    </td>
                     <td>{invoice.sale_source === "hàng nhân viên" ? "Hàng nhân viên" : invoice.warehouse?.name || "—"}</td>
                     <td>
                       <strong>{invoice.customer?.full_name || "—"}</strong>
@@ -2254,9 +2618,9 @@ function SalesInvoices() {
                     <td>
                       <div className="sales-status-cell">
                         <span
-                          className={`sales-status-badge ${getStatusClass(invoice.status)}`}
+                          className={`sales-status-badge ${getStatusClass(invoice.workflow_stage || invoice.status)}`}
                         >
-                          {getStatusLabel(invoice.status)}
+                          {getStatusLabel(invoice.workflow_stage || invoice.status)}
                         </span>
                         {hasActiveCancelRequest(invoice) && (
                           <span
@@ -2266,14 +2630,9 @@ function SalesInvoices() {
                             Chờ duyệt hủy
                           </span>
                         )}
-                        {Number(invoice.remaining_amount || 0) > 0 &&
-                          ["overdue", "due_today", "due_soon"].includes(invoice.payment_due_status) && (
-                            <span className={`sales-due-badge is-${invoice.payment_due_status}`}>
-                              {getPaymentDueLabel(invoice)}
-                            </span>
-                          )}
                       </div>
                     </td>
+                    <td><SalesInvoiceDueCell invoice={invoice} /></td>
                     <td>{invoice.items_count || 0}</td>
                     <td className="sales-money">
                       {formatCurrency(invoice.final_amount)}
@@ -2340,6 +2699,11 @@ function SalesInvoices() {
             canRequestCancel={canRequestCancel}
             canCancelDirect={canCancelDirect}
             canManageStatus={canManageStatus}
+            canComplete={canCompleteSales}
+            canRecordPayment={canRecordPayment}
+            canSubmitWarehouse={canSubmitWarehouse && (currentUser.role === "quản lý" || Number(selectedInvoice.employee?.id) === Number(currentUser.id))}
+            canConfirmDelivery={canConfirmDelivery && (currentUser.role === "quản lý" || Number(selectedInvoice.employee?.id) === Number(currentUser.id))}
+            needsAction={requiresSalesInvoiceAction(selectedInvoice, currentUser)}
             canApproveCancel={canApproveCancel}
             canManageDueDate={canManageDueDate}
             actionLoading={actionLoading}
@@ -2350,6 +2714,11 @@ function SalesInvoices() {
             onCancelDirect={handleCancelDirect}
             onAdvanceStatus={advanceInvoiceStatus}
             onComplete={completeInvoice}
+            onRecordPayment={recordInvoicePayment}
+            onLoadMorePayments={loadMoreInvoicePayments}
+            paymentHistoryLoading={paymentHistoryLoading}
+            onSubmitWarehouse={submitInvoiceToWarehouse}
+            onConfirmDelivery={confirmInvoiceDelivery}
             onUpdateDueDate={updatePaymentDueDate}
             onApproveCancel={(approved) =>
               setConfirmAction(approved ? "approve-cancel" : "reject-cancel")

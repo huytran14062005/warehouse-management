@@ -14,6 +14,13 @@ from web.services.product_service import (
     update_product_service,
 )
 from web.services.price_list_export_service import build_price_list_export
+from web.services.inventory_settings_service import get_low_stock_percentage, update_low_stock_percentage
+from web.services.product_combo_service import (
+    delete_product_combo_service,
+    get_product_combo_catalog_service,
+    get_product_combos_service,
+    save_product_combo_service,
+)
 from web.services.authorization import (
     scoped_central_warehouse_id,
     scoped_warehouse_id,
@@ -22,6 +29,69 @@ from web.utils.pagination import build_pagination
 
 
 products_bp = Blueprint("products", __name__, url_prefix="/api/products")
+
+
+@products_bp.route("/combos", methods=["GET"])
+@verify_token
+@verify_role(EmployeeRole.NHAN_VIEN_BAN_HANG, EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY)
+@handle_api_errors
+def get_product_combos():
+    return jsonify({"combos": get_product_combos_service()}), 200
+
+
+@products_bp.route("/combos/catalog", methods=["GET"])
+@verify_token
+@verify_role(EmployeeRole.QUAN_LY)
+@handle_api_errors
+def get_product_combo_catalog():
+    return jsonify({"products": get_product_combo_catalog_service()}), 200
+
+
+@products_bp.route("/combos", methods=["POST"])
+@verify_token
+@verify_role(EmployeeRole.QUAN_LY)
+@handle_api_errors
+def create_product_combo():
+    data = request.get_json(silent=True) or {}
+    combo = save_product_combo_service(None, data.get("name"), data.get("items"))
+    return jsonify({"combo": combo, "message": "Đã tạo combo"}), 201
+
+
+@products_bp.route("/combos/<int:combo_id>", methods=["PUT"])
+@verify_token
+@verify_role(EmployeeRole.QUAN_LY)
+@handle_api_errors
+def update_product_combo(combo_id):
+    data = request.get_json(silent=True) or {}
+    combo = save_product_combo_service(combo_id, data.get("name"), data.get("items"))
+    return jsonify({"combo": combo, "message": "Đã cập nhật combo"}), 200
+
+
+@products_bp.route("/combos/<int:combo_id>", methods=["DELETE"])
+@verify_token
+@verify_role(EmployeeRole.QUAN_LY)
+@handle_api_errors
+def delete_product_combo(combo_id):
+    delete_product_combo_service(combo_id)
+    return jsonify({"message": "Đã xóa combo"}), 200
+
+
+@products_bp.route("/inventory-threshold", methods=["GET"])
+@verify_token
+@verify_role(EmployeeRole.NHAN_VIEN_BAN_HANG, EmployeeRole.THU_KHO, EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY)
+@handle_api_errors
+def get_inventory_threshold():
+    return jsonify({"low_stock_percentage": float(get_low_stock_percentage())}), 200
+
+
+@products_bp.route("/inventory-threshold", methods=["PUT"])
+@verify_token
+@verify_role(EmployeeRole.QUAN_LY)
+@handle_api_errors
+def update_inventory_threshold():
+    data = request.get_json(silent=True) or {}
+    percentage = update_low_stock_percentage(request.employee_id, data.get("low_stock_percentage"))
+    return jsonify({"low_stock_percentage": float(percentage)}), 200
 
 
 @products_bp.route("/<int:product_id>", methods=["GET"])
@@ -139,6 +209,7 @@ def get_products_inventory():
 
     return jsonify({
         'products': products_list,
+        'low_stock_percentage': float(get_low_stock_percentage()),
         'pagination': build_pagination(page, per_page, total)
     }), 200
 

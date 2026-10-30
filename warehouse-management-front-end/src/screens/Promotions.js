@@ -5,10 +5,10 @@ import { getApiError } from "../utils/apiError";
 import useNotificationState from "../utils/useNotificationState";
 import AutoDismissMessage from "../components/AutoDismissMessage";
 import MoneyInput from "../components/MoneyInput";
+import SearchableDropdown from "../components/SearchableDropdown";
 import ConfirmDialog from "../components/ConfirmDialog";
 import Skeleton from "../components/Skeleton";
 import "../css/Promotions.css";
-
 
 const EMPTY_FORM = {
   name: "",
@@ -21,6 +21,17 @@ const EMPTY_FORM = {
   discount_value: "",
   max_discount_amount: "",
 };
+
+const CONDITION_OPTIONS = [
+  { value: "min_quantity", label: "Mua đủ số lượng sản phẩm" },
+  { value: "min_order_amount", label: "Đơn đạt giá trị tối thiểu" },
+  { value: "holiday", label: "Theo dịp / ngày lễ" },
+];
+
+const DISCOUNT_OPTIONS = [
+  { value: "fixed_amount", label: "Giảm số tiền cố định" },
+  { value: "percentage", label: "Giảm theo phần trăm" },
+];
 
 function formatDate(value) {
   if (!value) return "Không giới hạn";
@@ -101,7 +112,9 @@ function PromotionForm({ promotion, onClose, onSaved }) {
               {promotion ? promotion.name : "Chương trình khuyến mãi"}
             </h2>
           </div>
-          <button type="button" onClick={onClose} aria-label="Đóng">×</button>
+          <button type="button" onClick={onClose} aria-label="Đóng">
+            ×
+          </button>
         </div>
         <form className="promotion-form" onSubmit={handleSubmit}>
           <AutoDismissMessage message={error} className="promotion-alert" />
@@ -118,19 +131,17 @@ function PromotionForm({ promotion, onClose, onSaved }) {
 
           <label className="promotion-field">
             <span>Điều kiện áp dụng</span>
-            <select
+            <SearchableDropdown
               value={form.condition_type}
-              onChange={(event) => update("condition_type", event.target.value)}
-            >
-              <option value="min_quantity">Mua đủ số lượng sản phẩm</option>
-              <option value="min_order_amount">Đơn đạt giá trị tối thiểu</option>
-              <option value="holiday">Theo dịp / ngày lễ</option>
-            </select>
+              onChange={(value) => update("condition_type", value)}
+              options={CONDITION_OPTIONS}
+              ariaLabel="Điều kiện áp dụng"
+            />
           </label>
 
           {form.condition_type === "min_quantity" && (
             <label className="promotion-field">
-              <span>Số lượng tối thiểu</span>
+              <span>Số sản phẩm cần mua để có thể áp dụng khuyến mãi</span>
               <input
                 type="number"
                 min="1"
@@ -157,7 +168,10 @@ function PromotionForm({ promotion, onClose, onSaved }) {
           )}
 
           <label className="promotion-field">
-            <span>Ngày bắt đầu{form.condition_type !== "holiday" ? " (không bắt buộc)" : ""}</span>
+            <span>
+              Ngày bắt đầu
+              {form.condition_type !== "holiday" ? " (không bắt buộc)" : ""}
+            </span>
             <input
               type="date"
               value={form.start_date}
@@ -166,7 +180,10 @@ function PromotionForm({ promotion, onClose, onSaved }) {
             />
           </label>
           <label className="promotion-field">
-            <span>Ngày kết thúc{form.condition_type !== "holiday" ? " (không bắt buộc)" : ""}</span>
+            <span>
+              Ngày kết thúc
+              {form.condition_type !== "holiday" ? " (không bắt buộc)" : ""}
+            </span>
             <input
               type="date"
               value={form.end_date}
@@ -175,15 +192,14 @@ function PromotionForm({ promotion, onClose, onSaved }) {
             />
           </label>
 
-          <label className="promotion-field">
+          <label className="promotion-field promotion-discount-field">
             <span>Cách giảm</span>
-            <select
+            <SearchableDropdown
               value={form.discount_type}
-              onChange={(event) => update("discount_type", event.target.value)}
-            >
-              <option value="fixed_amount">Giảm số tiền cố định</option>
-              <option value="percentage">Giảm theo phần trăm</option>
-            </select>
+              onChange={(value) => update("discount_type", value)}
+              options={DISCOUNT_OPTIONS}
+              ariaLabel="Cách giảm"
+            />
           </label>
           <label className="promotion-field">
             <span>
@@ -199,7 +215,9 @@ function PromotionForm({ promotion, onClose, onSaved }) {
                 max="100"
                 step="0.01"
                 value={form.discount_value}
-                onChange={(event) => update("discount_value", event.target.value)}
+                onChange={(event) =>
+                  update("discount_value", event.target.value)
+                }
                 placeholder="Ví dụ: 10"
                 required
               />
@@ -228,9 +246,15 @@ function PromotionForm({ promotion, onClose, onSaved }) {
           )}
 
           <div className="promotion-form-actions promotion-field-wide">
-            <button type="button" onClick={onClose} disabled={saving}>Hủy</button>
+            <button type="button" onClick={onClose} disabled={saving}>
+              Hủy
+            </button>
             <button type="submit" className="is-primary" disabled={saving}>
-              {saving ? "Đang lưu..." : promotion ? "Lưu thay đổi" : "Tạo khuyến mãi"}
+              {saving
+                ? "Đang lưu..."
+                : promotion
+                  ? "Lưu thay đổi"
+                  : "Tạo khuyến mãi"}
             </button>
           </div>
         </form>
@@ -277,9 +301,11 @@ function Promotions() {
   const handleSaved = (promotion) => {
     setFormOpen(false);
     setEditingPromotion(null);
-    setSuccess(promotion?.id === editingPromotion?.id
-      ? "Đã cập nhật khuyến mãi."
-      : "Đã tạo khuyến mãi.");
+    setSuccess(
+      promotion?.id === editingPromotion?.id
+        ? "Đã cập nhật khuyến mãi."
+        : "Đã tạo khuyến mãi.",
+    );
     fetchPromotions();
   };
 
@@ -299,7 +325,13 @@ function Promotions() {
   };
 
   if (currentUser.role !== "quản lý") {
-    return <div className="promotions-page"><div className="promotion-empty">Bạn không có quyền quản lý khuyến mãi.</div></div>;
+    return (
+      <div className="promotions-page">
+        <div className="promotion-empty">
+          Bạn không có quyền quản lý khuyến mãi.
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -307,7 +339,10 @@ function Promotions() {
       <header className="promotions-header">
         <div>
           <h1>Khuyến mãi</h1>
-          <p>Thiết lập điều kiện và mức giảm dùng thống nhất khi lập đơn bán hàng.</p>
+          <p>
+            Thiết lập điều kiện và mức giảm dùng thống nhất khi lập đơn bán
+            hàng.
+          </p>
         </div>
         <button
           type="button"
@@ -340,9 +375,15 @@ function Promotions() {
               <tbody>
                 {promotions.map((promotion) => (
                   <tr key={promotion.id}>
-                    <td><strong>{promotion.name}</strong></td>
+                    <td>
+                      <strong>{promotion.name}</strong>
+                    </td>
                     <td>{promotion.condition_summary}</td>
-                    <td><strong className="promotion-benefit">{promotion.benefit_summary}</strong></td>
+                    <td>
+                      <strong className="promotion-benefit">
+                        {promotion.benefit_summary}
+                      </strong>
+                    </td>
                     <td>
                       {promotion.start_date || promotion.end_date
                         ? `${formatDate(promotion.start_date)} → ${formatDate(promotion.end_date)}`
@@ -393,9 +434,11 @@ function Promotions() {
       <ConfirmDialog
         open={Boolean(deleteTarget)}
         title="Xóa khuyến mãi?"
-        message={deleteTarget
-          ? `Khuyến mãi “${deleteTarget.name}” sẽ không thể áp dụng cho đơn mới. Các đơn cũ vẫn giữ nguyên lịch sử.`
-          : ""}
+        message={
+          deleteTarget
+            ? `Khuyến mãi “${deleteTarget.name}” sẽ không thể áp dụng cho đơn mới. Các đơn cũ vẫn giữ nguyên lịch sử.`
+            : ""
+        }
         confirmLabel="Xóa khuyến mãi"
         cancelLabel="Quay lại"
         danger

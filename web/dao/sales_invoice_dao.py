@@ -1,22 +1,27 @@
 from datetime import timedelta
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy.exc import IntegrityError
 
 from web import db
-from web.models import InvoiceStatus, SalesInvoice, SalesInvoiceItem
+from web.models import CustomerPayment, InvoiceStatus, SalesInvoice, SalesInvoiceItem, SalesInvoiceWorkflowEvent
 
 
-def _invoice_load_options():
-    return (
-        selectinload(SalesInvoice.items).selectinload(SalesInvoiceItem.product),
-        selectinload(SalesInvoice.customer),
-        selectinload(SalesInvoice.warehouse),
-        selectinload(SalesInvoice.created_by_employee),
-        selectinload(SalesInvoice.discount_approved_by_employee),
-        selectinload(SalesInvoice.payments),
+def _invoice_load_options(for_list=False):
+    items_option = selectinload(SalesInvoice.items)
+    if not for_list:
+        items_option = items_option.selectinload(SalesInvoiceItem.product)
+    options = (
+        items_option,
+        joinedload(SalesInvoice.customer),
+        joinedload(SalesInvoice.warehouse),
+        joinedload(SalesInvoice.created_by_employee),
+        joinedload(SalesInvoice.sales_area_ref),
     )
+    if not for_list:
+        options += (joinedload(SalesInvoice.discount_approved_by_employee),)
+    return options
 
 
 def sales_invoice_remaining_amount_expression():
@@ -166,17 +171,28 @@ def get_sales_invoices_list(
     debt_status=None,
     today=None,
     due_soon_days=7,
+    workflow_stage_filter=None,
 ):
        
     from web import app
     from web.models import Customer
     from sqlalchemy import or_
     
-    query = SalesInvoice.query.options(*_invoice_load_options())
+    query = SalesInvoice.query.options(*_invoice_load_options(for_list=True))
     
                         
     if status:
         query = query.filter(SalesInvoice.status == status)
+        if status == InvoiceStatus.DRAFT:
+            query = query.filter(SalesInvoice.warehouse_submitted_at.is_(None))
+        elif status == InvoiceStatus.DELIVERING:
+            query = query.filter(SalesInvoice.delivered_at.is_(None))
+    if workflow_stage_filter == "chờ kho":
+        query = query.filter(SalesInvoice.status == InvoiceStatus.DRAFT,
+                             SalesInvoice.warehouse_submitted_at.isnot(None))
+    elif workflow_stage_filter == "đã giao":
+        query = query.filter(SalesInvoice.status == InvoiceStatus.DELIVERING,
+                             SalesInvoice.delivered_at.isnot(None))
     if warehouse_id:
         query = query.filter(SalesInvoice.warehouse_id == warehouse_id)
 
@@ -228,10 +244,10 @@ def get_sales_invoices_list(
         )
     
                                 
-    query = query.order_by(SalesInvoice.sold_at.desc())
+    query = query.order_by(SalesInvoice.sold_at.desc(), SalesInvoice.id.desc())
     
                       
-    total = query.count()
+    total = query.order_by(None).count()
     
     if not page or page < 1:
         page = 1
@@ -254,3 +270,24 @@ def get_sales_invoice_by_id(invoice_id):
         .filter(SalesInvoice.id == invoice_id)
         .first()
     )
+
+
+def get_recent_sales_invoice_workflow_events(invoice_id, limit=20):
+    return (
+        SalesInvoiceWorkflowEvent.query.options(joinedload(SalesInvoiceWorkflowEvent.actor))
+        .filter(SalesInvoiceWorkflowEvent.sales_invoice_id == invoice_id)
+        .order_by(SalesInvoiceWorkflowEvent.id.desc())
+        .limit(limit)
+        .all()
+    )
+
+
+def get_sales_invoice_payments_page(invoice_id, page=1, per_page=20):
+    query = CustomerPayment.query.filter(CustomerPayment.sales_invoice_id == invoice_id)
+    total = query.count()
+    payments = (
+        query.options(joinedload(CustomerPayment.collected_by_employee))
+        .order_by(CustomerPayment.paid_at.desc(), CustomerPayment.id.desc())
+        .offset((page - 1) * per_page).limit(per_page).all()
+    )
+    return payments, total

@@ -7,6 +7,8 @@ import useNotificationState from "../../utils/useNotificationState";
 import { digitsOnly, formatMoneyInput } from "../../utils/money";
 import AutoDismissMessage from "../../components/AutoDismissMessage";
 import MoneyInput from "../../components/MoneyInput";
+import CustomerFields from "../../components/CustomerFields";
+import PaymentMethodDropdown from "../../components/PaymentMethodDropdown";
 import Pagination from "../../components/Pagination";
 import Skeleton from "../../components/Skeleton";
 import "../../css/Customers.css";
@@ -56,19 +58,25 @@ function CustomerEditModal({ customer, onClose, onSaved }) {
   const [address, setAddress] = useState(customer.address || "");
   const [salesAreaId, setSalesAreaId] = useState(String(customer.sales_area_id || ""));
   const [salesAreas, setSalesAreas] = useState([]);
-  const [debtAmount, setDebtAmount] = useState(
-    String(Math.round(Number(customer.debt_amount || 0))),
-  );
+  const [salesAreasLoading, setSalesAreasLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useNotificationState();
 
   useEffect(() => {
+    let cancelled = false;
     authApis().get(endpoints.salesAreas)
-      .then((response) => setSalesAreas(response.data?.sales_areas || []))
-      .catch(() => setSalesAreas([]));
+      .then((response) => {
+        if (!cancelled) setSalesAreas(response.data?.sales_areas || []);
+      })
+      .catch(() => {
+        if (!cancelled) setSalesAreas([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSalesAreasLoading(false);
+      });
+    return () => { cancelled = true; };
   }, []);
 
-  const nextDebt = Number(digitsOnly(debtAmount) || 0);
   const submit = async (event) => {
     event.preventDefault();
     setError("");
@@ -83,7 +91,6 @@ function CustomerEditModal({ customer, onClose, onSaved }) {
         phone: phone.trim(),
         address: address.trim(),
         sales_area_id: salesAreaId ? Number(salesAreaId) : null,
-        debt_amount: nextDebt,
       });
       onSaved(response.data?.customer);
     } catch (requestError) {
@@ -103,20 +110,17 @@ function CustomerEditModal({ customer, onClose, onSaved }) {
         <div className="customer-modal-body">
           <p className="customer-edit-help">Thông tin khách hàng sẽ được cập nhật sau khi lưu thành công.</p>
           <AutoDismissMessage message={error} className="customers-alert" />
-          <label className="customer-edit-field"><span>Họ và tên</span><input value={fullName} onChange={(event) => setFullName(event.target.value)} maxLength={150} required /></label>
-          <label className="customer-edit-field"><span>Số điện thoại</span><input value={phone} onChange={(event) => setPhone(event.target.value)} inputMode="tel" maxLength={20} required /></label>
-          <label className="customer-edit-field"><span>Địa chỉ</span><textarea value={address} onChange={(event) => setAddress(event.target.value)} rows="3" required /></label>
-          <label className="customer-edit-field"><span>Khu vực bán hàng</span><select value={salesAreaId} onChange={(event) => setSalesAreaId(event.target.value)}><option value="">Chọn khu vực</option>{salesAreas.map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}</select></label>
-          <label className="customer-edit-field">
-            <span>Công nợ</span>
-            <MoneyInput
-              value={debtAmount}
-              onChange={setDebtAmount}
-              label="Công nợ"
-              allowZero
-              required
-            />
-          </label>
+          <CustomerFields
+            value={{ full_name: fullName, phone, address, sales_area_id: salesAreaId }}
+            onChange={(field, value) => {
+              if (field === "full_name") setFullName(value);
+              if (field === "phone") setPhone(value);
+              if (field === "address") setAddress(value);
+              if (field === "sales_area_id") setSalesAreaId(value);
+            }}
+            salesAreas={salesAreas}
+            salesAreasLoading={salesAreasLoading}
+          />
           <div className="customer-edit-actions">
             <button type="button" onClick={onClose} disabled={saving}>Hủy</button>
             <button type="submit" disabled={saving}>{saving ? "Đang lưu..." : "Lưu thay đổi"}</button>
@@ -188,7 +192,7 @@ function Customers() {
       return {};
     }
   })();
-  const canReceivePayment = ["kế toán", "quản lý"].includes(currentUser.role);
+  const canReceivePayment = currentUser.role === "kế toán";
   const canViewCustomerFinancial = ["kế toán", "quản lý"].includes(currentUser.role);
   const canEditCustomer = currentUser.role === "quản lý";
 
@@ -748,15 +752,10 @@ function Customers() {
                             placeholder="Từ 500 đ"
                             required
                           />
-                          <select
+                          <PaymentMethodDropdown
                             value={paymentMethod}
-                            onChange={(event) => setPaymentMethod(event.target.value)}
-                            required
-                          >
-                            <option value="">{"Chọn phương thức thanh toán"}</option>
-                            <option value="cash">{"Tiền mặt"}</option>
-                            <option value="bank_transfer">{"Chuyển khoản"}</option>
-                          </select>
+                            onChange={setPaymentMethod}
+                          />
                           <input
                             value={paymentNote}
                             onChange={(event) => setPaymentNote(event.target.value)}
@@ -785,7 +784,11 @@ function Customers() {
                                     : "Chưa xác định"
                               }
                             </strong>
-                            <span>{payment.note || "Không có ghi chú"}</span>
+                            <span>
+                              {payment.sales_invoice_id
+                                ? `Đơn hàng #${payment.sales_invoice_id}${payment.note ? ` · ${payment.note}` : ""}`
+                                : payment.note || "Không có ghi chú"}
+                            </span>
                           </div>
                           <small>
                             {payment.employee?.full_name || "—"} · {formatDateTime(payment.paid_at)}
@@ -913,14 +916,14 @@ function Customers() {
                           </div>
                           <div className="customer-history-table-wrap">
                             <table className="customer-history-table">
-                              <thead><tr><th>Sản phẩm</th><th>Đơn vị</th><th>Tổng số lượng</th><th>Lần mua gần nhất</th><th className="customers-money">Tổng tiền</th></tr></thead>
+                              <thead><tr><th>Lần mua gần nhất</th><th>Sản phẩm</th><th>Đơn vị</th><th>Tổng số lượng</th><th className="customers-money">Tổng tiền</th></tr></thead>
                               <tbody>
                                 {purchasedProducts.map((product) => (
                                   <tr key={product.product_id}>
+                                    <td>{formatDateTime(product.last_purchased)}</td>
                                     <td className="customers-name">{product.product_name}</td>
                                     <td>{product.unit}</td>
                                     <td>{product.total_quantity}</td>
-                                    <td>{formatDateTime(product.last_purchased)}</td>
                                     <td className="customers-money">{formatCurrency(product.total_amount)}</td>
                                   </tr>
                                 ))}

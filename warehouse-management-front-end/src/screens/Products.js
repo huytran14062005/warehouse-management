@@ -6,10 +6,17 @@ import { getApiError } from "../utils/apiError";
 import useNotificationState from "../utils/useNotificationState";
 import { getInventoryStatus } from "../utils/inventoryStatus";
 import { INVENTORY_CHANGED_EVENT } from "../utils/inventoryEvents";
-import { digitsOnly, formatMoneyInput } from "../utils/money";
+import {
+  digitsOnly,
+  formatCurrency,
+  formatMoneyInput,
+  formatQuantity,
+} from "../utils/money";
 import AutoDismissMessage from "../components/AutoDismissMessage";
 import MoneyInput from "../components/MoneyInput";
 import SharedSearchableDropdown from "../components/SearchableDropdown";
+import ProductDetailModal from "../components/ProductDetailModal";
+import ProductComboManager from "../components/ProductComboManager";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import "../css/Products.css";
@@ -23,20 +30,6 @@ const INVENTORY_STATUS_OPTIONS = [
   { value: "low", label: "Sắp hết hàng" },
   { value: "empty", label: "Hết hàng" },
 ];
-
-function formatCurrency(value) {
-  return new Intl.NumberFormat("vi-VN", {
-    style: "currency",
-    currency: "VND",
-    maximumFractionDigits: 0,
-  }).format(Number(value || 0));
-}
-
-function formatQuantity(value) {
-  return new Intl.NumberFormat("vi-VN", {
-    maximumFractionDigits: 3,
-  }).format(Number(value || 0));
-}
 
 function validatePriceRange(minPrice, maxPrice) {
   const minText = String(minPrice || "").trim();
@@ -61,7 +54,9 @@ function ProductEditor({ request, product, onClose, onSaved }) {
   const source = product || request;
   const [name, setName] = useState(source?.name || "");
   const [unit, setUnit] = useState(source?.unit || "");
-  const [price, setPrice] = useState(product ? String(product.default_sale_price || "") : "");
+  const [price, setPrice] = useState(
+    product ? String(product.default_sale_price || "") : "",
+  );
   const [note, setNote] = useState(request?.note || "");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -80,8 +75,14 @@ function ProductEditor({ request, product, onClose, onSaved }) {
         unit: unit.trim(),
         default_sale_price: Number(price || 0),
       };
-      if (editing) await authApis().put(endpoints.productDetail(product.id), payload);
-      else await authApis().post(endpoints.products, { ...payload, note: note.trim(), request_id: request?.id || null });
+      if (editing)
+        await authApis().put(endpoints.productDetail(product.id), payload);
+      else
+        await authApis().post(endpoints.products, {
+          ...payload,
+          note: note.trim(),
+          request_id: request?.id || null,
+        });
       onSaved();
     } catch (requestError) {
       setError(getApiError(requestError));
@@ -92,23 +93,56 @@ function ProductEditor({ request, product, onClose, onSaved }) {
 
   return createPortal(
     <div className="warehouse-modal-overlay">
-      <div className="warehouse-modal warehouse-editor-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+      <div
+        className="warehouse-modal warehouse-editor-modal"
+        role="dialog"
+        aria-modal="true"
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="warehouse-modal-header">
           <div>
-            <h2>{editing ? "Chỉnh sửa sản phẩm" : request ? "Xử lý yêu cầu thêm sản phẩm" : "Thêm sản phẩm"}</h2>
-            {request && <small>Người gửi: {request.requested_by?.full_name} ({request.requested_by?.role})</small>}
+            <h2>
+              {editing
+                ? "Chỉnh sửa sản phẩm"
+                : request
+                  ? "Xử lý yêu cầu thêm sản phẩm"
+                  : "Thêm sản phẩm"}
+            </h2>
+            {request && (
+              <small>
+                Người gửi: {request.requested_by?.full_name} (
+                {request.requested_by?.role})
+              </small>
+            )}
           </div>
-          <button type="button" className="warehouse-modal-close" onClick={onClose} aria-label="Đóng">×</button>
+          <button
+            type="button"
+            className="warehouse-modal-close"
+            onClick={onClose}
+            aria-label="Đóng"
+          >
+            ×
+          </button>
         </div>
         <form className="warehouse-modal-body" onSubmit={submit}>
           <AutoDismissMessage message={error} className="warehouse-error" />
           <label className="warehouse-field">
             <span>Tên sản phẩm</span>
-            <input value={name} onChange={(event) => setName(event.target.value)} required autoFocus />
+            <input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              required
+              autoFocus
+            />
           </label>
           <label className="warehouse-field">
             <span>Đơn vị tính</span>
-            <input value={unit} onChange={(event) => setUnit(event.target.value)} placeholder="Ví dụ: Cái, Hộp, Kg" required />
+            <input
+              value={unit}
+              onChange={(event) => setUnit(event.target.value)}
+              placeholder="Ví dụ: Cái, Hộp, Kg"
+              required
+            />
           </label>
           <label className="warehouse-field">
             <span>Giá bán mặc định</span>
@@ -120,13 +154,32 @@ function ProductEditor({ request, product, onClose, onSaved }) {
               required
             />
           </label>
-          {!editing && <label className="warehouse-field">
-            <span>Ghi chú</span>
-            <textarea rows="3" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Thông tin thêm về sản phẩm" />
-          </label>}
+          {!editing && (
+            <label className="warehouse-field">
+              <span>Ghi chú</span>
+              <textarea
+                rows="3"
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+                placeholder="Thông tin thêm về sản phẩm"
+              />
+            </label>
+          )}
           <div className="warehouse-modal-actions">
-            <button type="button" onClick={onClose} disabled={saving}>Hủy</button>
-            <button type="submit" className="warehouse-primary-button" disabled={saving}>{saving ? "Đang lưu..." : editing ? "Lưu thay đổi" : "Thêm sản phẩm"}</button>
+            <button type="button" onClick={onClose} disabled={saving}>
+              Hủy
+            </button>
+            <button
+              type="submit"
+              className="warehouse-primary-button"
+              disabled={saving}
+            >
+              {saving
+                ? "Đang lưu..."
+                : editing
+                  ? "Lưu thay đổi"
+                  : "Thêm sản phẩm"}
+            </button>
           </div>
         </form>
       </div>
@@ -135,48 +188,90 @@ function ProductEditor({ request, product, onClose, onSaved }) {
   );
 }
 
-function ProductDetail({ product, canEdit, onClose, onEdit }) {
+function InventoryThresholdEditor({ percentage, onClose, onSaved }) {
+  const [value, setValue] = useState(String(percentage));
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    const next = Number(value);
+    if (
+      !Number.isFinite(next) ||
+      next < 1 ||
+      next > 100 ||
+      !/^\d+(?:\.\d{1,2})?$/.test(value)
+    ) {
+      setError("Nhập tỷ lệ từ 1% đến 100%, tối đa 2 chữ số thập phân.");
+      return;
+    }
+    try {
+      setSaving(true);
+      setError("");
+      const response = await authApis().put(endpoints.inventoryThreshold, {
+        low_stock_percentage: next,
+      });
+      onSaved(response.data?.low_stock_percentage ?? next);
+    } catch (requestError) {
+      setError(getApiError(requestError));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return createPortal(
     <div className="warehouse-modal-overlay">
-      <div className="warehouse-modal product-detail-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+      <div
+        className="warehouse-modal products-threshold-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="products-threshold-title"
+      >
         <div className="warehouse-modal-header">
-          <div>
-            <p className="product-detail-eyebrow">CHI TIẾT SẢN PHẨM</p>
-            <h2>{product.name}</h2>
-          </div>
-          <button type="button" className="warehouse-modal-close" onClick={onClose} aria-label="Đóng">×</button>
+          <h2 id="products-threshold-title">Ngưỡng sắp hết hàng</h2>
+          <button
+            type="button"
+            className="warehouse-modal-close"
+            onClick={onClose}
+            disabled={saving}
+            aria-label="Đóng"
+          >
+            ×
+          </button>
         </div>
-        <div className="warehouse-modal-body">
-          <div className="product-detail-summary">
-            <div><span>Đơn vị tính</span><strong>{product.unit}</strong></div>
-            <div><span>Giá bán mặc định</span><strong>{formatCurrency(product.default_sale_price)}</strong></div>
-            <div><span>Tồn kho hiện tại</span><strong>{formatQuantity(product.available_stock)}</strong></div>
-          </div>
-          <div className="product-detail-stats">
-            <div><span>Đã nhập</span><strong>{formatQuantity(product.total_imported)}</strong></div>
-            <div><span>Đã bán</span><strong>{formatQuantity(product.total_sold)}</strong></div>
-            <div><span>Đã hư</span><strong>{formatQuantity(product.total_damaged)}</strong></div>
-            <div><span>Đã cấp đi</span><strong>{formatQuantity(product.total_transferred)}</strong></div>
-          </div>
-          <h3 className="product-detail-section-title">Tồn theo kho</h3>
-          {product.warehouses?.length ? (
-            <div className="product-detail-warehouse-list">
-              {product.warehouses.map((warehouse) => (
-                <div key={warehouse.warehouse_id} className="product-detail-warehouse-row">
-                  <div>
-                    <span>{warehouse.warehouse_name}</span>
-                    <small>Tồn kho thực tế sau khi trừ bán, hư hỏng và cấp đi</small>
-                  </div>
-                  <strong>{formatQuantity(warehouse.stock)} {product.unit}</strong>
-                </div>
-              ))}
+        <form className="warehouse-modal-body" onSubmit={submit}>
+          <AutoDismissMessage message={error} className="warehouse-error" />
+          <div className="products-threshold-row">
+            <label htmlFor="products-threshold-value">Tỷ lệ sắp hết hàng</label>
+            <div className="products-threshold-control">
+              <input
+                id="products-threshold-value"
+                type="number"
+                inputMode="decimal"
+                min="1"
+                max="100"
+                step="0.01"
+                value={value}
+                onChange={(event) => setValue(event.target.value)}
+                required
+                autoFocus
+              />
+              <span aria-hidden="true">%</span>
             </div>
-          ) : <p className="product-detail-empty">Chưa có phát sinh tồn kho.</p>}
-          <div className="warehouse-modal-actions">
-            <button type="button" onClick={onClose}>Đóng</button>
-            {canEdit && <button type="button" className="warehouse-primary-button" onClick={onEdit}>Chỉnh sửa sản phẩm</button>}
           </div>
-        </div>
+          <div className="warehouse-modal-actions">
+            <button type="button" onClick={onClose} disabled={saving}>
+              Hủy
+            </button>
+            <button
+              type="submit"
+              className="warehouse-primary-button"
+              disabled={saving}
+            >
+              {saving ? "Đang lưu..." : "Lưu ngưỡng"}
+            </button>
+          </div>
+        </form>
       </div>
     </div>,
     document.body,
@@ -187,6 +282,7 @@ function Products() {
   const navigate = useNavigate();
   const location = useLocation();
   const [products, setProducts] = useState([]);
+  const [lowStockPercentage, setLowStockPercentage] = useState(null);
   const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
   const [minPriceInput, setMinPriceInput] = useState("");
@@ -213,17 +309,24 @@ function Products() {
   const canCreateProducts = currentUser.role === "quản lý";
   const [exportingPdf, setExportingPdf] = useState(false);
   const [productEditor, setProductEditor] = useState(null);
+  const [thresholdEditor, setThresholdEditor] = useState(false);
+  const [comboManagerOpen, setComboManagerOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const productRequestId = new URLSearchParams(location.search).get("product_request_id");
+  const productRequestId = new URLSearchParams(location.search).get(
+    "product_request_id",
+  );
 
   const openProductDetail = async (product) => {
     setSelectedProduct(null);
     setDetailLoading(true);
     try {
-      const response = await authApis().get(endpoints.productDetail(product.id), {
-        params: { source: "central" },
-      });
+      const response = await authApis().get(
+        endpoints.productDetail(product.id),
+        {
+          params: { source: "central" },
+        },
+      );
       setSelectedProduct(response.data?.product || product);
     } catch (requestError) {
       setError(getApiError(requestError));
@@ -259,6 +362,7 @@ function Products() {
       const data = response.data || {};
       const responsePagination = data.pagination || {};
       setProducts(data.products || []);
+      setLowStockPercentage(data.low_stock_percentage ?? null);
       setPagination({
         total: Number(responsePagination.total || 0),
         totalPages: Number(responsePagination.total_pages || 1),
@@ -277,16 +381,20 @@ function Products() {
   useEffect(() => {
     const refreshProducts = () => fetchProducts();
     window.addEventListener(INVENTORY_CHANGED_EVENT, refreshProducts);
-    return () => window.removeEventListener(INVENTORY_CHANGED_EVENT, refreshProducts);
+    return () =>
+      window.removeEventListener(INVENTORY_CHANGED_EVENT, refreshProducts);
   }, [fetchProducts]);
 
   useEffect(() => {
     if (!canCreateProducts || !productRequestId) return undefined;
     let cancelled = false;
-    authApis().get(endpoints.productRequests)
+    authApis()
+      .get(endpoints.productRequests)
       .then((response) => {
         if (cancelled) return;
-        const request = (response.data?.requests || []).find((item) => String(item.id) === String(productRequestId));
+        const request = (response.data?.requests || []).find(
+          (item) => String(item.id) === String(productRequestId),
+        );
         if (request) {
           setProductEditor(request);
         } else {
@@ -339,7 +447,16 @@ function Products() {
         clearTimeout(debounceTimerRef.current);
       }
     };
-  }, [keywordInput, keyword, maxPrice, maxPriceInput, minPrice, minPriceInput, status, statusInput]);
+  }, [
+    keywordInput,
+    keyword,
+    maxPrice,
+    maxPriceInput,
+    minPrice,
+    minPriceInput,
+    status,
+    statusInput,
+  ]);
 
   const handleSearch = (event) => {
     event.preventDefault();
@@ -409,21 +526,45 @@ function Products() {
           <h1>Danh sách sản phẩm</h1>
         </div>
         {(canExportPriceList || canCreateProducts) && (
-          <div className="products-export-actions" aria-label="Xuất bảng báo giá">
+          <div
+            className="products-export-actions"
+            aria-label="Thao tác sản phẩm"
+          >
             {canCreateProducts && (
-              <button type="button" className="products-export-button products-export-button-primary" onClick={() => setProductEditor("new")}>
-                + Thêm sản phẩm
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="products-export-button"
+                  onClick={() => setThresholdEditor(true)}
+                  disabled={lowStockPercentage == null}
+                >
+                  Điều chỉnh ngưỡng sắp hết hàng
+                </button>
+                <button
+                  type="button"
+                  className="products-export-button products-export-button-primary"
+                  onClick={() => setComboManagerOpen(true)}
+                >
+                  + Tạo combo
+                </button>
+                <button
+                  type="button"
+                  className="products-export-button products-export-button-primary"
+                  onClick={() => setProductEditor("new")}
+                >
+                  + Thêm sản phẩm
+                </button>
+              </>
             )}
             {canExportPriceList && (
-            <button
-              type="button"
-              className="products-export-button products-export-button-primary"
-              disabled={exportingPdf}
-              onClick={handleExportPriceList}
-            >
-              {exportingPdf ? "Đang xuất..." : "Xuất PDF"}
-            </button>
+              <button
+                type="button"
+                className="products-export-button products-export-button-primary"
+                disabled={exportingPdf}
+                onClick={handleExportPriceList}
+              >
+                {exportingPdf ? "Đang xuất..." : "Xuất PDF"}
+              </button>
             )}
           </div>
         )}
@@ -442,7 +583,9 @@ function Products() {
             type="text"
             inputMode="numeric"
             value={formatMoneyInput(minPriceInput)}
-            onChange={(event) => setMinPriceInput(digitsOnly(event.target.value))}
+            onChange={(event) =>
+              setMinPriceInput(digitsOnly(event.target.value))
+            }
             placeholder="Giá từ"
             aria-label="Giá từ"
             aria-invalid={Boolean(validationWarning)}
@@ -453,7 +596,9 @@ function Products() {
             type="text"
             inputMode="numeric"
             value={formatMoneyInput(maxPriceInput)}
-            onChange={(event) => setMaxPriceInput(digitsOnly(event.target.value))}
+            onChange={(event) =>
+              setMaxPriceInput(digitsOnly(event.target.value))
+            }
             placeholder="Giá đến"
             aria-label="Giá đến"
             aria-invalid={Boolean(validationWarning)}
@@ -474,12 +619,24 @@ function Products() {
         <button type="submit">Tìm kiếm</button>
       </form>
 
-      <AutoDismissMessage message={validationWarning} type="warning" className="products-validation-warning" />
+      <AutoDismissMessage
+        message={validationWarning}
+        type="warning"
+        className="products-validation-warning"
+      />
       <AutoDismissMessage message={error} className="products-alert" />
       <p className="products-stock-note">
-        Tồn kho hiện tại = đã nhập − đã bán − đã hư − đã cấp đi. Đơn đã rời trạng thái nháp sẽ được tính vào số đã bán;
-        đơn nháp và đơn hủy không trừ tồn kho.
+        Đã cấp đi là số hàng nhân viên còn giữ. Khi nhân viên bán hàng đi tỉnh,
+        số lượng bán chuyển từ “Đã cấp đi” sang “Đã bán”; tồn kho trong kho
+        không bị trừ lần nữa. Tồn kho hiện tại = đã nhập − đã bán − đã hư − đã
+        cấp đi.
       </p>
+      {lowStockPercentage != null && (
+        <p className="products-stock-note">
+          Sắp hết hàng: tồn kho còn lại không quá {lowStockPercentage}% tổng số
+          đã nhập.
+        </p>
+      )}
 
       <div className="products-card">
         {loading ? (
@@ -497,8 +654,10 @@ function Products() {
                   <th className="products-number">Đã nhập</th>
                   <th className="products-number">Đã bán</th>
                   <th className="products-number">Đã hư</th>
-                  <th className="products-number">Đã cấp đi</th>
-                  <th className="products-number products-stock-heading">Tồn kho hiện tại</th>
+                  <th className="products-number">Hàng đi tỉnh</th>
+                  <th className="products-number products-stock-heading">
+                    Tồn kho hiện tại
+                  </th>
                   <th>Trạng thái</th>
                 </tr>
               </thead>
@@ -507,45 +666,49 @@ function Products() {
                   const inventoryStatus = getInventoryStatus(
                     product.available_stock,
                     product.total_imported,
+                    lowStockPercentage,
                   );
                   return (
-                  <tr
-                    key={product.id}
-                    className="products-clickable-row"
-                    onClick={() => openProductDetail(product)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") openProductDetail(product);
-                    }}
-                    tabIndex="0"
-                    role="button"
-                    aria-label={`Xem chi tiết ${product.name}`}
-                  >
-                    <td className="products-name">{product.name}</td>
-                    <td>{product.unit}</td>
-                    <td className="products-money">
-                      {formatCurrency(product.default_sale_price)}
-                    </td>
-                    <td className="products-number">
-                      {formatQuantity(product.total_imported)}
-                    </td>
-                    <td className="products-number">
-                      {formatQuantity(product.total_sold)}
-                    </td>
-                    <td className="products-number">
-                      {formatQuantity(product.total_damaged)}
-                    </td>
-                    <td className="products-number">
-                      {formatQuantity(product.total_transferred)}
-                    </td>
-                    <td className="products-number products-stock">
-                      {formatQuantity(product.available_stock)}
-                    </td>
-                    <td>
-                      <span className={`products-stock-status is-${inventoryStatus.key}`}>
-                        {inventoryStatus.label}
-                      </span>
-                    </td>
-                  </tr>
+                    <tr
+                      key={product.id}
+                      className="products-clickable-row"
+                      onClick={() => openProductDetail(product)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ")
+                          openProductDetail(product);
+                      }}
+                      tabIndex="0"
+                      role="button"
+                      aria-label={`Xem chi tiết ${product.name}`}
+                    >
+                      <td className="products-name">{product.name}</td>
+                      <td>{product.unit}</td>
+                      <td className="products-money">
+                        {formatCurrency(product.default_sale_price)}
+                      </td>
+                      <td className="products-number">
+                        {formatQuantity(product.total_imported)}
+                      </td>
+                      <td className="products-number">
+                        {formatQuantity(product.total_sold)}
+                      </td>
+                      <td className="products-number">
+                        {formatQuantity(product.total_damaged)}
+                      </td>
+                      <td className="products-number">
+                        {formatQuantity(product.total_transferred)}
+                      </td>
+                      <td className="products-number products-stock">
+                        {formatQuantity(product.available_stock)}
+                      </td>
+                      <td>
+                        <span
+                          className={`products-stock-status is-${inventoryStatus.key}`}
+                        >
+                          {inventoryStatus.label}
+                        </span>
+                      </td>
+                    </tr>
                   );
                 })}
               </tbody>
@@ -554,9 +717,14 @@ function Products() {
         )}
       </div>
 
-      <Pagination page={page} totalPages={pagination.totalPages} onPageChange={handlePageChange} disabled={loading} />
+      <Pagination
+        page={page}
+        totalPages={pagination.totalPages}
+        onPageChange={handlePageChange}
+        disabled={loading}
+      />
       {selectedProduct && !detailLoading && (
-        <ProductDetail
+        <ProductDetailModal
           product={selectedProduct}
           canEdit={canCreateProducts}
           onClose={() => setSelectedProduct(null)}
@@ -566,9 +734,18 @@ function Products() {
           }}
         />
       )}
+      {comboManagerOpen && (
+        <ProductComboManager onClose={() => setComboManagerOpen(false)} />
+      )}
       {productEditor && (
         <ProductEditor
-          request={productEditor === "new" ? null : productEditor.product ? null : productEditor}
+          request={
+            productEditor === "new"
+              ? null
+              : productEditor.product
+                ? null
+                : productEditor
+          }
           product={productEditor.product || null}
           onClose={() => {
             setProductEditor(null);
@@ -579,6 +756,17 @@ function Products() {
             setError("");
             fetchProducts();
             if (productRequestId) navigate("/products", { replace: true });
+          }}
+        />
+      )}
+      {thresholdEditor && (
+        <InventoryThresholdEditor
+          percentage={lowStockPercentage}
+          onClose={() => setThresholdEditor(false)}
+          onSaved={(percentage) => {
+            setLowStockPercentage(percentage);
+            setThresholdEditor(false);
+            fetchProducts();
           }}
         />
       )}

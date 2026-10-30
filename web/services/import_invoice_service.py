@@ -4,14 +4,17 @@ from decimal import Decimal
 from web import app, dao, db
 from web.dao import import_invoice_dao, product_dao
 from web.models import Employee, EmployeeRole, ImportInvoice, PaymentMethod, Product, Supplier, SupplierPayment, Warehouse
-from web.services.exceptions import NotFoundError, ValidationError
-from web.services.validators import require_text, validate_money_amount
+from web.services.exceptions import ForbiddenError, NotFoundError, ValidationError
+from web.services.company_fund_service import record_fund_movement
+from web.services.validators import validate_money_amount
 from web.services.authorization import (
     ensure_bounded_items,
     ensure_warehouse_access,
+    require_accountant,
     resolve_document_warehouse,
 )
 from web.services.payment_service import parse_payment_method
+from web.services.supplier_service import get_or_create_supplier
 
 
 def validate_positive_number(value, field_name):
@@ -117,7 +120,9 @@ def _validate_import_items(items):
     return normalized
 
 
-def _resolve_supplier(supplier_id, supplier_data=None):
+def _resolve_supplier(supplier_id, supplier_data=None, employee_role=None):
+    if supplier_data is not None and employee_role != EmployeeRole.QUAN_LY:
+        raise ForbiddenError("Chỉ quản lý được thêm nhà cung cấp mới")
     supplier_id = validate_positive_integer(supplier_id, "Mã nhà cung cấp") if supplier_id not in (None, "") else None
     if supplier_id:
         supplier = Supplier.query.get(supplier_id)
@@ -127,16 +132,7 @@ def _resolve_supplier(supplier_id, supplier_data=None):
 
     if not isinstance(supplier_data, dict):
         raise ValidationError("Vui lòng chọn nhà cung cấp hoặc nhập nhà cung cấp mới")
-    supplier_name = require_text(supplier_data.get("name"), "Tên nhà cung cấp", max_length=255)
-    supplier_address = require_text(supplier_data.get("address"), "Địa chỉ nhà cung cấp")
-    supplier = Supplier.query.filter(
-        Supplier.name == supplier_name,
-        Supplier.address == supplier_address,
-    ).first()
-    if not supplier:
-        supplier = Supplier(name=supplier_name, address=supplier_address)
-        db.session.add(supplier)
-        db.session.flush()
+    supplier, _ = get_or_create_supplier(supplier_data.get("name"), supplier_data.get("address"))
     return supplier
 
 
@@ -307,20 +303,12 @@ def create_import_invoice_service(employee_id, warehouse_id, supplier_id, suppli
     warehouse_id = warehouse.id
 
                                
-    supplier = _resolve_supplier(supplier_id, supplier_data)
+    supplier = _resolve_supplier(supplier_id, supplier_data, employee.role)
     supplier_id = supplier.id
 
-    invoice_total = sum(
-        Decimal(str(item["quantity"])) * Decimal(str(item["unit_price"]))
-        for item in validated_items
-    )
-    payment = _validate_supplier_payment(invoice_total, payment_amount, payment_method)
-    if payment:
-        if is_return:
-            raise ValidationError("Phiếu trả hàng không được ghi nhận khoản trả tiền cho nhà cung cấp")
-        if employee.role not in {EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY}:
-            raise ValidationError("Chá»‰ káº¿ toÃ¡n hoáº·c quáº£n lÃ½ má»›i Ä‘Æ°á»£c ghi nháº­n thanh toÃ¡n nhÃ  cung cáº¥p")
-        payment["note"] = "Thanh toÃ¡n khi nháº­p hÃ ng"
+    if (validate_money_amount(payment_amount, "Số tiền trả nhà cung cấp") > 0
+            or payment_method not in (None, "")):
+        raise ValidationError("Kế toán ghi nhận thanh toán sau khi lập phiếu nhập")
 
                                 
     final_note = note.strip() if note else ""
@@ -335,13 +323,14 @@ def create_import_invoice_service(employee_id, warehouse_id, supplier_id, suppli
         imported_at=imported_at,
         note=final_note,
         items=validated_items,
-        payment=payment,
+        payment=None,
     )
 
     return invoice
 
 
 def record_supplier_payment_service(invoice_id, employee_id, amount, payment_method, note=""):
+    require_accountant(employee_id)
     # Serialize concurrent payments for the same invoice so two requests cannot
     # both observe the same remaining balance and overpay the supplier.
     invoice = ImportInvoice.query.with_for_update().filter_by(id=invoice_id).first()
@@ -363,8 +352,18 @@ def record_supplier_payment_service(invoice_id, employee_id, amount, payment_met
         payment_method=payment["payment_method"],
         note=payment["note"],
     )
-    db.session.add(payment_record)
-    db.session.commit()
+    try:
+        db.session.add(payment_record)
+        db.session.flush()
+        record_fund_movement(
+            payment_record.payment_method, "out", payment_record.amount,
+            "supplier_payment", payment_record.id, employee_id,
+            f"Trả nhà cung cấp · Phiếu nhập #{invoice.id}", payment_record.note,
+        )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
     return import_invoice_dao.get_import_invoice_by_id(invoice.id), payment_record
 
 
@@ -374,6 +373,10 @@ def update_import_invoice_service(invoice_id, employee_id, warehouse_id, supplie
     invoice = import_invoice_dao.get_import_invoice_by_id(invoice_id)
     if not invoice:
         raise NotFoundError("Phiếu nhập không tồn tại")
+
+    employee = Employee.query.get(employee_id)
+    if not employee:
+        raise NotFoundError("Nhân viên không tồn tại")
 
     if invoice.payments:
         raise ValidationError("KhÃ´ng thá»ƒ sá»­a phiáº¿u nháº­p Ä‘Ã£ phÃ¡t sinh thanh toÃ¡n cho nhÃ  cung cáº¥p")
@@ -403,7 +406,7 @@ def update_import_invoice_service(invoice_id, employee_id, warehouse_id, supplie
                                
     validated_items = _validate_import_items(items)
 
-    supplier = _resolve_supplier(supplier_id, supplier_data)
+    supplier = _resolve_supplier(supplier_id, supplier_data, employee.role)
     supplier_id = supplier.id
 
 

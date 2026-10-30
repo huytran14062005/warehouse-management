@@ -116,7 +116,8 @@
   .products-status-dropdown,
   .sales-toolbar > input,
   .sales-status-dropdown,
-  .sales-cancel-dropdown,
+  .sales-cancel-filter,
+  .sales-debt-dropdown,
   .sales-date-range,
   .suppliers-toolbar input,
   .employee-accounts-toolbar input,
@@ -126,8 +127,9 @@
 
   .manager-analytics-filter { padding: 14px; }
   .manager-analytics-filter label { width: 100%; }
-  .manager-analytics-filter input { box-sizing: border-box; width: 100%; min-width: 0; }
-  .manager-analytics-filter button { min-height: 44px; }
+  .manager-analytics-filter label > input,
+  .manager-analytics-filter .searchable-dropdown { box-sizing: border-box; width: 100%; min-width: 0; }
+  .manager-analytics-filter > button[type="submit"] { min-height: 44px; }
   .manager-analytics-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .manager-analytics-card-heading { align-items: flex-start; gap: 8px; padding: 15px; }
   .manager-analytics-card-heading h2 { font-size: 17px; }
@@ -200,6 +202,8 @@
   .customer-edit-field input,
   .customer-edit-field select,
   .customer-edit-field textarea,
+  .customer-fields-field input,
+  .customer-fields-field textarea,
   .sales-editor-field input,
   .sales-editor-field select,
   .sales-editor-field textarea,
@@ -351,7 +355,6 @@
   .sales-date-range,
   .customer-detail-summary,
   .customer-payment-history-item,
-  .sales-editor-financials,
   .warehouse-product-summary-header {
     align-items: stretch;
     flex-direction: column;
@@ -394,7 +397,7 @@
     gap: 8px;
   }
 
-  .sales-editor-item > .searchable-dropdown,
+  .sales-editor-item > .sales-editor-product-field,
   .warehouse-editor-item > .warehouse-product-field { grid-column: 1 / -1; }
 
   .sales-editor-remove,
@@ -419,10 +422,10 @@
   .customer-payment-actions button,
   .sales-editor-actions button,
   .warehouse-modal-actions button,
-  .sales-detail-actions button { width: 100%; min-height: 44px; }
+  .sales-detail-actions > button,
+  .sales-completion-actions > button { width: 100%; min-height: 44px; }
 
   .sales-complete-actions { width: 100%; }
-  .sales-complete-actions input { width: 100%; }
 
   .customer-edit-trigger {
     width: 100%;
@@ -501,13 +504,9 @@
 
   .sales-editor-item,
   .warehouse-editor-item { grid-template-columns: minmax(0, 1fr) 44px; }
-  .sales-editor-item > input,
-  .warehouse-editor-item > input { grid-column: 1; }
   .sales-editor-item > .sales-editor-remove,
   .warehouse-editor-item > .warehouse-remove { grid-column: 2; grid-row: 2; }
   .damage-editor-item { grid-template-columns: minmax(0, 1fr) 44px; }
-  .damage-editor-item > input:nth-of-type(1) { grid-column: 1; grid-row: 2; }
-  .damage-editor-item > input:nth-of-type(2) { grid-column: 1 / -1; grid-row: 3; }
   .damage-editor-item > .warehouse-remove { grid-column: 2; grid-row: 2; }
 }
 

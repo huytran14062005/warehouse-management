@@ -73,6 +73,7 @@ from web.blueprints import (
     sales_areas_bp,
     employee_accounts_bp,
     promotions_bp,
+    company_funds_bp,
 )
 
 app.register_blueprint(auth_bp)
@@ -88,3 +89,4 @@ app.register_blueprint(suppliers_bp)
 app.register_blueprint(sales_areas_bp)
 app.register_blueprint(employee_accounts_bp)
 app.register_blueprint(promotions_bp)
+app.register_blueprint(company_funds_bp)

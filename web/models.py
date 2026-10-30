@@ -52,6 +52,12 @@ class PaymentMethod(UserEnum):
     BANK_TRANSFER = "bank_transfer"
 
 
+class FundEntryType(UserEnum):
+    OPENING = "opening"
+    CUSTOMER_RECEIPT = "customer_receipt"
+    SUPPLIER_PAYMENT = "supplier_payment"
+
+
 class DamageReportStatus(UserEnum):
     PENDING = "pending"
     APPROVED = "approved"
@@ -73,6 +79,44 @@ class Product(BaseModel):
 
     import_invoice_items = relationship("ImportInvoiceItem", backref="product", lazy=True)
     sales_invoice_items = relationship("SalesInvoiceItem", backref="product", lazy=True)
+
+
+class ProductCombo(BaseModel):
+    __tablename__ = "product_combos"
+
+    name = Column(String(150), nullable=False, unique=True)
+    items = relationship(
+        "ProductComboItem", back_populates="combo", lazy="selectin",
+        cascade="all, delete-orphan", order_by="ProductComboItem.id",
+    )
+
+
+class ProductComboItem(BaseModel):
+    __tablename__ = "product_combo_items"
+    __table_args__ = (
+        UniqueConstraint("combo_id", "product_id", name="uq_product_combo_item"),
+        CheckConstraint("quantity > 0", name="ck_product_combo_item_quantity"),
+    )
+
+    combo_id = Column(Integer, ForeignKey("product_combos.id", ondelete="CASCADE"), nullable=False, index=True)
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="RESTRICT"), nullable=False, index=True)
+    quantity = Column(Integer, nullable=False)
+
+    combo = relationship("ProductCombo", back_populates="items")
+    product = relationship("Product")
+
+
+class InventorySetting(db.Model):
+    __tablename__ = "inventory_settings"
+    __table_args__ = (
+        CheckConstraint(
+            "low_stock_percentage >= 1 AND low_stock_percentage <= 100",
+            name="ck_inventory_low_stock_percentage",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True)
+    low_stock_percentage = Column(Numeric(5, 2), nullable=False)
 
 
 class Warehouse(BaseModel):
@@ -269,6 +313,54 @@ class SupplierPayment(BaseModel):
     employee = relationship("Employee", backref="supplier_payment_records", lazy=True)
 
 
+class CompanyFund(db.Model):
+    __tablename__ = "company_funds"
+    __table_args__ = (CheckConstraint("balance >= 0", name="ck_company_fund_balance"),)
+
+    method = Column(String(20), primary_key=True)
+    opening_balance = Column(Numeric(14, 2), nullable=False)
+    balance = Column(Numeric(14, 2), nullable=False)
+    opened_at = Column(DateTime, nullable=False, default=datetime.now)
+    opened_by_id = Column(Integer, ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False)
+
+    opened_by = relationship("Employee", lazy=True)
+
+
+class CompanyFundEntry(BaseModel):
+    __tablename__ = "company_fund_entries"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="ck_company_fund_entry_amount"),
+        CheckConstraint("direction IN ('in', 'out')", name="ck_company_fund_entry_direction"),
+        UniqueConstraint("source_type", "source_id", name="uq_company_fund_entry_source"),
+        Index("ix_company_fund_entries_method_date", "method", "occurred_at"),
+    )
+
+    method = Column(String(20), ForeignKey("company_funds.method", ondelete="RESTRICT"), nullable=False)
+    direction = Column(String(3), nullable=False)
+    entry_type = Column(String(30), nullable=False)
+    amount = Column(Numeric(14, 2), nullable=False)
+    balance_after = Column(Numeric(14, 2), nullable=False)
+    occurred_at = Column(DateTime, nullable=False, default=datetime.now)
+    source_type = Column(String(30), nullable=False)
+    source_id = Column(Integer, nullable=False)
+    description = Column(String(255), nullable=False)
+    employee_id = Column(Integer, ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False)
+    note = Column(Text, nullable=True)
+
+    employee = relationship("Employee", lazy=True)
+
+
+class CompanyFundAdjustment(BaseModel):
+    __tablename__ = "company_fund_adjustments"
+
+    method = Column(String(20), ForeignKey("company_funds.method", ondelete="RESTRICT"), nullable=False)
+    previous_balance = Column(Numeric(14, 2), nullable=False)
+    new_balance = Column(Numeric(14, 2), nullable=False)
+    reason = Column(Text, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.now)
+    employee_id = Column(Integer, ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False)
+
+
 class ImportInvoiceItem(BaseModel):
     __tablename__ = "import_invoice_items"
     __table_args__ = (
@@ -388,6 +480,8 @@ class SalesInvoice(BaseModel):
         CheckConstraint("paid_amount >= 0", name="ck_sales_invoice_paid_amount"),
         Index("ix_sales_invoices_customer_date", "customer_id", "sold_at"),
         Index("ix_sales_invoices_status_date", "status", "sold_at"),
+        Index("ix_sales_invoices_warehouse_queue", "status", "warehouse_submitted_at"),
+        Index("ix_sales_invoices_delivery_queue", "status", "delivered_at"),
         Index(
             "ix_sales_invoices_payment_due",
             "status",
@@ -399,6 +493,10 @@ class SalesInvoice(BaseModel):
     sold_at = Column(DateTime, nullable=False, default=datetime.now)
     note = Column(Text)
     status = Column(Enum(InvoiceStatus), nullable=False, default=InvoiceStatus.DRAFT)
+    warehouse_submitted_at = Column(DateTime, nullable=True)
+    delivered_at = Column(DateTime, nullable=True)
+    delivery_recipient = Column(String(120), nullable=True)
+    delivery_note = Column(Text, nullable=True)
     cancel_requested = Column(Boolean, nullable=False, default=False)
     cancel_note = Column(Text)
     
@@ -433,6 +531,23 @@ class SalesInvoice(BaseModel):
         lazy=True,
     )
     payments = relationship("CustomerPayment", backref="sales_invoice", lazy=True)
+    workflow_events = relationship(
+        "SalesInvoiceWorkflowEvent", backref="sales_invoice",
+        cascade="all, delete-orphan", lazy=True,
+        order_by="SalesInvoiceWorkflowEvent.id",
+    )
+
+
+class SalesInvoiceWorkflowEvent(BaseModel):
+    __tablename__ = "sales_invoice_workflow_events"
+    __table_args__ = (Index("ix_sales_invoice_workflow_events_invoice_id", "sales_invoice_id", "id"),)
+
+    sales_invoice_id = Column(Integer, ForeignKey("sales_invoices.id", ondelete="CASCADE"), nullable=False)
+    actor_id = Column(Integer, ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False)
+    action = Column(String(32), nullable=False)
+    detail = Column(String(255), nullable=True)
+    occurred_at = Column(DateTime, nullable=False, default=datetime.now)
+    actor = relationship("Employee", foreign_keys=[actor_id], lazy=True)
 
 
 class SalesInvoiceItem(BaseModel):
@@ -462,13 +577,15 @@ class CustomerPayment(BaseModel):
         CheckConstraint("payment_method IN ('cash', 'bank_transfer')", name="ck_customer_payment_method"),
         Index("ix_customer_payments_customer_date", "customer_id", "paid_at"),
         Index("ix_customer_payments_method_date", "payment_method", "paid_at"),
+        Index("ix_customer_payments_invoice_time", "sales_invoice_id", "paid_at", "id"),
     )
 
     amount = Column(Numeric(14, 2), nullable=False)
     payment_type = Column(Enum(PaymentType), nullable=False)
     payment_method = Column(
         Enum(PaymentMethod, values_callable=lambda enum_cls: [item.value for item in enum_cls]),
-        nullable=False,
+        # Legacy payments predate this field; their method is unknown.
+        nullable=True,
     )
     paid_at = Column(DateTime, nullable=False, default=datetime.now)
     note = Column(Text, nullable=True)
@@ -538,7 +655,6 @@ class DamageReportItem(BaseModel):
     )
 
     quantity = Column(Integer, nullable=False)
-    damage_reason = Column(String(255), nullable=True)
 
     damage_report_id = Column(
         Integer,

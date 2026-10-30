@@ -6,6 +6,10 @@ import { notifyInventoryChanged } from "../utils/inventoryEvents";
 import AutoDismissMessage from "../components/AutoDismissMessage";
 import SharedSearchableDropdown from "../components/SearchableDropdown";
 import ProductRequestModal from "../components/ProductRequestModal";
+import {
+  ProductEntryField,
+  ProductEntryInfo,
+} from "../components/ProductEntryFields";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import "../css/StockTransfers.css";
@@ -51,14 +55,21 @@ function StockTransfers() {
     const loadOptions = async () => {
       try {
         setLoading(true);
-        const employeesResponse = await authApis().get(endpoints.salesEmployees);
+        const employeesResponse = await authApis().get(
+          endpoints.salesEmployees,
+        );
         const warehouse = employeesResponse.data?.warehouse;
         if (!warehouse?.id) {
-          throw new Error("Chưa cấu hình kho trung tâm để cấp hàng cho nhân viên.");
+          throw new Error(
+            "Chưa cấu hình kho trung tâm để cấp hàng cho nhân viên.",
+          );
         }
-        const productsResponse = await authApis().get(endpoints.productsInventory, {
-          params: { warehouse_id: warehouse.id, page: 1, per_page: 1000 },
-        });
+        const productsResponse = await authApis().get(
+          endpoints.productsInventory,
+          {
+            params: { warehouse_id: warehouse.id, page: 1, per_page: 1000 },
+          },
+        );
         if (cancelled) return;
         setEmployees(employeesResponse.data?.employees || []);
         setWarehouses(employeesResponse.data?.warehouses || [warehouse]);
@@ -81,14 +92,19 @@ function StockTransfers() {
   useEffect(() => {
     if (!sourceWarehouse?.id) return undefined;
     let cancelled = false;
-    authApis().get(endpoints.productsInventory, {
-      params: { warehouse_id: sourceWarehouse.id, page: 1, per_page: 1000 },
-    }).then((response) => {
-      if (!cancelled) setProducts(response.data?.products || []);
-    }).catch((requestError) => {
-      if (!cancelled) setError(getApiError(requestError));
-    });
-    return () => { cancelled = true; };
+    authApis()
+      .get(endpoints.productsInventory, {
+        params: { warehouse_id: sourceWarehouse.id, page: 1, per_page: 1000 },
+      })
+      .then((response) => {
+        if (!cancelled) setProducts(response.data?.products || []);
+      })
+      .catch((requestError) => {
+        if (!cancelled) setError(getApiError(requestError));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [sourceWarehouse?.id]);
 
   useEffect(() => {
@@ -123,7 +139,13 @@ function StockTransfers() {
         setDetailError("");
         const response = await authApis().get(
           endpoints.stockTransferDetail(detailTransfer.id),
-          { params: { page: detailPage, per_page: 10, keyword: detailKeyword || undefined } },
+          {
+            params: {
+              page: detailPage,
+              per_page: 10,
+              keyword: detailKeyword || undefined,
+            },
+          },
         );
         if (cancelled) return;
         setDetailItems(response.data?.transfer?.items || []);
@@ -270,12 +292,16 @@ function StockTransfers() {
         className="stock-transfers-success"
       />
 
-      {loading ? <Skeleton variant="form" rows={4} className="stock-transfers-skeleton" /> : null}
+      {loading ? (
+        <Skeleton
+          variant="form"
+          rows={4}
+          className="stock-transfers-skeleton"
+        />
+      ) : null}
 
       {editorOpen && (
-        <div
-          className="warehouse-modal-overlay"
-        >
+        <div className="warehouse-modal-overlay">
           <div
             className="warehouse-modal stock-transfers-modal"
             onClick={(event) => event.stopPropagation()}
@@ -291,149 +317,166 @@ function StockTransfers() {
                 ×
               </button>
             </div>
-            <form className="warehouse-modal-body stock-transfers-form" onSubmit={submit}>
-          <label className="stock-transfers-source-warehouse">
-            <span>Kho xuất hàng</span>
-            <select
-              value={sourceWarehouse?.id || ""}
-              onChange={(event) => {
-                setSourceWarehouse(warehouses.find((warehouse) => String(warehouse.id) === event.target.value) || null);
-                setItems([]);
-                setProducts([]);
-              }}
-              required
+            <form
+              className="warehouse-modal-body stock-transfers-form"
+              onSubmit={submit}
             >
-              {warehouses.map((warehouse) => (
-                <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>
-              ))}
-            </select>
-          </label>
-          <label className="stock-transfers-field">
-            <span>Nhân viên nhận hàng</span>
-            <SharedSearchableDropdown
-              value={employeeId}
-              placeholder="Chọn nhân viên bán hàng"
-              ariaLabel="Chọn nhân viên nhận hàng"
-              onChange={(value) => setEmployeeId(String(value))}
-              options={[
-                { value: "", label: "Chọn nhân viên bán hàng" },
-                ...employees.map((employee) => ({
-                  value: employee.id,
-                  label: `${employee.full_name} - ${employee.phone}`,
-                })),
-              ]}
-            />
-          </label>
-
-          <div className="stock-transfers-section-heading">
-            <h2>Sản phẩm cấp đi</h2>
-            <button
-              type="button"
-              onClick={() =>
-                setItems((current) => [
-                  ...current,
-                  { product_id: "", productSearch: "", quantity: "1" },
-                ])
-              }
-            >
-              + Thêm sản phẩm
-            </button>
-          </div>
-
-          <div className="stock-transfers-items">
-            {items.map((item, index) => (
-              <div
-                className="stock-transfers-item"
-                key={`${item.product_id || "new"}-${index}`}
-              >
-                <div className="stock-transfers-product-field">
-                  <SharedSearchableDropdown
-                    value={item.product_id}
-                    placeholder="Chọn sản phẩm"
-                    ariaLabel="Chọn sản phẩm cấp đi"
-                    searchValue={item.productSearch || ""}
-                    onSearchChange={(value) =>
-                      updateItem(index, "productSearch", value)
-                    }
-                    filterLocally
-                    emptyLabel="Không tìm thấy sản phẩm."
-                    emptyAction={
-                      item.productSearch?.trim() ? (
-                        <button
-                          type="button"
-                          className="searchable-dropdown-action"
-                          onClick={() => {
-                            setProductRequestName(item.productSearch.trim());
-                            setProductRequestOpen(true);
-                          }}
-                        >
-                          + Gửi yêu cầu thêm sản phẩm
-                        </button>
-                      ) : null
-                    }
-                    onChange={(value, label) => {
-                      updateItem(index, "product_id", String(value));
-                      updateItem(index, "productSearch", label || "");
-                    }}
-                    options={productOptions}
-                  />
-                  {item.product_id &&
-                    (() => {
-                      const selectedProduct = products.find(
-                        (product) =>
-                          String(product.id) === String(item.product_id),
-                      );
-                      if (!selectedProduct) return null;
-                      return (
-                        <div className="stock-transfers-stock-info">
-                          Tồn kho thực tế: {Number(selectedProduct.available_stock || 0).toLocaleString("vi-VN")}{" "}
-                          {selectedProduct.unit}
-                        </div>
-                      );
-                    })()}
-                </div>
-                <input
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={item.quantity}
-                  onChange={(event) =>
-                    updateItem(index, "quantity", event.target.value)
-                  }
-                  placeholder="Số lượng"
-                  aria-label="Số lượng cấp đi"
+              <label className="stock-transfers-source-warehouse">
+                <span>Kho xuất hàng</span>
+                <select
+                  value={sourceWarehouse?.id || ""}
+                  onChange={(event) => {
+                    setSourceWarehouse(
+                      warehouses.find(
+                        (warehouse) =>
+                          String(warehouse.id) === event.target.value,
+                      ) || null,
+                    );
+                    setItems([]);
+                    setProducts([]);
+                  }}
+                  required
+                >
+                  {warehouses.map((warehouse) => (
+                    <option key={warehouse.id} value={warehouse.id}>
+                      {warehouse.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="stock-transfers-field">
+                <span>Nhân viên nhận hàng</span>
+                <SharedSearchableDropdown
+                  value={employeeId}
+                  placeholder="Chọn nhân viên bán hàng"
+                  ariaLabel="Chọn nhân viên nhận hàng"
+                  onChange={(value) => setEmployeeId(String(value))}
+                  options={[
+                    { value: "", label: "Chọn nhân viên bán hàng" },
+                    ...employees.map((employee) => ({
+                      value: employee.id,
+                      label: `${employee.full_name} - ${employee.phone}`,
+                    })),
+                  ]}
                 />
+              </label>
+
+              <div className="stock-transfers-section-heading">
+                <h2>Sản phẩm cấp đi</h2>
                 <button
                   type="button"
-                  className="stock-transfers-remove"
                   onClick={() =>
-                    setItems((current) =>
-                      current.filter((_, itemIndex) => itemIndex !== index),
-                    )
+                    setItems((current) => [
+                      ...current,
+                      { product_id: "", productSearch: "", quantity: "1" },
+                    ])
                   }
-                  aria-label="Xóa sản phẩm"
                 >
-                  ×
+                  + Thêm sản phẩm
                 </button>
               </div>
-            ))}
-          </div>
 
-          <label className="stock-transfers-field">
-            <span>Ghi chú</span>
-            <textarea
-              rows="3"
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-              placeholder="Ví dụ: Điều chuyển hàng cho chuyến bán hàng Đà Nẵng"
-            />
-          </label>
+              <div className="stock-transfers-items">
+                {items.map((item, index) => (
+                  <div
+                    className="stock-transfers-item"
+                    key={`${item.product_id || "new"}-${index}`}
+                  >
+                    <div className="stock-transfers-product-field">
+                      <ProductEntryField label="Sản phẩm">
+                        <SharedSearchableDropdown
+                          value={item.product_id}
+                          placeholder="Chọn sản phẩm"
+                          ariaLabel="Chọn sản phẩm cấp đi"
+                          searchValue={item.productSearch || ""}
+                          onSearchChange={(value) =>
+                            updateItem(index, "productSearch", value)
+                          }
+                          filterLocally
+                          emptyLabel="Không tìm thấy sản phẩm."
+                          emptyAction={
+                            item.productSearch?.trim() ? (
+                              <button
+                                type="button"
+                                className="searchable-dropdown-action"
+                                onClick={() => {
+                                  setProductRequestName(
+                                    item.productSearch.trim(),
+                                  );
+                                  setProductRequestOpen(true);
+                                }}
+                              >
+                                + Gửi yêu cầu thêm sản phẩm
+                              </button>
+                            ) : null
+                          }
+                          onChange={(value, label) => {
+                            updateItem(index, "product_id", String(value));
+                            updateItem(index, "productSearch", label || "");
+                          }}
+                          options={productOptions}
+                        />
+                      </ProductEntryField>
+                      {item.product_id &&
+                        (() => {
+                          const selectedProduct = products.find(
+                            (product) =>
+                              String(product.id) === String(item.product_id),
+                          );
+                          if (!selectedProduct) return null;
+                          return (
+                            <ProductEntryInfo
+                              product={selectedProduct}
+                              stockLabel="Tồn kho thực tế"
+                              stockQuantity={selectedProduct.available_stock}
+                            />
+                          );
+                        })()}
+                    </div>
+                    <ProductEntryField label="Số lượng cấp đi">
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={item.quantity}
+                        onChange={(event) =>
+                          updateItem(index, "quantity", event.target.value)
+                        }
+                        placeholder="Nhập số lượng"
+                        aria-label="Số lượng cấp đi"
+                      />
+                    </ProductEntryField>
+                    <button
+                      type="button"
+                      className="stock-transfers-remove"
+                      onClick={() =>
+                        setItems((current) =>
+                          current.filter((_, itemIndex) => itemIndex !== index),
+                        )
+                      }
+                      aria-label="Xóa sản phẩm"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
 
-          <div className="stock-transfers-actions">
-            <button type="submit" disabled={saving}>
-              {saving ? "Đang lưu..." : "Xác nhận cấp hàng"}
-            </button>
-          </div>
+              <label className="stock-transfers-field">
+                <span>Ghi chú</span>
+                <textarea
+                  rows="3"
+                  value={note}
+                  onChange={(event) => setNote(event.target.value)}
+                  placeholder="Ví dụ: Điều chuyển hàng cho chuyến bán hàng Đà Nẵng"
+                />
+              </label>
+
+              <div className="stock-transfers-actions">
+                <button type="submit" disabled={saving}>
+                  {saving ? "Đang lưu..." : "Xác nhận cấp hàng"}
+                </button>
+              </div>
             </form>
           </div>
         </div>
@@ -460,44 +503,132 @@ function StockTransfers() {
           >
             <div className="warehouse-modal-header">
               <div>
-                <p className="stock-transfer-detail-kicker">CHI TIẾT PHIẾU ĐIỀU CHUYỂN</p>
-                <h2 id="stock-transfer-detail-title">Phiếu #{detailTransfer.id}</h2>
+                <p className="stock-transfer-detail-kicker">
+                  CHI TIẾT PHIẾU ĐIỀU CHUYỂN
+                </p>
+                <h2 id="stock-transfer-detail-title">
+                  Phiếu #{detailTransfer.id}
+                </h2>
               </div>
-              <button type="button" className="warehouse-modal-close" onClick={closeTransferDetail} aria-label="Đóng chi tiết phiếu">×</button>
+              <button
+                type="button"
+                className="warehouse-modal-close"
+                onClick={closeTransferDetail}
+                aria-label="Đóng chi tiết phiếu"
+              >
+                ×
+              </button>
             </div>
             <div className="warehouse-modal-body stock-transfer-detail-body">
               <div className="stock-transfer-detail-summary">
-                <div><span>Kho xuất hàng</span><strong>{detailTransfer.warehouse?.name || "—"}</strong></div>
-                <div><span>Ngày điều chuyển</span><strong>{formatDate(detailTransfer.transferred_at)}</strong></div>
-                <div><span>Nhân viên nhận</span><strong>{detailTransfer.employee_name || "—"}</strong></div>
-                <div><span>Số mặt hàng</span><strong>{detailTransfer.items_count ?? detailPagination?.total ?? 0}</strong></div>
-                <div><span>Tổng số lượng cấp</span><strong>{detailTransfer.total_quantity ?? 0}</strong></div>
+                <div>
+                  <span>Kho xuất hàng</span>
+                  <strong>{detailTransfer.warehouse?.name || "—"}</strong>
+                </div>
+                <div>
+                  <span>Ngày điều chuyển</span>
+                  <strong>{formatDate(detailTransfer.transferred_at)}</strong>
+                </div>
+                <div>
+                  <span>Nhân viên nhận</span>
+                  <strong>{detailTransfer.employee_name || "—"}</strong>
+                </div>
+                <div>
+                  <span>Số mặt hàng</span>
+                  <strong>
+                    {detailTransfer.items_count ?? detailPagination?.total ?? 0}
+                  </strong>
+                </div>
+                <div>
+                  <span>Tổng số lượng cấp</span>
+                  <strong>{detailTransfer.total_quantity ?? 0}</strong>
+                </div>
               </div>
-              {detailTransfer.note ? <div className="stock-transfer-detail-note"><span>Ghi chú</span><p>{detailTransfer.note}</p></div> : null}
-              <form className="stock-transfer-detail-toolbar" onSubmit={(event) => { event.preventDefault(); setDetailPage(1); setDetailKeyword(detailKeywordInput.trim()); }}>
+              {detailTransfer.note ? (
+                <div className="stock-transfer-detail-note">
+                  <span>Ghi chú</span>
+                  <p>{detailTransfer.note}</p>
+                </div>
+              ) : null}
+              <form
+                className="stock-transfer-detail-toolbar"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  setDetailPage(1);
+                  setDetailKeyword(detailKeywordInput.trim());
+                }}
+              >
                 <div>
                   <h3>Danh sách mặt hàng</h3>
-                  <span>{detailPagination?.total ? `Hiển thị ${detailPagination.total} mặt hàng phù hợp` : "Tra cứu từng mặt hàng trong phiếu"}</span>
+                  <span>
+                    {detailPagination?.total
+                      ? `Hiển thị ${detailPagination.total} mặt hàng phù hợp`
+                      : "Tra cứu từng mặt hàng trong phiếu"}
+                  </span>
                 </div>
                 <div className="stock-transfer-detail-search">
-                  <input type="search" value={detailKeywordInput} onChange={(event) => setDetailKeywordInput(event.target.value)} placeholder="Tìm theo tên sản phẩm" aria-label="Tìm sản phẩm trong phiếu điều chuyển" />
+                  <input
+                    type="search"
+                    value={detailKeywordInput}
+                    onChange={(event) =>
+                      setDetailKeywordInput(event.target.value)
+                    }
+                    placeholder="Tìm theo tên sản phẩm"
+                    aria-label="Tìm sản phẩm trong phiếu điều chuyển"
+                  />
                   <button type="submit">Tìm kiếm</button>
                 </div>
               </form>
-              <AutoDismissMessage message={detailError} className="stock-transfers-alert" />
-              {detailLoading ? <Skeleton rows={6} columns={6} /> : detailItems.length === 0 ? <div className="stock-transfers-state">Không tìm thấy mặt hàng phù hợp.</div> : (
+              <AutoDismissMessage
+                message={detailError}
+                className="stock-transfers-alert"
+              />
+              {detailLoading ? (
+                <Skeleton rows={6} columns={6} />
+              ) : detailItems.length === 0 ? (
+                <div className="stock-transfers-state">
+                  Không tìm thấy mặt hàng phù hợp.
+                </div>
+              ) : (
                 <div className="stock-transfer-detail-table-wrap">
                   <table className="stock-transfer-detail-table">
-                    <thead><tr><th>#</th><th>Sản phẩm</th><th>Đơn vị</th><th>Số lượng cấp</th><th>Đã bán từ phiếu</th><th>Còn lại</th></tr></thead>
-                    <tbody>{detailItems.map((item, index) => (
-                      <tr key={`${item.product_id}-${index}`}>
-                        <td>{(detailPage - 1) * 10 + index + 1}</td><td><strong>{item.product_name}</strong></td><td>{item.unit || "—"}</td><td>{item.transferred_quantity ?? item.quantity}</td><td>{item.sold_quantity ?? 0}</td><td><strong>{item.remaining_quantity ?? 0}</strong></td>
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Sản phẩm</th>
+                        <th>Đơn vị</th>
+                        <th>Số lượng cấp</th>
+                        <th>Đã bán từ phiếu</th>
+                        <th>Đã hư</th>
+                        <th>Còn lại</th>
                       </tr>
-                    ))}</tbody>
+                    </thead>
+                    <tbody>
+                      {detailItems.map((item, index) => (
+                        <tr key={`${item.product_id}-${index}`}>
+                          <td>{(detailPage - 1) * 10 + index + 1}</td>
+                          <td>
+                            <strong>{item.product_name}</strong>
+                          </td>
+                          <td>{item.unit || "—"}</td>
+                          <td>{item.transferred_quantity ?? item.quantity}</td>
+                          <td>{item.sold_quantity ?? 0}</td>
+                          <td>{item.damaged_quantity ?? 0}</td>
+                          <td>
+                            <strong>{item.remaining_quantity ?? 0}</strong>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
                   </table>
                 </div>
               )}
-              <Pagination page={detailPage} totalPages={Number(detailPagination?.total_pages || 1)} onPageChange={setDetailPage} disabled={detailLoading} />
+              <Pagination
+                page={detailPage}
+                totalPages={Number(detailPagination?.total_pages || 1)}
+                onPageChange={setDetailPage}
+                disabled={detailLoading}
+              />
             </div>
           </div>
         </div>
@@ -505,15 +636,19 @@ function StockTransfers() {
 
       <section className="stock-transfers-history">
         <div className="stock-transfers-section-heading">
-          <h2>Lịch sử điều chuyển</h2>
+          <h2>Lịch sử điều chuyển hàng</h2>
           {transfersPagination?.total ? (
-            <span className="stock-transfers-count">{transfersPagination.total} phiếu</span>
+            <span className="stock-transfers-count">
+              {transfersPagination.total} phiếu
+            </span>
           ) : null}
         </div>
         {transfersLoading ? (
           <Skeleton rows={6} columns={6} />
         ) : transfers.length === 0 ? (
-          <div className="stock-transfers-state">Chưa có phiếu điều chuyển.</div>
+          <div className="stock-transfers-state">
+            Chưa có phiếu điều chuyển.
+          </div>
         ) : (
           <div className="stock-transfers-history-table-wrap">
             <table className="stock-transfers-history-table">
@@ -524,23 +659,31 @@ function StockTransfers() {
                   <th>Mặt hàng</th>
                   <th>Nhân viên</th>
                   <th>Tổng số lượng cấp</th>
-                  <th>Thao tác</th>
                   <th>Ghi chú</th>
                 </tr>
               </thead>
               <tbody>
                 {transfers.map((transfer) => (
-                  <tr key={transfer.id}>
+                  <tr
+                    key={transfer.id}
+                    className="stock-transfers-history-row"
+                    tabIndex={0}
+                    aria-label={`Xem chi tiết phiếu điều chuyển #${transfer.id}`}
+                    onClick={() => openTransferDetail(transfer)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        openTransferDetail(transfer);
+                      }
+                    }}
+                  >
                     <td>{formatDate(transfer.transferred_at)}</td>
                     <td>{transfer.warehouse?.name || "—"}</td>
-                    <td><strong>{transfer.items_count || 0}</strong> mặt hàng</td>
+                    <td>
+                      <strong>{transfer.items_count || 0}</strong> mặt hàng
+                    </td>
                     <td>{transfer.employee_name}</td>
                     <td>{transfer.total_quantity}</td>
-                    <td>
-                      <button type="button" className="stock-transfer-detail-button" onClick={() => openTransferDetail(transfer)}>
-                        Xem chi tiết
-                      </button>
-                    </td>
                     <td>{transfer.note || "—"}</td>
                   </tr>
                 ))}

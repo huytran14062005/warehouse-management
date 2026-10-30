@@ -1,0 +1,66 @@
+.company-funds-page { max-width: 1200px; }
+.company-funds-page-header { align-items: flex-start; }
+.company-funds-page-header > div { min-width: 0; }
+.company-funds-adjust-button { flex: 0 0 auto; min-height: 40px; padding: 9px 14px; color: #fff; border: 1px solid #0b3158; border-radius: 5px; background: #0b3158; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.company-funds-adjust-button:hover { background: #072542; }
+.company-funds-balances { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 12px; }
+.company-funds-balance { display: grid; gap: 7px; padding: 20px; border: 1px solid #d9e2ec; border-radius: 7px; background: #fff; }
+.company-funds-balance-total { grid-column: 1 / -1; background: #f7fafc; }
+.company-funds-balance span { color: #52657a; font-size: 14px; }
+.company-funds-balance strong { color: #0b3158; font-size: 25px; }
+.company-funds-balance small, .company-funds-cutover { color: #71849a; font-size: 13px; }
+.company-funds-cutover { margin: 0 0 6px; }
+.company-funds-cutover:last-of-type { margin-bottom: 28px; }
+.company-funds-manage { margin: 0 0 16px; }
+.company-funds-manage button, .company-funds-adjust-actions button { min-height: 40px; padding: 9px 14px; border: 1px solid #b7c8d8; border-radius: 5px; background: #fff; color: #0b3158; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.company-funds-adjust { max-width: 650px; margin-bottom: 20px; padding: 20px; }
+.company-funds-modal-overlay { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(15, 23, 42, .42); }
+.company-funds-modal { box-sizing: border-box; width: min(820px, 100%); max-height: min(680px, calc(100vh - 40px)); overflow-y: auto; margin: 0; padding: 0 24px 24px; border: 1px solid #d9e2ec; border-radius: 7px; background: #fff; box-shadow: 0 14px 36px rgba(15, 49, 88, .2); }
+.company-funds-modal-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 -24px 18px; padding: 20px 24px 16px; border-bottom: 1px solid #e8edf2; }
+.company-funds-modal-header h2 { margin: 0; }
+.company-funds-modal-close { width: 32px; height: 32px; padding: 0; color: #52657a; border: 0; background: transparent; font: inherit; font-size: 27px; line-height: 1; cursor: pointer; }
+.company-funds-modal-close:hover { color: #0b3158; }
+.company-funds-adjust h2 { margin: 0; color: #0b3158; font-size: 18px; }
+.company-funds-adjust p { margin: 8px 0 18px; color: #52657a; font-size: 13px; line-height: 1.5; }
+.company-funds-adjust-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.company-funds-adjust-fields label, .company-funds-adjust-reason { display: grid; gap: 7px; color: #52657a; font-size: 13px; font-weight: 600; }
+.company-funds-adjust-fields > label > .money-input input, .company-funds-adjust-reason textarea { box-sizing: border-box; width: 100%; min-height: 42px; padding: 9px 11px; border: 1px solid #cbd7e2; border-radius: 5px; color: #1b2d40; font: inherit; }
+.company-funds-adjust-reason textarea { min-height: 132px; resize: vertical; }
+.company-funds-adjust-preview { display: grid; gap: 5px; margin: 16px 0; color: #52657a; font-size: 13px; }
+.company-funds-adjust-preview strong { color: #0b3158; }
+.company-funds-adjust-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.company-funds-adjust-actions .warehouse-primary-button { color: #fff; border-color: #0b3158; background: #0b3158; }
+.company-funds-list-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 12px; }
+.company-funds-list-head h2, .company-funds-setup h2 { margin: 0; color: #0b3158; font-size: 18px; }
+.company-funds-method-filter { display: flex; align-items: center; gap: 8px; color: #52657a; font-size: 13px; }
+.company-funds-method-filter .searchable-dropdown { width: 160px; }
+.company-funds-entry-row { cursor: pointer; }
+.company-funds-entry-row:hover { background: #f7fafc; }
+.company-funds-entry-row:focus-visible { outline: 2px solid #0b3158; outline-offset: -2px; }
+.company-funds-table td { white-space: nowrap; }
+.company-funds-table td strong { display: block; max-width: 270px; overflow: hidden; color: #1b2d40; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.company-funds-entry-modal { width: min(680px, 100%); }
+.company-funds-entry-modal h2 { color: #0b3158; font-size: 18px; }
+.company-funds-entry-details > div { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 16px; padding: 11px 0; border-bottom: 1px solid #e8edf2; font-size: 14px; }
+.company-funds-entry-details span { color: #52657a; }
+.company-funds-entry-details strong { min-width: 0; color: #1b2d40; font-weight: 600; overflow-wrap: anywhere; }
+.company-funds-entry-note { margin-top: 24px; }
+.company-funds-entry-note h3 { margin: 0 0 9px; color: #0b3158; font-size: 15px; }
+.company-funds-entry-note p { box-sizing: border-box; width: 100%; min-height: 48px; margin: 0; padding: 11px 13px; border: 1px solid #cbd7e2; border-radius: 5px; background: #f8fafc; color: #1b2d40; font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.company-funds-entry-actions { display: flex; justify-content: flex-end; margin-top: 24px; padding-top: 16px; border-top: 1px solid #e8edf2; }
+.company-funds-entry-actions button { min-height: 40px; padding: 9px 18px; border: 1px solid #b7c8d8; border-radius: 5px; background: #fff; color: #0b3158; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.company-funds-entry-actions button:hover { background: #f7fafc; }
+.company-funds-setup { max-width: 650px; padding: 24px; }
+.company-funds-setup p { margin: 10px 0 20px; color: #52657a; line-height: 1.5; }
+.company-funds-setup .company-funds-setup-hint { margin-top: -10px; font-size: 13px; }
+.company-funds-setup-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 20px; }
+.company-funds-setup-total { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 20px; padding-top: 16px; border-top: 1px solid #e1e8ef; color: #52657a; font-size: 14px; }
+.company-funds-setup-total strong { color: #0b3158; font-size: 20px; }
+.company-funds-confirm-total { margin: 0 0 16px; color: #52657a; }
+.company-funds-confirm-total strong { color: #0b3158; }
+.company-funds-setup-fields label { display: grid; gap: 7px; color: #52657a; font-size: 13px; font-weight: 600; }
+.company-funds-setup-fields input { box-sizing: border-box; width: 100%; min-height: 42px; padding: 9px 11px; border: 1px solid #cbd7e2; border-radius: 5px; color: #1b2d40; font: inherit; }
+.company-funds-notice { padding: 20px; color: #52657a; }
+.company-funds-success { padding: 11px 13px; border: 1px solid #a9d5bd; border-radius: 5px; background: #eef9f2; color: #26704b; }
+@media (max-width: 700px) { .company-funds-balances, .company-funds-setup-fields, .company-funds-adjust-fields { grid-template-columns: 1fr; } .company-funds-list-head { align-items: flex-start; flex-direction: column; } .company-funds-page-header { gap: 14px; } .company-funds-adjust-button { width: 100%; } .company-funds-modal-overlay { padding: 12px; } .company-funds-modal { max-height: calc(100vh - 24px); padding: 0 16px 18px; } .company-funds-modal-header { margin: 0 -16px 18px; padding: 16px; } }
+@media (max-width: 700px) { .company-funds-entry-details > div { grid-template-columns: 1fr; gap: 4px; } }

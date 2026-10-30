@@ -1,4 +1,4 @@
-.stock-transfers-page { width: min(900px, calc(100% - 48px)); margin: 0 auto; padding: 38px 0 52px; color: #1b2d40; }
+.stock-transfers-page { width: min(1200px, calc(100% - 48px)); margin: 0 auto; padding: 38px 0 52px; color: #1b2d40; }
 .stock-transfers-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
 .stock-transfers-header h1 { margin: 0; color: #0b3158; font-size: clamp(25px, 4vw, 34px); }
 .stock-transfers-header p { margin: 8px 0 0; color: #71849a; font-size: 14px; }
@@ -9,7 +9,7 @@
 .stock-transfers-source-warehouse strong { color: #123b62; }
 .stock-transfers-source-warehouse select { min-width: 180px; max-width: 100%; padding: 8px 10px; border: 1px solid #cbd7e2; border-radius: 5px; background: #fff; color: #123b62; font: inherit; }
 .stock-transfers-field > span { display: block; margin-bottom: 6px; }
-.stock-transfers-field > input, .stock-transfers-field textarea, .stock-transfers-item > input { box-sizing: border-box; width: 100%; min-height: 40px; padding: 9px 10px; color: #1b2d40; border: 1px solid #cbd7e2; border-radius: 5px; background: #fff; outline: none; font: inherit; font-size: 13px; }
+.stock-transfers-field > input, .stock-transfers-field textarea { box-sizing: border-box; width: 100%; min-height: 40px; padding: 9px 10px; color: #1b2d40; border: 1px solid #cbd7e2; border-radius: 5px; background: #fff; outline: none; font: inherit; font-size: 13px; }
 .stock-transfers-field textarea { resize: vertical; }
 .stock-transfers-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 4px; }
 .stock-transfers-section-heading h2 { margin: 0; color: #0b3158; font-size: 15px; }
@@ -18,8 +18,7 @@
 .stock-transfers-items { display: grid; gap: 9px; }
 .stock-transfers-item { display: grid; grid-template-columns: minmax(0, 1fr) 130px 34px; align-items: start; gap: 8px; padding: 10px; border: 1px solid #e1e8ef; border-radius: 5px; background: #f9fbfc; }
 .stock-transfers-product-field { min-width: 0; }
-.stock-transfers-stock-info { margin: 5px 2px 0; color: #71849a; font-size: 12px; }
-.stock-transfers-remove { width: 34px; height: 40px; color: #9f3d3d; border: 1px solid #e5b4b4; border-radius: 5px; background: #fff; font-size: 19px; cursor: pointer; }
+.stock-transfers-remove { width: 34px; height: 40px; margin-top: 20px; color: #9f3d3d; border: 1px solid #e5b4b4; border-radius: 5px; background: #fff; font-size: 19px; cursor: pointer; }
 .stock-transfers-remove:disabled { opacity: .45; cursor: not-allowed; }
 .stock-transfers-actions { display: flex; justify-content: flex-end; padding-top: 4px; }
 .stock-transfers-actions button { color: #fff; border-color: #0b3158; background: #0b3158; }
@@ -31,12 +30,20 @@
 .stock-transfers-history { margin-top: 24px; padding: 18px; border: 1px solid #d9e2ec; border-radius: 7px; background: #fff; }
 .stock-transfers-history .stock-transfers-section-heading { padding-top: 0; }
 .stock-transfers-count { color: #71849a; font-size: 13px; }
-.stock-transfers-history-table-wrap { overflow-x: auto; }
-.stock-transfers-history-table { width: 100%; border-collapse: collapse; color: #1b2d40; font-size: 13px; }
+.stock-transfers-history-table-wrap { margin-top: 12px; overflow-x: auto; }
+.stock-transfers-history-table { width: 100%; min-width: 1050px; border-collapse: collapse; color: #1b2d40; font-size: 13px; }
 .stock-transfers-history-table th, .stock-transfers-history-table td { padding: 12px 10px; border-bottom: 1px solid #e8edf2; text-align: left; vertical-align: top; }
 .stock-transfers-history-table th { color: #52657a; background: #f7f9fb; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
 .stock-transfers-history-table td { white-space: normal; }
+.stock-transfers-history-table td:nth-child(-n+5) { white-space: nowrap; }
+.stock-transfers-history-table th:nth-child(2), .stock-transfers-history-table td:nth-child(2) { min-width: 140px; }
+.stock-transfers-history-table th:nth-child(3), .stock-transfers-history-table td:nth-child(3) { min-width: 110px; }
+.stock-transfers-history-table th:nth-child(4), .stock-transfers-history-table td:nth-child(4) { min-width: 210px; }
+.stock-transfers-history-table th:nth-child(6), .stock-transfers-history-table td:nth-child(6) { min-width: 220px; }
 .stock-transfers-history-table tbody tr:last-child td { border-bottom: 0; }
+.stock-transfers-history-row { cursor: pointer; }
+.stock-transfers-history-row:hover { background: #f7fafc; }
+.stock-transfers-history-row:focus-visible { outline: 2px solid #0b3158; outline-offset: -2px; }
 .stock-transfers-pagination { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding-top: 14px; color: #52657a; font-size: 13px; }
 .stock-transfers-pagination button { min-width: 68px; padding: 7px 10px; color: #0b3158; border: 1px solid #b7c8d8; border-radius: 5px; background: #fff; font: inherit; cursor: pointer; }
 .stock-transfers-pagination button:disabled { opacity: .5; cursor: not-allowed; }
@@ -50,24 +57,8 @@
   .stock-transfers-history { padding: 16px; }
   .stock-transfers-pagination { justify-content: center; }
 }
-.stock-transfer-detail-button {
-  padding: 7px 12px;
-  border: 1px solid #b8c9da;
-  border-radius: 6px;
-  background: #fff;
-  color: #0b3158;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.stock-transfer-detail-button:hover {
-  background: #f1f6fa;
-}
-
 .warehouse-modal.stock-transfer-detail-modal {
-  max-width: 980px;
+  max-width: 1200px;
 }
 
 .stock-transfer-detail-kicker {
@@ -80,7 +71,7 @@
 
 .stock-transfer-detail-summary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 18px;
 }
@@ -191,6 +182,12 @@
 .stock-transfer-detail-table td {
   color: #2a4159;
   font-size: 13px;
+}
+
+@media (max-width: 950px) {
+  .stock-transfer-detail-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 700px) {

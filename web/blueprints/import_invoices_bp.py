@@ -89,7 +89,7 @@ def create_import_invoice():
 
 @import_invoices_bp.route("/<int:invoice_id>/payments", methods=["POST"])
 @verify_token
-@verify_role(EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY)
+@verify_role(EmployeeRole.KE_TOAN)
 @handle_api_errors
 def record_supplier_payment(invoice_id):
     invoice = ImportInvoice.query.get(invoice_id)
@@ -124,9 +124,6 @@ def record_supplier_payment(invoice_id):
 def update_import_invoice(invoice_id):
        
     data = request.get_json(silent=True) or {}
-
-    if request.employee_role == EmployeeRole.KE_TOAN.value and data.get("supplier_data") and not data.get("supplier_id"):
-        return jsonify({"error": "Kế toán không được thêm nhà cung cấp khi sửa phiếu nhập"}), 403
 
     invoice = update_import_invoice_service(
         invoice_id=invoice_id,

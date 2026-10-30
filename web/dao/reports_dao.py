@@ -5,6 +5,7 @@ from web.models import (
     DamageReport,
     DamageReportItem,
     DamageReportStatus,
+    EmployeeRole,
     ImportInvoice,
     ImportInvoiceItem,
     Product,
@@ -79,13 +80,16 @@ def get_movements_report(from_date, to_date, warehouse_id=None):
         selectinload(DamageReport.warehouse),
         selectinload(DamageReport.reported_by_employee),
         selectinload(DamageReport.reviewed_by_employee),
-    ).filter(DamageReport.status == DamageReportStatus.APPROVED)
+    ).filter(DamageReport.status != DamageReportStatus.REJECTED)
     if from_date:
         damage_query = damage_query.filter(DamageReport.reported_at >= from_date)
     if to_date:
         damage_query = damage_query.filter(DamageReport.reported_at <= to_date)
     if warehouse_id:
-        damage_query = damage_query.filter(DamageReport.warehouse_id == warehouse_id)
+        damage_query = damage_query.filter(
+            DamageReport.warehouse_id == warehouse_id,
+            DamageReport.reported_by_employee.has(role=EmployeeRole.THU_KHO),
+        )
     damage_reports = damage_query.order_by(DamageReport.reported_at.desc()).all()
 
     transfer_query = StockTransfer.query.options(
@@ -103,7 +107,11 @@ def get_movements_report(from_date, to_date, warehouse_id=None):
     stock_transfers = transfer_query.order_by(StockTransfer.transferred_at.desc()).all()
     
                             
-    all_products = Product.query.order_by(Product.name.asc()).all()
+    all_products = (
+        db.session.query(Product.id, Product.name, Product.unit)
+        .order_by(Product.name.asc())
+        .all()
+    )
     product_summary = {
         product.id: {
             "product_id": product.id,
@@ -147,6 +155,7 @@ def get_movements_report(from_date, to_date, warehouse_id=None):
                 }
             product_summary[item.product_id]["exported"] += int(item.quantity)
 
+    field_damaged_by_product = {}
     for report in damage_reports:
         for item in report.items:
             if item.product_id not in product_summary:
@@ -160,6 +169,10 @@ def get_movements_report(from_date, to_date, warehouse_id=None):
                     "transferred": 0,
                 }
             product_summary[item.product_id]["damaged"] += int(item.quantity)
+            if report.reported_by_employee.role == EmployeeRole.NHAN_VIEN_BAN_HANG:
+                field_damaged_by_product[item.product_id] = (
+                    field_damaged_by_product.get(item.product_id, 0) + int(item.quantity)
+                )
 
     for transfer in stock_transfers:
         for item in transfer.items:
@@ -182,7 +195,10 @@ def get_movements_report(from_date, to_date, warehouse_id=None):
     )
     by_product = []
     for product_id, data in product_summary.items():
-        data["net_change"] = data["imported"] - data["exported"] - data["damaged"] - data["transferred"]
+        data["net_change"] = (
+            data["imported"] - data["exported"] - data["damaged"]
+            - data["transferred"] + field_damaged_by_product.get(product_id, 0)
+        )
         data["current_stock"] = inventory_by_product.get(
             product_id,
             {"available_stock": 0},

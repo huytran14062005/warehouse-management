@@ -26,6 +26,8 @@ from .customer_purchase_dao import (
     get_customer_purchased_products,
 )
 from .product_dao import (
+    calculate_allocated_employee_stock_movements,
+    calculate_allocated_employee_stock_sales,
     calculate_product_stock_at_warehouse,
     calculate_inventory_for_products,
     calculate_stock_for_items_at_warehouse,
@@ -36,6 +38,8 @@ from .sales_invoice_dao import (
     create_sales_invoice,
     get_sales_invoices_list,
     get_sales_invoice_by_id,
+    get_recent_sales_invoice_workflow_events,
+    get_sales_invoice_payments_page,
     update_sales_invoice,
 )
 from .employee_stock_dao import (
@@ -68,6 +72,8 @@ __all__ = [
     "get_customer_orders",
     "get_customer_purchased_products",
     "get_products_with_inventory",
+    "calculate_allocated_employee_stock_sales",
+    "calculate_allocated_employee_stock_movements",
     "calculate_product_stock_at_warehouse",
     "calculate_inventory_for_products",
     "calculate_stock_for_items_at_warehouse",
@@ -75,6 +81,8 @@ __all__ = [
     "create_sales_invoice",
     "get_sales_invoices_list",
     "get_sales_invoice_by_id",
+    "get_recent_sales_invoice_workflow_events",
+    "get_sales_invoice_payments_page",
     "update_sales_invoice",
     "get_employee_stock_list",
     "get_employee_stock_map",

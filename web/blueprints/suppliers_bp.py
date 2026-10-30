@@ -3,11 +3,28 @@ from flask import Blueprint, jsonify, request
 from web.blueprints.api_errors import handle_api_errors
 from web.middleware.auth_middleware import verify_role, verify_token
 from web.models import EmployeeRole, Supplier
-from web.services.supplier_service import serialize_supplier
+from web.services.supplier_service import create_supplier_service, serialize_supplier
 from web.utils.pagination import build_pagination
 
 
 suppliers_bp = Blueprint("suppliers", __name__, url_prefix="/api/suppliers")
+
+
+@suppliers_bp.route("", methods=["POST"])
+@verify_token
+@verify_role(EmployeeRole.QUAN_LY)
+@handle_api_errors
+def create_supplier():
+    data = request.get_json(silent=True) or {}
+    supplier = create_supplier_service(
+        request.employee_id,
+        data.get("name"),
+        data.get("address"),
+    )
+    return jsonify({
+        "message": "Đã thêm nhà cung cấp",
+        "supplier": serialize_supplier(supplier),
+    }), 201
 
 
 @suppliers_bp.route("", methods=["GET"])

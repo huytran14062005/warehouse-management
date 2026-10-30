@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
-import Apis, { endpoints } from "../configs/Apis";
+import Apis, { authApis, endpoints } from "../configs/Apis";
 import ConfirmDialog from "./ConfirmDialog";
 import "../css/Sidebar.css";
 
@@ -8,6 +8,7 @@ function Sidebar({ user, pendingRequests, isMobileOpen = false, onMobileClose = 
   const navigate = useNavigate();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [salesActionCount, setSalesActionCount] = useState(0);
   const displayName = user?.full_name || user?.username || "bạn";
   const canViewCustomers = [
     "nhân viên bán hàng",
@@ -25,19 +26,38 @@ function Sidebar({ user, pendingRequests, isMobileOpen = false, onMobileClose = 
   ].includes(user?.role);
   const canManageStockTransfers = ["thủ kho", "quản lý"].includes(user?.role);
   const canViewImportInvoices = ["thủ kho", "kế toán", "quản lý"].includes(user?.role);
-  const canViewDamageReports = ["thủ kho", "kế toán", "quản lý"].includes(user?.role);
+  const canViewCompanyFunds = ["kế toán", "quản lý"].includes(user?.role);
+  const canViewDamageReports = ["nhân viên bán hàng", "thủ kho", "kế toán", "quản lý"].includes(user?.role);
   const canViewSuppliers = ["thủ kho", "kế toán", "quản lý"].includes(user?.role);
   const canViewWarehouseReports = ["thủ kho", "kế toán", "quản lý"].includes(user?.role);
   const canViewManagerSalesAnalytics = user?.role === "quản lý";
   const canManageEmployeeAccounts = user?.role === "quản lý";
   const pendingCounts = pendingRequests?.counts || {};
   const pendingTotal = Number(pendingRequests?.total || 0);
-  const salesPendingCount =
-    Number(pendingCounts.discount_invoices || 0) +
-    Number(pendingCounts.cancel_requests || 0) +
-    Number(pendingCounts.overdue_debts || 0) +
-    Number(pendingCounts.due_today_debts || 0) +
-    Number(pendingCounts.due_soon_debts || 0);
+
+  useEffect(() => {
+    if (!canViewSalesInvoices) return undefined;
+    let active = true;
+    const refresh = async () => {
+      if (!localStorage.getItem("token") || document.visibilityState === "hidden") return;
+      try {
+        const response = await authApis().get(endpoints.salesInvoiceActionCount);
+        if (active) setSalesActionCount(Number(response.data?.total || 0));
+      } catch {
+        // Keep navigation available while the count cannot be loaded.
+      }
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 60000);
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("sales-invoices:action-count-refresh", refresh);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("sales-invoices:action-count-refresh", refresh);
+    };
+  }, [canViewSalesInvoices, user?.id, user?.role]);
 
   const handleConfirmLogout = async () => {
     setShowLogoutConfirm(false);
@@ -139,7 +159,11 @@ function Sidebar({ user, pendingRequests, isMobileOpen = false, onMobileClose = 
                 }
               >
                 <span>Đơn bán hàng</span>
-                {salesPendingCount > 0 && <span className="internal-sidebar-badge">{salesPendingCount}</span>}
+                {salesActionCount > 0 && (
+                  <span className="internal-sidebar-badge sales-invoice-action-badge" aria-label={`${salesActionCount} đơn bán hàng cần xử lý`}>
+                    {salesActionCount}
+                  </span>
+                )}
               </NavLink>
             )}
             {canManageEmployeeAccounts && (
@@ -184,6 +208,17 @@ function Sidebar({ user, pendingRequests, isMobileOpen = false, onMobileClose = 
                 }
               >
                 <span>Phiếu nhập kho</span>
+              </NavLink>
+            )}
+            {canViewCompanyFunds && (
+              <NavLink
+                to="/company-funds"
+                onClick={onMobileClose}
+                className={({ isActive }) =>
+                  `internal-sidebar-link${isActive ? " is-active" : ""}`
+                }
+              >
+                <span>Sổ quỹ công ty</span>
               </NavLink>
             )}
             {canViewDamageReports && (

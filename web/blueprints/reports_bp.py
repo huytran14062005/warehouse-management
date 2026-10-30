@@ -15,6 +15,7 @@ from web.services.reports_service import (
 from web.services.manager_reports_service import get_manager_sales_analytics_service
 from web.services.overdue_debt_report_service import send_overdue_debt_report
 from web.services.sales_invoice_service import business_today
+from web.services.inventory_settings_service import get_low_stock_percentage
 from web.services.authorization import scoped_central_warehouse_id, scoped_warehouse_id
 from web.utils.pagination import build_pagination
 
@@ -59,6 +60,7 @@ def get_manager_sales_report():
         table_value=request.args.get("table"),
         table_page_value=request.args.get("table_page"),
         table_per_page_value=request.args.get("table_per_page"),
+        granularity_value=request.args.get("granularity"),
     )), 200
 
 
@@ -84,6 +86,7 @@ def get_inventory_report():
     
     return jsonify({
         'products': products_list,
+        'low_stock_percentage': float(get_low_stock_percentage()),
         'total': len(products_list)
     }), 200
 

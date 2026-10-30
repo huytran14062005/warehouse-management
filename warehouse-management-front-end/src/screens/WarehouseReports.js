@@ -22,6 +22,7 @@ function WarehouseReports() {
   const [toDate, setToDate] = useState(new Date().toISOString().slice(0, 10));
   const [report, setReport] = useState(null);
   const [inventoryProducts, setInventoryProducts] = useState([]);
+  const [lowStockPercentage, setLowStockPercentage] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useNotificationState();
   const [productKeyword, setProductKeyword] = useState("");
@@ -56,6 +57,7 @@ function WarehouseReports() {
         setReport(movementsResponse.data || {});
         setProductPagination(movementsResponse.data?.pagination || { total: 0, total_pages: 1 });
         setInventoryProducts(inventoryResponse.data?.products || []);
+        setLowStockPercentage(inventoryResponse.data?.low_stock_percentage ?? null);
       } catch (requestError) {
         setError(getApiError(requestError));
       } finally {
@@ -110,7 +112,7 @@ function WarehouseReports() {
   ).length;
   const lowStockCount = inventoryProducts.filter(
     (product) =>
-      getInventoryStatus(product.available_stock, product.total_imported)
+      getInventoryStatus(product.available_stock, product.total_imported, lowStockPercentage)
         .key === "low",
   ).length;
   return (
@@ -176,7 +178,7 @@ function WarehouseReports() {
                 <strong>{outOfStockCount}</strong>
               </div>
               <div>
-                <span>Sản phẩm sắp hết</span>
+                <span>Sản phẩm sắp hết{lowStockPercentage != null ? ` (≤ ${lowStockPercentage}%)` : ""}</span>
                 <strong>{lowStockCount}</strong>
               </div>
             </div>
@@ -196,6 +198,7 @@ function WarehouseReports() {
               </div>
               <ProductTable
                 products={visibleProducts}
+                lowStockPercentage={lowStockPercentage}
                 page={safeProductPage}
                 totalPages={productTotalPages}
                 onPageChange={setProductPage}
@@ -208,7 +211,7 @@ function WarehouseReports() {
   );
 }
 
-function ProductTable({ products, page, totalPages, onPageChange }) {
+function ProductTable({ products, lowStockPercentage, page, totalPages, onPageChange }) {
   if (products.length === 0) {
     return <p className="warehouse-report-empty">Không có sản phẩm phù hợp.</p>;
   }
@@ -237,6 +240,7 @@ function ProductTable({ products, page, totalPages, onPageChange }) {
               const inventoryStatus = getInventoryStatus(
                 currentStock,
                 product.total_imported,
+                lowStockPercentage,
               );
               return (
                 <tr key={product.product_id}>

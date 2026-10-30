@@ -1,0 +1,10 @@
+.customer-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 12px; }
+.customer-fields-field { display: block; min-width: 0; margin: 0; color: #52657a; font-size: 12px; font-weight: 600; }
+.customer-fields-field > span { display: block; margin-bottom: 6px; }
+.customer-fields-wide { grid-column: 1 / -1; }
+.customer-fields-field > input, .customer-fields-field > textarea { box-sizing: border-box; display: block; width: 100%; min-height: 42px; padding: 10px 12px; color: #1b2d40; border: 1px solid #cbd7e2; border-radius: 5px; background: #fff; outline: none; font: inherit; font-size: 13px; font-weight: 400; }
+.customer-fields-field > textarea { min-height: 94px; resize: vertical; line-height: 1.5; }
+.customer-fields-field > input:focus, .customer-fields-field > textarea:focus { border-color: #0b3158; box-shadow: 0 0 0 2px rgba(11, 49, 88, .1); }
+.customer-fields-field .searchable-dropdown-trigger { min-height: 42px; }
+.customer-fields-field .searchable-dropdown-input { font-weight: 400; }
+@media (max-width: 560px) { .customer-fields { grid-template-columns: 1fr; } .customer-fields-wide { grid-column: auto; } }

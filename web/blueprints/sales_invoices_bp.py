@@ -1,4 +1,5 @@
 from flask import Blueprint, jsonify, request
+from web import dao
 
 from web.blueprints.api_errors import handle_api_errors
 from web.middleware.auth_middleware import verify_role, verify_token
@@ -7,14 +8,19 @@ from web.services.sales_invoice_service import (
     approve_discount_service,
     cancel_invoice_service,
     complete_sales_invoice_service,
+    confirm_sales_invoice_delivery_service,
     create_sales_invoice_service,
     get_pending_discount_invoices_service,
     get_sales_invoice_detail_service,
+    get_sales_invoice_action_count_service,
     get_sales_invoices_list_service,
     get_status_tracking_board_service,
     request_cancel_invoice_service,
+    record_sales_invoice_payment_service,
     serialize_invoice_summary,
     serialize_sales_invoice,
+    serialize_sales_invoice_payment,
+    submit_sales_invoice_to_warehouse_service,
     update_invoice_status_service,
     update_payment_due_date_service,
     update_sales_invoice_service,
@@ -22,9 +28,21 @@ from web.services.sales_invoice_service import (
 from web.models import EmployeeRole, SalesInvoice
 from web.services.authorization import ensure_warehouse_access, scoped_warehouse_id
 from web.services.validators import parse_bool
+from web.services.customer_service import parse_page, parse_per_page
+from web.services.exceptions import NotFoundError
 
 
 sales_invoices_bp = Blueprint("sales_invoices", __name__, url_prefix="/api/sales-invoices")
+
+
+@sales_invoices_bp.route("/action-count", methods=["GET"])
+@verify_token
+@verify_role(EmployeeRole.NHAN_VIEN_BAN_HANG, EmployeeRole.THU_KHO, EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY)
+@handle_api_errors
+def get_sales_invoice_action_count():
+    return jsonify({"total": get_sales_invoice_action_count_service(
+        request.employee_id, request.employee_role,
+    )}), 200
 
 
 @sales_invoices_bp.route("/status-board", methods=["GET"])
@@ -167,11 +185,29 @@ def update_invoice_status(invoice_id):
     
     return jsonify({
         "message": "Cập nhật trạng thái thành công",
-        "invoice": {
-            "id": invoice.id,
-            "status": invoice.status.value
-        }
+        "invoice": serialize_sales_invoice(invoice),
     }), 200
+
+
+@sales_invoices_bp.route("/<int:invoice_id>/submit-to-warehouse", methods=["POST"])
+@verify_token
+@verify_role(EmployeeRole.NHAN_VIEN_BAN_HANG, EmployeeRole.QUAN_LY)
+@handle_api_errors
+def submit_sales_invoice_to_warehouse(invoice_id):
+    invoice = submit_sales_invoice_to_warehouse_service(invoice_id, request.employee_id)
+    return jsonify({"message": "Đã gửi đơn cho kho", "invoice": serialize_sales_invoice(invoice)}), 200
+
+
+@sales_invoices_bp.route("/<int:invoice_id>/confirm-delivery", methods=["POST"])
+@verify_token
+@verify_role(EmployeeRole.NHAN_VIEN_BAN_HANG, EmployeeRole.QUAN_LY)
+@handle_api_errors
+def confirm_sales_invoice_delivery(invoice_id):
+    data = request.get_json(silent=True) or {}
+    invoice = confirm_sales_invoice_delivery_service(
+        invoice_id, request.employee_id, data.get("recipient"), data.get("note"),
+    )
+    return jsonify({"message": "Đã xác nhận giao hàng", "invoice": serialize_sales_invoice(invoice)}), 200
 
 
 @sales_invoices_bp.route("/<int:invoice_id>", methods=["DELETE"])
@@ -218,7 +254,7 @@ def request_cancel_invoice(invoice_id):
 
 @sales_invoices_bp.route("/<int:invoice_id>/complete", methods=["PUT"])
 @verify_token
-@verify_role(EmployeeRole.THU_KHO, EmployeeRole.QUAN_LY)
+@verify_role(EmployeeRole.KE_TOAN)
 @handle_api_errors
 def complete_sales_invoice(invoice_id):
     data = request.get_json(silent=True) or {}
@@ -234,6 +270,44 @@ def complete_sales_invoice(invoice_id):
     return jsonify({
         "message": "Đã đánh dấu đơn hàng hoàn thành",
         "invoice": serialize_sales_invoice(invoice),
+    }), 200
+
+
+@sales_invoices_bp.route("/<int:invoice_id>/payments", methods=["POST"])
+@verify_token
+@verify_role(EmployeeRole.KE_TOAN)
+@handle_api_errors
+def record_sales_invoice_payment(invoice_id):
+    data = request.get_json(silent=True) or {}
+    invoice, payment = record_sales_invoice_payment_service(
+        invoice_id=invoice_id,
+        employee_id=request.employee_id,
+        amount=data.get("amount"),
+        payment_method=data.get("payment_method"),
+        payment_due_date=data.get("payment_due_date"),
+    )
+    return jsonify({
+        "message": "Đã ghi nhận thanh toán đơn hàng",
+        "invoice": serialize_sales_invoice(invoice),
+        "payment_id": payment.id,
+    }), 201
+
+
+@sales_invoices_bp.route("/<int:invoice_id>/payments", methods=["GET"])
+@verify_token
+@verify_role(EmployeeRole.NHAN_VIEN_BAN_HANG, EmployeeRole.THU_KHO, EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY)
+@handle_api_errors
+def get_sales_invoice_payments(invoice_id):
+    invoice = SalesInvoice.query.get(invoice_id)
+    if not invoice:
+        raise NotFoundError("Đơn hàng không tồn tại")
+    ensure_warehouse_access(request.employee_id, invoice.warehouse_id)
+    page = parse_page(request.args.get("page"))
+    per_page = parse_per_page(request.args.get("per_page"), 20)
+    payments, total = dao.get_sales_invoice_payments_page(invoice_id, page, per_page)
+    return jsonify({
+        "payments": [serialize_sales_invoice_payment(payment) for payment in payments],
+        "total": total, "page": page, "pages": (total + per_page - 1) // per_page,
     }), 200
 
 

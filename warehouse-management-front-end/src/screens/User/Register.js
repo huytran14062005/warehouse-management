@@ -5,6 +5,7 @@ import { getApiError } from "../../utils/apiError";
 import useNotificationState from "../../utils/useNotificationState";
 import AutoDismissMessage from "../../components/AutoDismissMessage";
 import PasswordInput from "../../components/PasswordInput";
+import DropdownChevron from "../../components/DropdownChevron";
 import "../../css/Auth.css";
 
 const initialForm = {
@@ -152,8 +153,12 @@ function Register() {
               value={formData.password}
               onChange={handleChange}
               autoComplete="new-password"
+              aria-describedby="register-password-requirements"
               required
             />
+            <p id="register-password-requirements" className="auth-field-hint">
+              Từ 8 ký tự trở lên, có chữ hoa, chữ thường, số và ký tự đặc biệt.
+            </p>
           </div>
           <div className="auth-field">
             <label htmlFor="confirm">Xác nhận mật khẩu</label>
@@ -189,22 +194,7 @@ function Register() {
                       ?.label
                   }
                 </span>
-                <svg
-                  className={`role-dropdown-arrow${roleOpen ? " is-open" : ""}`}
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="m6 9 6 6 6-6"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+                <DropdownChevron open={roleOpen} />
               </button>
               {roleOpen && (
                 <div

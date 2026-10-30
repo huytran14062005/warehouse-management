@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify, request
 
 from web.blueprints.api_errors import handle_api_errors
 from web.middleware.auth_middleware import verify_role, verify_token
-from web.models import Employee, EmployeeRole, StockTransfer
+from web.models import EmployeeRole, StockTransfer
 from web.services.authorization import (
     ensure_warehouse_access,
     get_accessible_warehouses,
@@ -92,13 +92,6 @@ def get_my_employee_stock():
 @verify_role(EmployeeRole.THU_KHO, EmployeeRole.QUAN_LY)
 @handle_api_errors
 def get_employee_stock(employee_id):
-    if request.employee_role == EmployeeRole.THU_KHO.value:
-        target = Employee.query.get(employee_id)
-        if target is not None:
-            # A warehouse keeper may only inspect employee stock belonging to
-            # the keeper's assigned warehouse.
-            from web.services.authorization import ensure_warehouse_access
-            ensure_warehouse_access(request.employee_id, target.warehouse_id)
     return jsonify(serialize_employee_stock(
         employee_id,
         page_value=request.args.get("page"),

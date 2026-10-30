@@ -6,9 +6,9 @@
 .damage-reports-toolbar { align-items: center; justify-content: space-between; }
 .damage-reports-status-filter { width: min(360px, 100%); }
 .damage-report-create-button { min-height: 44px; padding: 11px 18px; font-size: 14px; }
-.warehouse-toolbar > input, .warehouse-field > input, .warehouse-field > select, .warehouse-field textarea, .warehouse-editor-item > input { box-sizing: border-box; width: 100%; min-height: 40px; padding: 9px 10px; color: #1b2d40; border: 1px solid #cbd7e2; border-radius: 5px; background: #fff; outline: none; font: inherit; font-size: 13px; }
+.warehouse-toolbar > input, .warehouse-field > input, .warehouse-field > select, .warehouse-field textarea { box-sizing: border-box; width: 100%; min-height: 40px; padding: 9px 10px; color: #1b2d40; border: 1px solid #cbd7e2; border-radius: 5px; background: #fff; outline: none; font: inherit; font-size: 13px; }
 .warehouse-toolbar > input { flex: 1; }
-.warehouse-toolbar > input:focus, .warehouse-field > input:focus, .warehouse-field textarea:focus, .warehouse-editor-item > input:focus { border-color: #0b3158; box-shadow: 0 0 0 2px rgba(11,49,88,.1); }
+.warehouse-toolbar > input:focus, .warehouse-field > input:focus, .warehouse-field textarea:focus { border-color: #0b3158; box-shadow: 0 0 0 2px rgba(11,49,88,.1); }
 .warehouse-card { overflow: hidden; border: 1px solid #d9e2ec; border-radius: 6px; background: #fff; }
 .warehouse-table-wrap { overflow-x: auto; }
 .warehouse-table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -45,7 +45,7 @@
 .warehouse-modal-body { max-height: calc(90vh - 68px); overflow-y: auto; padding: 20px; }
 .warehouse-info-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; padding-bottom: 18px; border-bottom: 1px solid #e8edf2; }
 .warehouse-info-grid span, .warehouse-note span { display: block; margin-bottom: 5px; color: #71849a; font-size: 11px; }
-.warehouse-info-grid strong { color: #1b2d40; font-size: 13px; }
+.warehouse-info-grid strong:not(.warehouse-status) { color: #1b2d40; font-size: 13px; }
 .warehouse-section-title { margin: 20px 0 10px; color: #0b3158; font-size: 15px; }
 .warehouse-note { position: relative; margin-top: 20px; padding: 20px 14px 14px; border: 1px solid #cbd7e2; border-radius: 6px; }
 .warehouse-note span { position: absolute; top: -7px; left: 12px; margin: 0; padding: 0 6px; background: #fff; }
@@ -66,16 +66,33 @@
 .warehouse-payment-summary strong { display: block; margin-top: 4px; color: #0b3158; }
 .warehouse-payment-form { display: grid; gap: 8px; margin: 0 0 18px; padding: 14px; border: 1px solid #dbe5ee; border-radius: 6px; background: #fbfdff; }
 .warehouse-payment-form h3, .warehouse-payment-history h3 { margin: 0; color: #0b3158; font-size: 15px; }
+.warehouse-payment-guidance { margin: 0 0 3px; color: #71849a; font-size: 12px; }
+.warehouse-payment-form .warehouse-field { margin-bottom: 2px; }
+.warehouse-payment-fund-info { display: flex; flex-wrap: wrap; gap: 6px 18px; color: #52657a; font-size: 13px; }
+.warehouse-payment-fund-info strong { color: #0b3158; }
 .warehouse-payment-form > select, .warehouse-payment-form > input { box-sizing: border-box; width: 100%; min-height: 40px; padding: 9px 10px; color: #1b2d40; border: 1px solid #cbd7e2; border-radius: 5px; background: #fff; font: inherit; }
-.warehouse-payment-history { margin: 0 0 18px; }
-.warehouse-payment-history-item { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #e7edf3; }
+.warehouse-payment-history { margin-top: 24px; padding-top: 18px; border-top: 1px solid #e7edf3; }
+.warehouse-payment-history-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.warehouse-payment-history-heading span { color: #71849a; font-size: 12px; white-space: nowrap; }
+.warehouse-payment-history-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; padding: 10px 0; border-bottom: 1px solid #e7edf3; }
+.warehouse-payment-history-amount { min-width: 0; color: #1b2d40; font-size: 13px; font-weight: 400; overflow-wrap: anywhere; }
+.warehouse-payment-history-item p { grid-column: 1 / -1; margin: 0; color: #52657a; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.warehouse-payment-history-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; color: #71849a; font-size: 12px; }
+.warehouse-payment-history-pagination > div { display: flex; gap: 8px; }
+.warehouse-payment-history-pagination button { min-height: 36px; padding: 7px 12px; color: #0b3158; border: 1px solid #b7c8d8; border-radius: 5px; background: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+.warehouse-payment-history-pagination button:hover:not(:disabled) { background: #f1f5f8; }
+.warehouse-payment-history-pagination button:disabled { color: #a1afbd; cursor: not-allowed; }
 .warehouse-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 20px 0 10px; }
 .warehouse-section-heading h3 { margin: 0; color: #0b3158; font-size: 15px; }
 .warehouse-section-heading button { padding: 7px 10px; color: #0b3158; border: 1px solid #b7c8d8; border-radius: 5px; background: #fff; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
 .warehouse-editor-items { display: grid; gap: 9px; }
 .warehouse-editor-item { display: grid; grid-template-columns: minmax(0, 1fr) 120px 140px 32px; align-items: start; gap: 8px; padding: 10px; border: 1px solid #e1e8ef; border-radius: 5px; background: #f9fbfc; }
+.damage-editor-item { grid-template-columns: minmax(0, 1fr) 150px 32px; }
+.damage-source-note { margin: 0 0 12px; color: #52657a; font-size: 13px; }
+.damage-empty-stock { margin: 0 0 16px; padding: 10px 12px; color: #52657a; border: 1px solid #dbe5ee; border-radius: 5px; background: #f7fafc; font-size: 13px; }
+.warehouse-section-heading button:disabled { opacity: .55; cursor: not-allowed; }
 .warehouse-product-field small { display: block; margin-top: 5px; color: #71849a; font-size: 11px; font-weight: 400; }
-.warehouse-remove { width: 32px; height: 40px; padding: 0; color: #9f3d3d; border: 1px solid #e5b4b4; border-radius: 5px; background: #fff; font-size: 20px; cursor: pointer; }
+.warehouse-remove { width: 32px; height: 40px; margin-top: 20px; padding: 0; color: #9f3d3d; border: 1px solid #e5b4b4; border-radius: 5px; background: #fff; font-size: 20px; cursor: pointer; }
 .warehouse-status { display: inline-block; padding: 4px 8px; border: 1px solid; border-radius: 4px; font-size: 11px; font-weight: 600; white-space: nowrap; }
 .warehouse-status-pending { color: #956016; border-color: #e6c58e; background: #fff8e9; }
 .warehouse-status-approved { color: #26704b; border-color: #a9d5bd; background: #eef9f2; }
@@ -118,9 +135,9 @@
   .warehouse-info-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .warehouse-new-supplier-fields { grid-template-columns: 1fr; }
   .warehouse-payment-fields, .warehouse-payment-summary { grid-template-columns: 1fr; }
-  .warehouse-editor-item { grid-template-columns: 1fr 1fr 32px; }
+  .warehouse-payment-history-item { grid-template-columns: 1fr; }
+  .warehouse-editor-item { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px; }
   .warehouse-product-field { grid-column: 1 / -1; }
-  .warehouse-editor-item input:nth-child(3) { grid-column: 2; }
   .warehouse-modal { max-height: 92vh; }
   .damage-reports-toolbar { align-items: stretch; flex-direction: column; }
   .damage-reports-status-filter, .damage-report-create-button { width: 100%; }

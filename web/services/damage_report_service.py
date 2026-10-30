@@ -1,12 +1,14 @@
-from web import app
-from web.dao import damage_report_dao, product_dao
+from web import app, db
+from web.dao import damage_report_dao, product_dao, employee_stock_dao
 from web.models import (
     DamageReportStatus,
+    DamageReport,
     Employee,
+    EmployeeRole,
     Product,
     Warehouse,
 )
-from web.services.exceptions import NotFoundError, ValidationError
+from web.services.exceptions import ForbiddenError, NotFoundError, ValidationError
 from web.services.authorization import (
     ensure_bounded_items,
     ensure_warehouse_access,
@@ -81,6 +83,7 @@ def serialize_damage_report(report):
         "review_note": report.review_note,
         "reported_at": report.reported_at.isoformat() if report.reported_at else None,
         "reviewed_at": report.reviewed_at.isoformat() if report.reviewed_at else None,
+        "stock_source": "employee_stock" if report.reported_by_employee.role == EmployeeRole.NHAN_VIEN_BAN_HANG else "warehouse",
         "items": [
             {
                 "id": item.id,
@@ -88,14 +91,13 @@ def serialize_damage_report(report):
                 "product_name": item.product.name,
                 "unit": item.product.unit,
                 "quantity": int(item.quantity),
-                "damage_reason": item.damage_reason,
             }
             for item in report.items
         ],
     }
 
 
-def _validate_items(items, warehouse_id):
+def _validate_items(items, warehouse_id=None):
     ensure_bounded_items(items, "Sản phẩm trong phiếu hàng hư")
     if not isinstance(items, list) or not items:
         raise ValidationError("Phiếu hàng hư phải có ít nhất một sản phẩm")
@@ -120,7 +122,6 @@ def _validate_items(items, warehouse_id):
                 raw_item.get("quantity"),
                 f"Số lượng sản phẩm thứ {index}",
             ),
-            "damage_reason": str(raw_item.get("damage_reason") or "").strip() or None,
         })
 
     products = Product.query.filter(Product.id.in_(product_ids)).all()
@@ -129,42 +130,65 @@ def _validate_items(items, warehouse_id):
     if missing_product_ids:
         raise NotFoundError(f"Sản phẩm ID {missing_product_ids[0]} không tồn tại")
 
-    stock_by_product = product_dao.calculate_available_stock_for_items_at_warehouse(
-        product_ids,
-        warehouse_id,
-    )
-    for item in validated_items:
-        product = products_by_id[item["product_id"]]
-        stock = stock_by_product[item["product_id"]]
-        available_stock = max(
-            0,
-            stock["available_stock"],
+    if warehouse_id is not None:
+        stock_by_product = product_dao.calculate_available_stock_for_items_at_warehouse(
+            product_ids, warehouse_id,
         )
-        if item["quantity"] > available_stock:
-            raise ValidationError(
-                f"Sản phẩm '{product.name}' chỉ còn {available_stock} trong kho, "
-                f"không thể báo hư {item['quantity']}"
-            )
+        for item in validated_items:
+            product = products_by_id[item["product_id"]]
+            available_stock = max(0, stock_by_product[item["product_id"]]["available_stock"])
+            if item["quantity"] > available_stock:
+                raise ValidationError(
+                    f"Sản phẩm '{product.name}' chỉ còn {available_stock} trong kho, "
+                    f"không thể báo hư {item['quantity']}"
+                )
 
     return validated_items
 
 def create_damage_report_service(reported_by_employee_id, warehouse_id, note, items):
-    warehouse = resolve_document_warehouse(reported_by_employee_id, warehouse_id)
-    warehouse_id = warehouse.id
-
-    if not Employee.query.get(reported_by_employee_id):
+    employee = Employee.query.get(reported_by_employee_id)
+    if not employee:
         raise NotFoundError("Nhân viên không tồn tại")
+    if employee.role not in {EmployeeRole.THU_KHO, EmployeeRole.NHAN_VIEN_BAN_HANG}:
+        raise ValidationError("Chỉ thủ kho hoặc nhân viên bán hàng được báo hàng hư")
 
-    validated_items = _validate_items(items, warehouse_id)
-    return damage_report_dao.create_damage_report(
-        warehouse_id=warehouse_id,
-        reported_by_employee_id=reported_by_employee_id,
-        note=str(note or "").strip() or None,
-        items=validated_items,
+    is_employee_stock = employee.role == EmployeeRole.NHAN_VIEN_BAN_HANG
+    warehouse = resolve_document_warehouse(
+        reported_by_employee_id,
+        employee.warehouse_id if is_employee_stock else warehouse_id,
     )
+    try:
+        if is_employee_stock:
+            validated_items = _validate_items(items)
+            stocks = employee_stock_dao.get_employee_stock_map(
+                employee.id,
+                product_ids=[item["product_id"] for item in validated_items],
+                for_update=True,
+            )
+            for item in validated_items:
+                stock = stocks.get(item["product_id"])
+                available = int(stock.quantity) if stock else 0
+                if item["quantity"] > available:
+                    raise ValidationError(
+                        f"Hàng đi tỉnh của bạn chỉ còn {available} sản phẩm '{stock.product.name if stock else item['product_id']}'"
+                    )
+                stock.quantity = available - item["quantity"]
+        else:
+            Warehouse.query.filter(Warehouse.id == warehouse.id).with_for_update().one()
+            validated_items = _validate_items(items, warehouse.id)
+
+        return damage_report_dao.create_damage_report(
+            warehouse_id=warehouse.id,
+            reported_by_employee_id=reported_by_employee_id,
+            note=str(note or "").strip() or None,
+            items=validated_items,
+        )
+    except Exception:
+        db.session.rollback()
+        raise
 
 
-def get_damage_reports_service(page_value, per_page_value, status_value, warehouse_id_value):
+def get_damage_reports_service(page_value, per_page_value, status_value, warehouse_id_value, reporter_id=None):
     page = _parse_page(page_value, 1)
     per_page = min(_parse_page(per_page_value, 10), app.config.get("MAX_PAGE_SIZE", 100))
     status = _parse_status(status_value)
@@ -179,6 +203,7 @@ def get_damage_reports_service(page_value, per_page_value, status_value, warehou
         per_page=per_page,
         status=status,
         warehouse_id=warehouse_id,
+        reporter_id=reporter_id,
     )
     return reports, total, page, per_page
 
@@ -191,7 +216,9 @@ def get_damage_report_detail_service(report_id):
 
 
 def review_damage_report_service(report_id, manager_id, decision, review_note):
-    report = get_damage_report_detail_service(report_id)
+    report = DamageReport.query.filter(DamageReport.id == report_id).with_for_update().first()
+    if not report:
+        raise NotFoundError("Phiếu hàng hư không tồn tại")
     if report.status != DamageReportStatus.PENDING:
         raise ValidationError("Chỉ phiếu đang chờ duyệt mới được xử lý")
 
@@ -203,32 +230,29 @@ def review_damage_report_service(report_id, manager_id, decision, review_note):
     if normalized_decision == DamageReportStatus.REJECTED.value and not review_note:
         raise ValidationError("Phải ghi lý do khi từ chối phiếu hàng hư")
 
-    if not Employee.query.get(manager_id):
+    manager = Employee.query.get(manager_id)
+    if not manager:
         raise NotFoundError("Quản lý không tồn tại")
+    if manager.role != EmployeeRole.QUAN_LY:
+        raise ForbiddenError("Chỉ quản lý được duyệt phiếu hàng hư")
 
-    if normalized_decision == DamageReportStatus.APPROVED.value:
-        Warehouse.query.filter(Warehouse.id == report.warehouse_id).with_for_update().one()
-        stock_by_product = product_dao.calculate_available_stock_for_items_at_warehouse(
-            [item.product_id for item in report.items],
-            report.warehouse_id,
-        )
-        for item in report.items:
-            stock = stock_by_product[item.product_id]
-            available_stock = max(
-                0,
-                stock["available_stock"],
-            )
-            if float(item.quantity) > available_stock:
-                raise ValidationError(
-                    f"Không thể duyệt: sản phẩm '{item.product.name}' chỉ còn "
-                    f"{available_stock} trong kho"
+    try:
+        if (normalized_decision == DamageReportStatus.REJECTED.value
+                and report.reported_by_employee.role == EmployeeRole.NHAN_VIEN_BAN_HANG):
+            for item in report.items:
+                stock = employee_stock_dao.get_or_create_employee_stock(
+                    report.reported_by_employee_id, item.product_id,
                 )
+                stock.quantity = int(stock.quantity) + int(item.quantity)
 
-    return damage_report_dao.review_damage_report(
-        report=report,
-        manager_id=manager_id,
-        status=DamageReportStatus.APPROVED
-        if normalized_decision == DamageReportStatus.APPROVED.value
-        else DamageReportStatus.REJECTED,
-        review_note=review_note,
-    )
+        return damage_report_dao.review_damage_report(
+            report=report,
+            manager_id=manager_id,
+            status=DamageReportStatus.APPROVED
+            if normalized_decision == DamageReportStatus.APPROVED.value
+            else DamageReportStatus.REJECTED,
+            review_note=review_note,
+        )
+    except Exception:
+        db.session.rollback()
+        raise

@@ -48,6 +48,13 @@ def get_employee_or_404(employee_id):
     return employee
 
 
+def require_accountant(employee_id):
+    employee = get_employee_or_404(employee_id)
+    if employee.role != EmployeeRole.KE_TOAN:
+        raise ForbiddenError("Chỉ kế toán được ghi nhận thanh toán")
+    return employee
+
+
 def get_accessible_warehouses(employee_id):
     """Return warehouses the current role may select in an operation form."""
     get_employee_or_404(employee_id)
@@ -57,6 +64,8 @@ def get_accessible_warehouses(employee_id):
 def ensure_warehouse_access(employee_id, warehouse_id):
     """Validate the selected warehouse for a role-authorized operation."""
     get_employee_or_404(employee_id)
+    if warehouse_id in (None, ""):
+        raise ValidationError("Mã kho không được để trống")
     warehouse = Warehouse.query.get(warehouse_id)
     if not warehouse:
         raise NotFoundError("Kho không tồn tại")

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { authApis, endpoints } from "../configs/Apis";
 import { getApiError } from "../utils/apiError";
@@ -18,9 +19,21 @@ function Suppliers() {
   const [pagination, setPagination] = useState({ total: 0, total_pages: 1 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useNotificationState();
+  const [showCreate, setShowCreate] = useState(false);
+  const [newSupplier, setNewSupplier] = useState({ name: "", address: "" });
+  const [createError, setCreateError] = useNotificationState();
+  const [saving, setSaving] = useState(false);
   const searchTimerRef = useRef(null);
+  const currentUser = (() => {
+    try {
+      return JSON.parse(localStorage.getItem("user")) || {};
+    } catch {
+      return {};
+    }
+  })();
+  const canCreateSupplier = currentUser.role === "quản lý";
 
-  const fetchSuppliers = useCallback(async () => {
+  const fetchSuppliers = useCallback(async (filters = {}) => {
     if (!localStorage.getItem("token")) {
       navigate("/login", {
         replace: true,
@@ -33,7 +46,11 @@ function Suppliers() {
       setLoading(true);
       setError("");
       const response = await authApis().get(endpoints.suppliers, {
-        params: { page, per_page: PER_PAGE, keyword: keyword || undefined },
+        params: {
+          page: filters.page ?? page,
+          per_page: PER_PAGE,
+          keyword: (filters.keyword ?? keyword) || undefined,
+        },
       });
       setSuppliers(response.data?.suppliers || []);
       setPagination(response.data?.pagination || { total: 0, total_pages: 1 });
@@ -72,13 +89,52 @@ function Suppliers() {
     setKeyword(keywordInput.trim());
   };
 
+  const closeCreate = () => {
+    if (saving) return;
+    setShowCreate(false);
+    setNewSupplier({ name: "", address: "" });
+    setCreateError("");
+  };
+
+  const handleCreate = async (event) => {
+    event.preventDefault();
+    const name = newSupplier.name.trim();
+    const address = newSupplier.address.trim();
+    if (!name || !address) {
+      setCreateError("Vui lòng nhập tên và địa chỉ nhà cung cấp.");
+      return;
+    }
+    try {
+      setSaving(true);
+      setCreateError("");
+      await authApis().post(endpoints.suppliers, { name, address });
+      setShowCreate(false);
+      setNewSupplier({ name: "", address: "" });
+      setKeywordInput("");
+      setKeyword("");
+      setPage(1);
+      await fetchSuppliers({ page: 1, keyword: "" });
+    } catch (requestError) {
+      setCreateError(getApiError(requestError));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="suppliers-page">
       <div className="suppliers-header">
         <div>
           <h1>Danh sách nhà cung cấp</h1>
         </div>
-        <span className="suppliers-count">{pagination.total} nhà cung cấp</span>
+        <div className="suppliers-header-actions">
+          <span className="suppliers-count">{pagination.total} nhà cung cấp</span>
+          {canCreateSupplier && (
+            <button type="button" className="suppliers-add-button" onClick={() => setShowCreate(true)}>
+              + Thêm nhà cung cấp
+            </button>
+          )}
+        </div>
       </div>
 
       <form className="suppliers-toolbar" onSubmit={handleSearch}>
@@ -130,6 +186,46 @@ function Suppliers() {
         onPageChange={setPage}
         disabled={loading}
       />
+      {showCreate && createPortal(
+        <div className="suppliers-modal-overlay" onClick={closeCreate}>
+          <div className="suppliers-modal" role="dialog" aria-modal="true" aria-labelledby="suppliers-create-title" onClick={(event) => event.stopPropagation()}>
+            <div className="suppliers-modal-header">
+              <h2 id="suppliers-create-title">Thêm nhà cung cấp</h2>
+              <button type="button" className="suppliers-modal-close" onClick={closeCreate} disabled={saving} aria-label="Đóng">×</button>
+            </div>
+            <form onSubmit={handleCreate}>
+              <div className="suppliers-modal-body">
+                <AutoDismissMessage message={createError} className="suppliers-alert" />
+                <label className="suppliers-modal-field">
+                  <span>Tên nhà cung cấp</span>
+                  <input
+                    autoFocus
+                    value={newSupplier.name}
+                    onChange={(event) => setNewSupplier((current) => ({ ...current, name: event.target.value }))}
+                    maxLength={255}
+                    required
+                  />
+                </label>
+                <label className="suppliers-modal-field">
+                  <span>Địa chỉ</span>
+                  <textarea
+                    value={newSupplier.address}
+                    onChange={(event) => setNewSupplier((current) => ({ ...current, address: event.target.value }))}
+                    rows={3}
+                    required
+                  />
+                </label>
+              </div>
+              <div className="suppliers-modal-actions">
+                <button type="button" onClick={closeCreate} disabled={saving}>Hủy</button>
+                <button type="submit" className="suppliers-add-button" disabled={saving}>
+                  {saving ? "Đang lưu..." : "Lưu nhà cung cấp"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>, document.body,
+      )}
     </div>
   );
 }
