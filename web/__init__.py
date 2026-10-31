@@ -4,6 +4,7 @@ from flask_mail import Mail
 from flask_sqlalchemy import SQLAlchemy
 
 from web.config import Config
+import web.utils.query_cache  # Register cache invalidation on successful commits.
 
 
 app = Flask(__name__)

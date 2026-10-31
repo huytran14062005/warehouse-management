@@ -12,6 +12,7 @@ from web.services.customer_service import (
 from web.services.payment_service import record_old_debt_payment_service
 from web.services.authorization import scoped_warehouse_id
 from web.utils.pagination import build_pagination
+from web.utils.query_cache import cached_query
 
 
 customers_bp = Blueprint("customers", __name__, url_prefix="/api/customers")
@@ -22,26 +23,35 @@ customers_bp = Blueprint("customers", __name__, url_prefix="/api/customers")
 @verify_role(EmployeeRole.NHAN_VIEN_BAN_HANG, EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY)
 @handle_api_errors
 def get_customers_list():
-       
-    customers, total, page, per_page, summary = get_customers_list_service(
-        page_value=request.args.get('page'),
-        per_page_value=request.args.get('per_page'),
-        keyword=request.args.get('keyword'),
-        has_debt=request.args.get('has_debt'),
-        debt_min=request.args.get('debt_min'),
-        debt_max=request.args.get('debt_max'),
-    )
+    def load():
+        customers, total, page, per_page, summary = get_customers_list_service(
+            page_value=request.args.get('page'),
+            per_page_value=request.args.get('per_page'),
+            keyword=request.args.get('keyword'),
+            has_debt=request.args.get('has_debt'),
+            debt_min=request.args.get('debt_min'),
+            debt_max=request.args.get('debt_max'),
+        )
+        include_financial = request.employee_role != EmployeeRole.NHAN_VIEN_BAN_HANG.value
+        customers_data = [
+            serialize_customer(customer, include_financial=include_financial)
+            for customer in customers
+        ]
+        return {
+            'customers': customers_data,
+            'pagination': build_pagination(page, per_page, total),
+            'summary': summary if include_financial else {
+                'total_customers': summary['total_customers']
+            },
+        }
 
-    include_financial = request.employee_role != EmployeeRole.NHAN_VIEN_BAN_HANG.value
-    customers_data = [serialize_customer(customer, include_financial=include_financial) for customer in customers]
-
-    return jsonify({
-        'customers': customers_data,
-        'pagination': build_pagination(page, per_page, total),
-        'summary': summary if include_financial else {
-            'total_customers': summary['total_customers']
-        },
-    }), 200
+    return jsonify(cached_query(
+        'customers-list',
+        {'employee_id': request.employee_id, 'role': request.employee_role,
+         'filters': request.args.to_dict(flat=True)},
+        30,
+        load,
+    )), 200
 
 
 @customers_bp.route("/<int:customer_id>", methods=["GET"])

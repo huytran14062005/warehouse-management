@@ -17,6 +17,7 @@ from web.services.import_invoice_service import (
     record_supplier_payment_service,
 )
 from web.utils.pagination import build_pagination
+from web.utils.query_cache import cached_query
 
 
 import_invoices_bp = Blueprint("import_invoices", __name__, url_prefix="/api/import-invoices")
@@ -27,23 +28,30 @@ import_invoices_bp = Blueprint("import_invoices", __name__, url_prefix="/api/imp
 @verify_role(EmployeeRole.THU_KHO, EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY)
 @handle_api_errors
 def get_import_invoices_list():
-       
-    invoices, total, page, per_page = get_import_invoices_list_service(
-        page_value=request.args.get('page'),
-        per_page_value=request.args.get('per_page'),
-        warehouse_id_value=scoped_warehouse_id(request.employee_id, request.args.get('warehouse_id')),
-        supplier_id_value=request.args.get('supplier_id'),
-        from_date_value=request.args.get('from_date'),
-        to_date_value=request.args.get('to_date'),
-        keyword=request.args.get('keyword')
-    )
-    
-    invoices_data = [serialize_import_invoice_summary(invoice) for invoice in invoices]
-    
-    return jsonify({
-        'invoices': invoices_data,
-        'pagination': build_pagination(page, per_page, total)
-    }), 200
+    warehouse_id = scoped_warehouse_id(request.employee_id, request.args.get('warehouse_id'))
+
+    def load():
+        invoices, total, page, per_page = get_import_invoices_list_service(
+            page_value=request.args.get('page'),
+            per_page_value=request.args.get('per_page'),
+            warehouse_id_value=warehouse_id,
+            supplier_id_value=request.args.get('supplier_id'),
+            from_date_value=request.args.get('from_date'),
+            to_date_value=request.args.get('to_date'),
+            keyword=request.args.get('keyword'),
+        )
+        return {
+            'invoices': [serialize_import_invoice_summary(invoice) for invoice in invoices],
+            'pagination': build_pagination(page, per_page, total),
+        }
+
+    return jsonify(cached_query(
+        'import-invoices-list',
+        {'employee_id': request.employee_id, 'role': request.employee_role,
+         'warehouse_id': warehouse_id, 'filters': request.args.to_dict(flat=True)},
+        20,
+        load,
+    )), 200
 
 
 @import_invoices_bp.route("/<int:invoice_id>", methods=["GET"])

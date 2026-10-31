@@ -18,6 +18,7 @@ from web.services.sales_invoice_service import business_today
 from web.services.inventory_settings_service import get_low_stock_percentage
 from web.services.authorization import scoped_central_warehouse_id, scoped_warehouse_id
 from web.utils.pagination import build_pagination
+from web.utils.query_cache import cached_query
 
 
 reports_bp = Blueprint("reports", __name__, url_prefix="/api/reports")
@@ -52,15 +53,18 @@ def send_overdue_debt_email_report():
 @verify_role(EmployeeRole.QUAN_LY)
 @handle_api_errors
 def get_manager_sales_report():
-    return jsonify(get_manager_sales_analytics_service(
-        from_date_value=request.args.get("from_date"),
-        to_date_value=request.args.get("to_date"),
-        page_value=request.args.get("page"),
-        per_page_value=request.args.get("per_page"),
-        table_value=request.args.get("table"),
-        table_page_value=request.args.get("table_page"),
-        table_per_page_value=request.args.get("table_per_page"),
-        granularity_value=request.args.get("granularity"),
+    return jsonify(cached_query(
+        "manager-sales", request.args.to_dict(flat=True), 60,
+        lambda: get_manager_sales_analytics_service(
+            from_date_value=request.args.get("from_date"),
+            to_date_value=request.args.get("to_date"),
+            page_value=request.args.get("page"),
+            per_page_value=request.args.get("per_page"),
+            table_value=request.args.get("table"),
+            table_page_value=request.args.get("table_page"),
+            table_per_page_value=request.args.get("table_per_page"),
+            granularity_value=request.args.get("granularity"),
+        ),
     )), 200
 
 
@@ -73,22 +77,31 @@ def get_inventory_report():
     if request.args.get("source") == "central":
         requested_warehouse_id = scoped_central_warehouse_id(request.employee_id)
        
-    products_data = get_inventory_report_service(
-        warehouse_id_value=scoped_warehouse_id(request.employee_id, requested_warehouse_id),
-        product_id_value=request.args.get('product_id'),
-        keyword=request.args.get('keyword')
-    )
-    
-    products_list = [
-        serialize_product_inventory(item["product"], item["inventory"])
-        for item in products_data
-    ]
-    
-    return jsonify({
-        'products': products_list,
-        'low_stock_percentage': float(get_low_stock_percentage()),
-        'total': len(products_list)
-    }), 200
+    warehouse_id = scoped_warehouse_id(request.employee_id, requested_warehouse_id)
+
+    def load():
+        products_data = get_inventory_report_service(
+            warehouse_id_value=warehouse_id,
+            product_id_value=request.args.get('product_id'),
+            keyword=request.args.get('keyword'),
+        )
+        products_list = [
+            serialize_product_inventory(item["product"], item["inventory"])
+            for item in products_data
+        ]
+        return {
+            'products': products_list,
+            'low_stock_percentage': float(get_low_stock_percentage()),
+            'total': len(products_list),
+        }
+
+    return jsonify(cached_query(
+        'warehouse-inventory-report',
+        {'employee_id': request.employee_id, 'warehouse_id': warehouse_id,
+         'filters': request.args.to_dict(flat=True)},
+        20,
+        load,
+    )), 200
 
 
 @reports_bp.route("/movements", methods=["GET"])
@@ -100,10 +113,21 @@ def get_movements_report():
     requested_warehouse_id = request.args.get("warehouse_id")
     if request.args.get("source") == "central":
         requested_warehouse_id = scoped_central_warehouse_id(request.employee_id)
+    warehouse_id = scoped_warehouse_id(request.employee_id, requested_warehouse_id)
+    return jsonify(cached_query(
+        'warehouse-movements-report',
+        {'employee_id': request.employee_id, 'warehouse_id': warehouse_id,
+         'filters': request.args.to_dict(flat=True)},
+        30,
+        lambda: _build_movements_report(warehouse_id),
+    )), 200
+
+
+def _build_movements_report(warehouse_id):
     report_data, warehouse, from_date, to_date = get_movements_report_service(
         from_date_value=request.args.get('from_date'),
         to_date_value=request.args.get('to_date'),
-        warehouse_id_value=scoped_warehouse_id(request.employee_id, requested_warehouse_id)
+        warehouse_id_value=warehouse_id,
     )
     
                                
@@ -172,7 +196,7 @@ def get_movements_report():
     start = (page - 1) * per_page
     paged_products = by_product[start : start + per_page]
 
-    return jsonify({
+    return {
         "period": {
             "from": from_date.strftime("%Y-%m-%d") if from_date else None,
             "to": to_date.strftime("%Y-%m-%d") if to_date else None
@@ -185,4 +209,4 @@ def get_movements_report():
         "summary": summary,
         "by_product": paged_products,
         "pagination": build_pagination(page, per_page, total_products),
-    }), 200
+    }

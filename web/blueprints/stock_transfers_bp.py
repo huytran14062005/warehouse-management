@@ -20,6 +20,7 @@ from web.services.stock_transfer_service import (
     serialize_stock_transfer_summary,
 )
 from web.utils.pagination import build_pagination
+from web.utils.query_cache import cached_query
 
 
 stock_transfers_bp = Blueprint("stock_transfers", __name__)
@@ -80,10 +81,15 @@ def get_warehouses():
 @verify_role(EmployeeRole.NHAN_VIEN_BAN_HANG, EmployeeRole.QUAN_LY)
 @handle_api_errors
 def get_my_employee_stock():
-    return jsonify(serialize_employee_stock(
-        request.employee_id,
-        page_value=request.args.get("page"),
-        per_page_value=request.args.get("per_page"),
+    return jsonify(cached_query(
+        'employee-stock',
+        {'employee_id': request.employee_id, 'filters': request.args.to_dict(flat=True)},
+        10,
+        lambda: serialize_employee_stock(
+            request.employee_id,
+            page_value=request.args.get("page"),
+            per_page_value=request.args.get("per_page"),
+        ),
     )), 200
 
 
@@ -92,10 +98,15 @@ def get_my_employee_stock():
 @verify_role(EmployeeRole.THU_KHO, EmployeeRole.QUAN_LY)
 @handle_api_errors
 def get_employee_stock(employee_id):
-    return jsonify(serialize_employee_stock(
-        employee_id,
-        page_value=request.args.get("page"),
-        per_page_value=request.args.get("per_page"),
+    return jsonify(cached_query(
+        'employee-stock',
+        {'employee_id': employee_id, 'filters': request.args.to_dict(flat=True)},
+        10,
+        lambda: serialize_employee_stock(
+            employee_id,
+            page_value=request.args.get("page"),
+            per_page_value=request.args.get("per_page"),
+        ),
     )), 200
 
 
@@ -104,18 +115,29 @@ def get_employee_stock(employee_id):
 @verify_role(EmployeeRole.THU_KHO, EmployeeRole.QUAN_LY)
 @handle_api_errors
 def get_stock_transfers_list():
-    transfers, total, page, per_page = get_stock_transfers_list_service(
-        page_value=request.args.get("page"),
-        per_page_value=request.args.get("per_page"),
-        warehouse_id=scoped_warehouse_id(request.employee_id, request.args.get("warehouse_id")),
-    )
-    return jsonify({
-        "transfers": [
-            serialize_stock_transfer_summary(transfer, items_count, total_quantity)
-            for transfer, items_count, total_quantity in transfers
-        ],
-        "pagination": build_pagination(page, per_page, total),
-    }), 200
+    warehouse_id = scoped_warehouse_id(request.employee_id, request.args.get("warehouse_id"))
+
+    def load():
+        transfers, total, page, per_page = get_stock_transfers_list_service(
+            page_value=request.args.get("page"),
+            per_page_value=request.args.get("per_page"),
+            warehouse_id=warehouse_id,
+        )
+        return {
+            "transfers": [
+                serialize_stock_transfer_summary(transfer, items_count, total_quantity)
+                for transfer, items_count, total_quantity in transfers
+            ],
+            "pagination": build_pagination(page, per_page, total),
+        }
+
+    return jsonify(cached_query(
+        'stock-transfers-list',
+        {'employee_id': request.employee_id, 'warehouse_id': warehouse_id,
+         'filters': request.args.to_dict(flat=True)},
+        20,
+        load,
+    )), 200
 
 
 @stock_transfers_bp.route("/api/stock-transfers/<int:transfer_id>", methods=["GET"])

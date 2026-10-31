@@ -7,6 +7,7 @@ from web import db
 from web.models import EmployeeRole, InventorySetting
 from web.services.authorization import get_employee_or_404
 from web.services.exceptions import ForbiddenError, ValidationError
+from web.utils.query_cache import cached_query
 
 
 DEFAULT_LOW_STOCK_PERCENTAGE = Decimal("25")
@@ -14,12 +15,16 @@ SETTINGS_ROW_ID = 1
 
 
 def get_low_stock_percentage():
+    return Decimal(cached_query("inventory-threshold", {}, 300, _load_low_stock_percentage))
+
+
+def _load_low_stock_percentage():
     # Existing databases gain this table on the first manager update. Until
     # then, preserve the previous 25% behavior without requiring a reset.
     if not inspect(db.engine).has_table(InventorySetting.__tablename__):
-        return DEFAULT_LOW_STOCK_PERCENTAGE
+        return str(DEFAULT_LOW_STOCK_PERCENTAGE)
     setting = db.session.get(InventorySetting, SETTINGS_ROW_ID)
-    return Decimal(str(setting.low_stock_percentage)) if setting else DEFAULT_LOW_STOCK_PERCENTAGE
+    return str(setting.low_stock_percentage) if setting else str(DEFAULT_LOW_STOCK_PERCENTAGE)
 
 
 def update_low_stock_percentage(employee_id, value):

@@ -6,6 +6,7 @@ from web.middleware.auth_middleware import verify_role, verify_token
 from web.services.sales_invoice_service import (
     approve_cancel_request_service,
     approve_discount_service,
+    business_today,
     cancel_invoice_service,
     complete_sales_invoice_service,
     confirm_sales_invoice_delivery_service,
@@ -30,6 +31,7 @@ from web.services.authorization import ensure_warehouse_access, scoped_warehouse
 from web.services.validators import parse_bool
 from web.services.customer_service import parse_page, parse_per_page
 from web.services.exceptions import NotFoundError
+from web.utils.query_cache import cached_query
 
 
 sales_invoices_bp = Blueprint("sales_invoices", __name__, url_prefix="/api/sales-invoices")
@@ -71,26 +73,35 @@ def get_sales_invoices_list():
         else None
     )
 
-    invoices, total, page, pages = get_sales_invoices_list_service(
-        page_value=request.args.get('page'),
-        per_page_value=request.args.get('per_page'),
-        status_value=request.args.get('status'),
-        keyword=request.args.get('keyword'),
-        from_date_value=request.args.get('from_date'),
-        to_date_value=request.args.get('to_date'),
-        cancel_requested=cancel_requested,
-        debt_status=request.args.get('debt_status'),
-        warehouse_id=scoped_warehouse_id(request.employee_id, request.args.get('warehouse_id')),
-    )
-    
-    invoices_data = [serialize_invoice_summary(invoice) for invoice in invoices]
-    
-    return jsonify({
-        'invoices': invoices_data,
-        'total': total,
-        'pages': pages,
-        'current_page': page
-    }), 200
+    warehouse_id = scoped_warehouse_id(request.employee_id, request.args.get('warehouse_id'))
+
+    def load():
+        invoices, total, page, pages = get_sales_invoices_list_service(
+            page_value=request.args.get('page'),
+            per_page_value=request.args.get('per_page'),
+            status_value=request.args.get('status'),
+            keyword=request.args.get('keyword'),
+            from_date_value=request.args.get('from_date'),
+            to_date_value=request.args.get('to_date'),
+            cancel_requested=cancel_requested,
+            debt_status=request.args.get('debt_status'),
+            warehouse_id=warehouse_id,
+        )
+        return {
+            'invoices': [serialize_invoice_summary(invoice) for invoice in invoices],
+            'total': total,
+            'pages': pages,
+            'current_page': page,
+        }
+
+    return jsonify(cached_query(
+        'sales-invoices-list',
+        {'employee_id': request.employee_id, 'role': request.employee_role,
+         'warehouse_id': warehouse_id, 'today': business_today().isoformat(),
+         'filters': request.args.to_dict(flat=True)},
+        10,
+        load,
+    )), 200
 
 
 @sales_invoices_bp.route("/<int:invoice_id>", methods=["GET"])

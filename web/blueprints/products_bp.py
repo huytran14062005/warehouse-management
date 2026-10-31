@@ -26,6 +26,7 @@ from web.services.authorization import (
     scoped_warehouse_id,
 )
 from web.utils.pagination import build_pagination
+from web.utils.query_cache import cached_query
 
 
 products_bp = Blueprint("products", __name__, url_prefix="/api/products")
@@ -36,7 +37,7 @@ products_bp = Blueprint("products", __name__, url_prefix="/api/products")
 @verify_role(EmployeeRole.NHAN_VIEN_BAN_HANG, EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY)
 @handle_api_errors
 def get_product_combos():
-    return jsonify({"combos": get_product_combos_service()}), 200
+    return jsonify({"combos": cached_query("product-combos", {}, 300, get_product_combos_service)}), 200
 
 
 @products_bp.route("/combos/catalog", methods=["GET"])
@@ -44,7 +45,7 @@ def get_product_combos():
 @verify_role(EmployeeRole.QUAN_LY)
 @handle_api_errors
 def get_product_combo_catalog():
-    return jsonify({"products": get_product_combo_catalog_service()}), 200
+    return jsonify({"products": cached_query("combo-catalog", {}, 300, get_product_combo_catalog_service)}), 200
 
 
 @products_bp.route("/combos", methods=["POST"])
@@ -191,27 +192,35 @@ def get_products_inventory():
     requested_warehouse_id = request.args.get('warehouse_id')
     if request.args.get('source') == 'central':
         requested_warehouse_id = scoped_central_warehouse_id(request.employee_id)
+    warehouse_id = scoped_warehouse_id(request.employee_id, requested_warehouse_id)
 
-    products_data, total, page, per_page = get_products_inventory_service(
-        page_value=request.args.get('page'),
-        per_page_value=request.args.get('per_page'),
-        keyword=request.args.get('keyword'),
-        warehouse_id_value=scoped_warehouse_id(request.employee_id, requested_warehouse_id),
-        min_price_value=request.args.get('min_price'),
-        max_price_value=request.args.get('max_price'),
-        status_value=request.args.get('status'),
-    )
+    def load():
+        products_data, total, page, per_page = get_products_inventory_service(
+            page_value=request.args.get('page'),
+            per_page_value=request.args.get('per_page'),
+            keyword=request.args.get('keyword'),
+            warehouse_id_value=warehouse_id,
+            min_price_value=request.args.get('min_price'),
+            max_price_value=request.args.get('max_price'),
+            status_value=request.args.get('status'),
+        )
+        products_list = [
+            serialize_product_inventory(item["product"], item["inventory"])
+            for item in products_data
+        ]
+        return {
+            'products': products_list,
+            'low_stock_percentage': float(get_low_stock_percentage()),
+            'pagination': build_pagination(page, per_page, total),
+        }
 
-    products_list = [
-        serialize_product_inventory(item["product"], item["inventory"])
-        for item in products_data
-    ]
-
-    return jsonify({
-        'products': products_list,
-        'low_stock_percentage': float(get_low_stock_percentage()),
-        'pagination': build_pagination(page, per_page, total)
-    }), 200
+    return jsonify(cached_query(
+        "products-inventory",
+        {"employee_id": request.employee_id, "warehouse_id": warehouse_id,
+         "filters": request.args.to_dict(flat=True)},
+        20,
+        load,
+    )), 200
 
 
 @products_bp.route("/price-list/export", methods=["GET"])
