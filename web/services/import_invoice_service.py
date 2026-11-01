@@ -132,7 +132,11 @@ def _resolve_supplier(supplier_id, supplier_data=None, employee_role=None):
 
     if not isinstance(supplier_data, dict):
         raise ValidationError("Vui lòng chọn nhà cung cấp hoặc nhập nhà cung cấp mới")
-    supplier, _ = get_or_create_supplier(supplier_data.get("name"), supplier_data.get("address"))
+    supplier, _ = get_or_create_supplier(
+        supplier_data.get("name"),
+        supplier_data.get("address"),
+        supplier_data.get("phone"),
+    )
     return supplier
 
 

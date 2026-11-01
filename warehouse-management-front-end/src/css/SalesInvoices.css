@@ -68,6 +68,10 @@
 .sales-table tbody tr { cursor: pointer; }
 .sales-table tbody tr:hover { background: #fbfcfd; }
 .sales-table tbody tr:focus { outline: 2px solid #0b3158; outline-offset: -2px; }
+.sales-table tbody tr.sales-row-needs-action { background: #fff0dd; animation: sales-action-row-pulse 4.5s ease-in-out infinite; }
+.sales-table tbody tr.sales-row-needs-action:hover, .sales-table tbody tr.sales-row-needs-action:focus { background: #ffe8cb; animation: none; }
+@keyframes sales-action-row-pulse { 0%, 100% { background-color: #fff3e4; } 50% { background-color: #ffe5c4; } }
+@media (prefers-reduced-motion: reduce) { .sales-table tbody tr.sales-row-needs-action { animation: none; } }
 .sales-table tbody tr:last-child td { border-bottom: 0; }
 .sales-table td strong, .sales-table td small { display: block; }
 .sales-table td small { margin-top: 3px; color: #71849a; font-size: 11px; }
@@ -84,30 +88,43 @@
 .sales-due-cell { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .sales-due-empty { color: #71849a; }
 .sales-status-draft { color: #52657a; border-color: #b8c4d1; background: #f4f6f8; }
-.sales-order-start-cell { position: relative; }
-.sales-action-dot { position: absolute; top: 6px; left: 6px; width: 12px; height: 12px; border-radius: 50%; background: #df3543; box-shadow: 0 0 0 2px #fff; transform-origin: center; animation: sales-action-pulse 3s ease-in-out infinite; }
-.sales-detail-status { position: relative; }
-.sales-detail-status .sales-action-dot { top: -6px; left: -6px; }
-@keyframes sales-action-pulse { 0%, 20% { transform: scale(1); } 40% { transform: scale(1.65); } 100% { transform: scale(1); } }
-@media (prefers-reduced-motion: reduce) { .sales-action-dot { animation: none; } }
-.sales-delivery-confirm { margin-top: 20px; padding: 16px; border: 1px solid #cbd7e2; border-radius: 9px; background: #f5f8fb; }
-.sales-delivery-confirm h3 { margin: 0 0 14px; font-size: 16px; }
-.sales-delivery-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-.sales-delivery-fields label { display: flex; flex-direction: column; gap: 7px; color: #52657a; font-size: 13px; font-weight: 600; }
-.sales-delivery-fields input { box-sizing: border-box; width: 100%; min-width: 0; padding: 11px 12px; border: 1px solid #cbd7e2; border-radius: 6px; font: inherit; background: white; }
-.sales-delivery-confirm button { display: block; margin: 14px 0 0 auto; padding: 9px 13px; border: 1px solid #a8bed2; border-radius: 6px; color: #12385f; background: white; cursor: pointer; }
-.sales-delivery-confirm button:disabled { opacity: .55; cursor: not-allowed; }
+.sales-delivery-plan { margin-top: 22px; padding: 20px; border: 1px solid #d5e1eb; border-radius: 10px; background: #f8fafc; }
+.sales-delivery-plan-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.sales-delivery-plan h3 { margin: 0 0 5px; color: #10375d; font-size: 16px; }
+.sales-delivery-plan-head p, .sales-delivery-hint { margin: 0; color: #60758b; font-size: 13px; line-height: 1.5; }
+.sales-delivery-choice { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0; }
+.sales-delivery-choice label { display: inline-flex; align-items: center; gap: 8px; padding: 10px 13px; border: 1px solid #c9d8e6; border-radius: 7px; background: #fff; color: #193b5b; cursor: pointer; }
+.sales-delivery-choice label:has(input:checked) { border-color: #234b75; background: #edf4fa; }
+.sales-delivery-choice input { accent-color: #12385f; }
+.sales-delivery-fields, .sales-delivery-summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.sales-delivery-fields label, .sales-delivery-field { display: flex; flex-direction: column; gap: 7px; color: #52657a; font-size: 13px; font-weight: 600; }
+.sales-delivery-fields input { box-sizing: border-box; width: 100%; min-width: 0; padding: 11px 12px; border: 1px solid #cbd7e2; border-radius: 6px; font: inherit; background: #fff; }
+.sales-delivery-fields label:has(.money-input) .money-input input { width: 100%; }
+.sales-delivery-hint { margin-top: 14px; }
+.sales-delivery-summary-grid { margin-top: 16px; }
+.sales-delivery-summary { min-width: 0; margin-top: 16px; }
+.sales-delivery-summary-grid .sales-delivery-summary { margin-top: 0; }
+.sales-delivery-summary span { display: block; margin-bottom: 4px; color: #6e8296; font-size: 12px; }
+.sales-delivery-summary strong { color: #153b60; font-size: 14px; overflow-wrap: anywhere; }
+.sales-delivery-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+.sales-delivery-actions button, .sales-delivery-edit { padding: 9px 14px; border: 1px solid #113b65; border-radius: 6px; background: #113b65; color: #fff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.sales-delivery-actions button:disabled { opacity: .5; cursor: not-allowed; }
+.sales-delivery-actions .sales-delivery-edit, .sales-delivery-edit { border-color: #b9cadc; background: #fff; color: #12385f; }
 .sales-delivery-proof { margin: 18px 0 0; padding: 10px 12px; border: 1px solid #b6d6c2; border-radius: 6px; color: #286348; background: #f3fbf5; overflow-wrap: anywhere; }
 .sales-workflow-history { margin-top: 18px; border-top: 1px solid #e5ebf1; padding-top: 14px; }
 .sales-workflow-history summary { cursor: pointer; color: #12385f; font-size: 14px; font-weight: 600; }
-.sales-workflow-history ol { margin: 12px 0 0; padding-left: 22px; max-height: 240px; overflow: auto; font-size: 13px; line-height: 1.45; }
-.sales-workflow-history li { margin-bottom: 10px; }
-.sales-workflow-entry-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px; }
-.sales-workflow-entry-line time { color: #667c91; }
-.sales-workflow-history li small { display: block; margin-top: 2px; color: #667c91; font-size: 13px; }
+.sales-workflow-timeline { margin: 14px 0 0; padding: 0 4px 0 28px; max-height: 240px; overflow-y: auto; list-style: none; font-size: 13px; line-height: 1.45; }
+.sales-workflow-timeline li { position: relative; padding: 0 0 18px; }
+.sales-workflow-timeline li:last-child { padding-bottom: 0; }
+.sales-workflow-timeline li::before { content: ""; position: absolute; top: 5px; left: -25px; box-sizing: border-box; width: 10px; height: 10px; border: 2px solid #8aa5bc; border-radius: 50%; background: #fff; }
+.sales-workflow-timeline li:first-child::before { border-color: #0b3158; background: #0b3158; }
+.sales-workflow-timeline li:not(:last-child)::after { content: ""; position: absolute; top: 16px; bottom: -4px; left: -21px; width: 2px; background: #d9e3ec; }
+.sales-workflow-entry-line { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 2px 12px; color: #1b2d40; font-weight: 600; }
+.sales-workflow-entry-line time { color: #71849a; font-size: 12px; font-weight: 400; white-space: nowrap; }
+.sales-workflow-timeline li small { display: block; margin-top: 3px; color: #667c91; font-size: 12px; }
 .sales-payment-more { display: block; width: 100%; margin-top: 12px; padding: 9px 12px; border: 1px solid #cbd7e2; border-radius: 6px; color: #12385f; background: #f5f8fb; cursor: pointer; }
 .sales-payment-more:disabled { opacity: .55; cursor: not-allowed; }
-@media (max-width: 640px) { .sales-delivery-fields { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .sales-delivery-fields, .sales-delivery-summary-grid { grid-template-columns: 1fr; } .sales-delivery-plan { padding: 16px; } }
 .sales-status-processing { color: #245b8f; border-color: #a9c7e3; background: #eef6fd; }
 .sales-status-delivering { color: #956016; border-color: #e6c58e; background: #fff8e9; }
 .sales-status-completed { color: #26704b; border-color: #a9d5bd; background: #eef9f2; }
@@ -168,11 +185,15 @@
 .sales-payment-status.is-partial { color: #956016; border-color: #e6c58e; background: #fff8e9; }
 .sales-payment-status.is-paid { color: #26704b; border-color: #a9d5bd; background: #eef9f2; }
 .sales-payment-status.is-cancelled { color: #52657a; border-color: #b8c4d1; background: #f4f6f8; }
-.sales-due-date-editor { display: flex; align-items: flex-end; justify-content: flex-end; gap: 10px; margin-top: 12px; padding: 12px; border: 1px solid #d9e2ec; border-radius: 6px; background: #f9fbfc; }
-.sales-due-date-editor label { display: grid; gap: 5px; color: #52657a; font-size: 11px; font-weight: 600; }
-.sales-due-date-editor input { min-height: 36px; padding: 7px 9px; color: #1b2d40; border: 1px solid #b7c8d8; border-radius: 5px; background: #fff; font: inherit; }
-.sales-due-date-editor button { min-height: 36px; padding: 8px 12px; color: #fff; border: 1px solid #0b3158; border-radius: 5px; background: #0b3158; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.sales-due-date-editor { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 18px; margin-top: 18px; padding: 16px 18px; border: 1px solid #cbd7e2; border-radius: 9px; background: #fff; }
+.sales-due-date-copy strong { color: #0b3158; font-size: 14px; }
+.sales-due-date-copy p { margin: 6px 0 0; color: #62758a; font-size: 12px; line-height: 1.5; }
+.sales-due-date-controls { display: flex; align-items: end; gap: 10px; }
+.sales-due-date-editor label { display: grid; gap: 6px; min-width: 175px; color: #52657a; font-size: 12px; font-weight: 600; }
+.sales-due-date-editor input { box-sizing: border-box; width: 100%; min-height: 40px; padding: 8px 10px; color: #1b2d40; border: 1px solid #cbd7e2; border-radius: 5px; background: #fff; font: inherit; }
+.sales-due-date-editor button { min-height: 40px; padding: 8px 12px; color: #fff; border: 1px solid #0b3158; border-radius: 5px; background: #0b3158; font: inherit; font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; }
 .sales-due-date-editor button:disabled { opacity: .55; cursor: not-allowed; }
+.sales-due-date-editor > small { grid-column: 1 / -1; color: #956016; font-size: 12px; }
 .sales-payment-history { margin-top: 20px; padding-top: 16px; border-top: 1px solid #e1e8ef; }
 .sales-payment-history h4 { margin: 0 0 4px; color: #0b3158; font-size: 12px; }
 .sales-payment-history > div { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid #edf1f5; color: #1b2d40; font-size: 12px; }
@@ -198,15 +219,12 @@
 .sales-complete-actions { box-sizing: border-box; display: block; padding: 16px; border: 1px solid #cbd7e2; border-radius: 9px; background: #f5f8fb; }
 .sales-completion-heading { margin-bottom: 14px; }
 .sales-completion-heading strong { color: #0b3158; font-size: 14px; }
-.sales-payment-hint { display: block; margin-top: 8px; color: #956016; font-size: 12px; }
-.sales-payment-entry-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: 14px; width: 100%; }
-.sales-payment-entry-fields.is-two-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.sales-completion-heading p { margin: 6px 0 0; color: #62758a; font-size: 12px; line-height: 1.5; }
+.sales-payment-entry-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 14px; width: 100%; }
 .sales-payment-entry-field { display: grid; align-content: start; gap: 6px; min-width: 0; margin: 0; color: #52657a; font-size: 12px; font-weight: 600; }
 .sales-payment-entry-field > span { min-height: 18px; }
 .sales-payment-entry-field .money-input { width: 100%; }
-.sales-payment-entry-field .money-input input, .sales-payment-entry-field > input[type="date"] { box-sizing: border-box; width: 100%; min-height: 40px; }
-.sales-payment-entry-field > input[type="date"] { padding: 8px 10px; color: #1b2d40; border: 1px solid #cbd7e2; border-radius: 5px; background: #fff; font: inherit; font-size: 13px; }
-.sales-payment-entry-field > input[type="date"]:disabled { color: #71849a; background: #eef2f6; cursor: not-allowed; }
+.sales-payment-entry-field .money-input input { box-sizing: border-box; width: 100%; min-height: 40px; }
 .sales-payment-entry-field > small { color: #71849a; font-size: 11px; font-weight: 400; line-height: 1.35; }
 .sales-payment-entry-field .sales-payment-change { display: block; padding: 7px 9px; color: #26704b; border: 1px solid #a9d5bd; border-radius: 5px; background: #eef9f2; }
 .sales-payment-change strong { font-weight: 700; }
@@ -328,8 +346,10 @@
   .sales-detail-header-tools { align-items: flex-end; flex-direction: column-reverse; }
   .sales-detail-modal > .sales-detail-body { padding: 16px 16px 24px; }
   .sales-detail-line { grid-template-columns: 125px minmax(0, 1fr); }
-  .sales-payment-entry-fields, .sales-payment-entry-fields.is-two-columns { grid-template-columns: 1fr; }
-  .sales-due-date-editor { align-items: stretch; flex-direction: column; }
+  .sales-payment-entry-fields { grid-template-columns: 1fr; }
+  .sales-due-date-editor { grid-template-columns: 1fr; }
+  .sales-due-date-controls { flex-wrap: wrap; }
+  .sales-due-date-editor label { flex: 1 1 175px; }
   .sales-detail-items { min-width: 610px; }
   .sales-detail-summary, .sales-detail-info { grid-template-columns: 1fr; }
   .sales-detail-total { align-items: flex-end; }

@@ -14,6 +14,7 @@ const ENTRY_TYPE_LABELS = {
   opening: "Số dư ban đầu",
   customer_receipt: "Thu tiền khách hàng",
   supplier_payment: "Trả tiền nhà cung cấp",
+  delivery_shipping: "Phí giao hàng",
   balance_adjustment: "Điều chỉnh số dư",
 };
 
@@ -34,7 +35,6 @@ function dateTime(value) {
 export default function CompanyFunds() {
   const [funds, setFunds] = useState([]);
   const [totalBalance, setTotalBalance] = useState(0);
-  const [totalOpeningBalance, setTotalOpeningBalance] = useState(0);
   const [initialized, setInitialized] = useState(false);
   const [entries, setEntries] = useState([]);
   const [selectedEntry, setSelectedEntry] = useState(null);
@@ -51,6 +51,7 @@ export default function CompanyFunds() {
   const [adjustConfirmOpen, setAdjustConfirmOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -74,7 +75,6 @@ export default function CompanyFunds() {
       setInitialized(Boolean(fundResponse.data?.initialized));
       setFunds(fundResponse.data?.funds || []);
       setTotalBalance(Number(fundResponse.data?.total_balance || 0));
-      setTotalOpeningBalance(Number(fundResponse.data?.total_opening_balance || 0));
       setEntries(entryResponse.data?.entries || []);
       setPagination(entryResponse.data?.pagination || { total_pages: 1 });
     } catch (requestError) {
@@ -180,6 +180,39 @@ export default function CompanyFunds() {
     }
   };
 
+  const exportHistory = async () => {
+    if (exporting || loading) return;
+    try {
+      setExporting(true);
+      setError("");
+      const response = await authApis().get(endpoints.companyFundEntriesExport, {
+        params: { method: method || undefined },
+        responseType: "blob",
+      });
+      const url = window.URL.createObjectURL(response.data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `lich-su-thu-chi-${method === "cash" ? "tien-mat" : method === "bank_transfer" ? "ngan-hang" : "tat-ca"}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+    } catch (requestError) {
+      if (requestError.response?.data instanceof Blob) {
+        try {
+          const payload = JSON.parse(await requestError.response.data.text());
+          setError(payload.error || "Không thể xuất lịch sử thu chi.");
+        } catch {
+          setError("Không thể xuất lịch sử thu chi.");
+        }
+      } else {
+        setError(getApiError(requestError));
+      }
+    } finally {
+      setExporting(false);
+    }
+  };
+
   if (!canView) return <div className="warehouse-page">Bạn không có quyền xem sổ quỹ công ty.</div>;
 
   return (
@@ -196,17 +229,15 @@ export default function CompanyFunds() {
         <>
           <div className="company-funds-balances">
             <div className="company-funds-balance company-funds-balance-total">
-              <span>Tổng số dư công ty</span>
+              <span>Tổng số dư hiện tại</span>
               <strong>{money(totalBalance)}</strong>
-              <small>Tổng số dư ban đầu: {money(totalOpeningBalance)}</small>
             </div>
             {funds.map((fund) => <div className="company-funds-balance" key={fund.method}>
-              <span>Số dư {METHOD_LABELS[fund.method]?.toLowerCase()}</span>
+              <span>Số dư {METHOD_LABELS[fund.method]?.toLowerCase()} hiện tại</span>
               <strong>{money(fund.balance)}</strong>
-              <small>Số dư ban đầu: {money(fund.opening_balance)}</small>
             </div>)}
           </div>
-          {isManager && adjustOpen && <div className="company-funds-modal-overlay">
+          {isManager && adjustOpen && createPortal(<div className="company-funds-modal-overlay">
             <form className="company-funds-adjust company-funds-modal" role="dialog" aria-modal="true" aria-labelledby="company-funds-adjust-title" onSubmit={confirmAdjustment}>
               <div className="company-funds-modal-header">
                 <h2 id="company-funds-adjust-title">Điều chỉnh số dư quỹ</h2>
@@ -238,24 +269,29 @@ export default function CompanyFunds() {
                 <button className="warehouse-primary-button" type="submit">Kiểm tra và lưu</button>
               </div>
             </form>
-          </div>}
+          </div>, document.body)}
           <p className="company-funds-cutover">Bắt đầu theo dõi từ {dateTime(funds[0]?.opened_at)}. Các khoản thu chi trước thời điểm này đã nằm trong số dư ban đầu.</p>
           <p className="company-funds-cutover">Sổ quỹ chỉ ghi nhận giao dịch trong hệ thống; chuyển khoản ngân hàng cần thực hiện và đối chiếu ngoài ứng dụng.</p>
           <div className="company-funds-list-head">
             <h2>Lịch sử thu chi</h2>
-            <div className="company-funds-method-filter">
-              <span>Quỹ:</span>
-              <SharedSearchableDropdown
-                value={method}
-                options={[
-                  { value: "", label: "Tất cả" },
-                  { value: "cash", label: "Tiền mặt" },
-                  { value: "bank_transfer", label: "Ngân hàng" },
-                ]}
-                placeholder="Tất cả"
-                onChange={(value) => { setMethod(value); setPage(1); }}
-                ariaLabel="Lọc lịch sử thu chi theo quỹ"
-              />
+            <div className="company-funds-list-actions">
+              <div className="company-funds-method-filter">
+                <span>Quỹ:</span>
+                <SharedSearchableDropdown
+                  value={method}
+                  options={[
+                    { value: "", label: "Tất cả" },
+                    { value: "cash", label: "Tiền mặt" },
+                    { value: "bank_transfer", label: "Ngân hàng" },
+                  ]}
+                  placeholder="Tất cả"
+                  onChange={(value) => { setMethod(value); setPage(1); }}
+                  ariaLabel="Lọc lịch sử thu chi theo quỹ"
+                />
+              </div>
+              <button type="button" className="company-funds-export-button" onClick={exportHistory} disabled={loading || exporting}>
+                {exporting ? "Đang xuất..." : "Xuất Excel"}
+              </button>
             </div>
           </div>
           <div className="warehouse-card warehouse-table-wrap">

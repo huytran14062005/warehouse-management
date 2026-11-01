@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from enum import Enum as UserEnum
 
 from sqlalchemy import Boolean, CheckConstraint, Column, Date, DateTime, Enum, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
@@ -7,11 +7,17 @@ from sqlalchemy.orm import relationship
 from web import db
 
 
+def vietnam_payment_time():
+    """Store payment time in the business timezone, including seconds."""
+    return datetime.now(timezone(timedelta(hours=7))).replace(tzinfo=None)
+
+
 class EmployeeRole(UserEnum):
     KE_TOAN = "kế toán"
     NHAN_VIEN_BAN_HANG = "nhân viên bán hàng"
     THU_KHO = "thủ kho"
     QUAN_LY = "quản lý"
+    NHAN_VIEN_GIAO_HANG = "nhân viên giao hàng"
 
 
 class ProductRequestStatus(UserEnum):
@@ -56,6 +62,7 @@ class FundEntryType(UserEnum):
     OPENING = "opening"
     CUSTOMER_RECEIPT = "customer_receipt"
     SUPPLIER_PAYMENT = "supplier_payment"
+    DELIVERY_SHIPPING = "delivery_shipping"
 
 
 class DamageReportStatus(UserEnum):
@@ -134,6 +141,7 @@ class Supplier(BaseModel):
     __tablename__ = "suppliers"
 
     name = Column(String(255), nullable=False)
+    phone = Column(String(20), nullable=True)
     address = Column(Text, nullable=False)
 
     import_invoices = relationship("ImportInvoice", backref="supplier", lazy=True)
@@ -497,6 +505,13 @@ class SalesInvoice(BaseModel):
     delivered_at = Column(DateTime, nullable=True)
     delivery_recipient = Column(String(120), nullable=True)
     delivery_note = Column(Text, nullable=True)
+    delivery_method = Column(String(16), nullable=True)
+    delivery_employee_id = Column(Integer, ForeignKey("employees.id", ondelete="RESTRICT"), nullable=True, index=True)
+    delivery_service = Column(String(120), nullable=True)
+    tracking_number = Column(String(120), nullable=True)
+    shipping_fee = Column(Numeric(14, 2), nullable=True)
+    shipping_fund_method = Column(String(20), nullable=True)
+    shipping_charged_at = Column(DateTime, nullable=True)
     cancel_requested = Column(Boolean, nullable=False, default=False)
     cancel_note = Column(Text)
     
@@ -530,6 +545,7 @@ class SalesInvoice(BaseModel):
         backref="approved_discounts",
         lazy=True,
     )
+    delivery_employee = relationship("Employee", foreign_keys=[delivery_employee_id], lazy=True)
     payments = relationship("CustomerPayment", backref="sales_invoice", lazy=True)
     workflow_events = relationship(
         "SalesInvoiceWorkflowEvent", backref="sales_invoice",
@@ -587,7 +603,7 @@ class CustomerPayment(BaseModel):
         # Legacy payments predate this field; their method is unknown.
         nullable=True,
     )
-    paid_at = Column(DateTime, nullable=False, default=datetime.now)
+    paid_at = Column(DateTime, nullable=False, default=vietnam_payment_time)
     note = Column(Text, nullable=True)
 
     customer_id = Column(Integer, ForeignKey("customers.id", ondelete="RESTRICT"), nullable=False, index=True)

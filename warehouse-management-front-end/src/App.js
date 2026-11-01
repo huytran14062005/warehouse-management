@@ -11,6 +11,7 @@ import Login from "./screens/User/Login";
 import ForgotPassword from "./screens/User/ForgotPassword";
 import Products from "./screens/Products";
 import SalesInvoices from "./screens/SalesInvoices";
+import CourierOrders from "./screens/CourierOrders";
 import StockTransfers from "./screens/StockTransfers";
 import EmployeeStock from "./screens/EmployeeStock";
 import ImportInvoices from "./screens/ImportInvoices";
@@ -322,13 +323,14 @@ function AppFrame() {
             <div className="app-route-content">
               <PageTransition>
                 <Routes>
-                  <Route path="/" element={<Home />} />
+                  <Route path="/" element={currentUser?.role === "nhân viên giao hàng" ? <Navigate to="/my-deliveries" replace /> : <Home />} />
                   <Route path="/register" element={<PublicOnlyRoute currentUser={currentUser} authReady={authReady}><Register /></PublicOnlyRoute>} />
                   <Route path="/login" element={<PublicOnlyRoute currentUser={currentUser} authReady={authReady}><Login /></PublicOnlyRoute>} />
                   <Route path="/forgot-password" element={<PublicOnlyRoute currentUser={currentUser} authReady={authReady}><ForgotPassword /></PublicOnlyRoute>} />
                   <Route path="/customers" element={requireAuth(<Customers />)} />
                   <Route path="/products" element={requireAuth(<Products />)} />
                   <Route path="/sales-invoices" element={requireAuth(<SalesInvoices />)} />
+                  <Route path="/my-deliveries" element={requireAuth(<CourierOrders />)} />
                   <Route path="/promotions" element={requireAuth(<Promotions />)} />
                   <Route path="/stock-transfers" element={requireAuth(<StockTransfers />)} />
                   <Route path="/employee-stock" element={requireAuth(<EmployeeStock />)} />
@@ -340,7 +342,7 @@ function AppFrame() {
                   <Route path="/manager-sales-analytics" element={requireAuth(<ManagerSalesAnalytics />)} />
                   <Route path="/employee-accounts" element={requireAuth(<EmployeeAccounts />)} />
                   <Route path="/manager-pending-requests" element={requireAuth(<PendingRequests pendingRequests={pendingRequests} />)} />
-                  <Route path="*" element={<Home />} />
+                  <Route path="*" element={currentUser?.role === "nhân viên giao hàng" ? <Navigate to="/my-deliveries" replace /> : <Home />} />
                 </Routes>
               </PageTransition>
             </div>

@@ -2,6 +2,7 @@ import math
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP
 from sqlalchemy import and_, func, or_
+from sqlalchemy.orm import joinedload, selectinload
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from web import dao, db
@@ -11,6 +12,7 @@ from web.models import (
     DiscountStatus,
     Employee,
     EmployeeRole,
+    FundEntryType,
     EmployeeStock,
     InvoiceStatus,
     PaymentMethod,
@@ -19,8 +21,10 @@ from web.models import (
     Product,
     SaleSource,
     SalesInvoice,
+    SalesInvoiceItem,
     SalesInvoiceWorkflowEvent,
     Warehouse,
+    vietnam_payment_time,
 )
 from web.services.exceptions import AppError, ForbiddenError, NotFoundError, ValidationError
 from web.services.company_fund_service import record_fund_movement
@@ -50,15 +54,13 @@ ACTIVE_CANCEL_REQUEST_STATUSES = frozenset(
 def workflow_stage(invoice):
     if invoice.status == InvoiceStatus.DRAFT and invoice.warehouse_submitted_at:
         return "chờ kho"
-    if invoice.status == InvoiceStatus.DELIVERING and invoice.delivered_at:
-        return "đã giao"
     return invoice.status.value
 
 
 def _log_workflow_event(invoice, actor_id, action, detail=None):
     db.session.add(SalesInvoiceWorkflowEvent(
         sales_invoice_id=invoice.id, actor_id=actor_id,
-        action=action, detail=detail,
+        action=action, detail=detail, occurred_at=vietnam_payment_time(),
     ))
 
 
@@ -78,30 +80,29 @@ def get_sales_invoice_action_count_service(employee_id, employee_role):
         SalesInvoice.warehouse_submitted_at.isnot(None),
     )
     processing = SalesInvoice.status == InvoiceStatus.PROCESSING
-    awaiting_delivery = and_(
-        SalesInvoice.status == InvoiceStatus.DELIVERING,
-        SalesInvoice.delivered_at.is_(None),
-    )
-    delivered = and_(
-        SalesInvoice.status == InvoiceStatus.DELIVERING,
-        SalesInvoice.delivered_at.isnot(None),
-    )
+    delivering = SalesInvoice.status == InvoiceStatus.DELIVERING
     if role == EmployeeRole.NHAN_VIEN_BAN_HANG:
         condition = and_(
             SalesInvoice.employee_id == employee_id,
             SalesInvoice.cancel_requested.is_(False),
-            or_(draft_to_send, awaiting_delivery),
+            draft_to_send,
         )
     elif role == EmployeeRole.THU_KHO:
         condition = and_(
             SalesInvoice.cancel_requested.is_(False),
-            or_(waiting_warehouse, processing),
+            or_(
+                waiting_warehouse,
+                and_(processing, or_(
+                    SalesInvoice.delivery_method.is_(None),
+                    SalesInvoice.delivery_method != "third_party",
+                )),
+            ),
         )
     elif role == EmployeeRole.KE_TOAN:
         condition = or_(
             active_cancel,
             and_(
-                SalesInvoice.cancel_requested.is_(False), delivered,
+                SalesInvoice.cancel_requested.is_(False), delivering,
                 SalesInvoice.discount_status.notin_({
                     DiscountStatus.PENDING_APPROVAL, DiscountStatus.REJECTED,
                 }),
@@ -111,7 +112,7 @@ def get_sales_invoice_action_count_service(employee_id, employee_role):
         condition = or_(
             active_cancel,
             SalesInvoice.status == InvoiceStatus.DRAFT,
-            and_(SalesInvoice.cancel_requested.is_(False), or_(processing, awaiting_delivery)),
+            and_(SalesInvoice.cancel_requested.is_(False), processing),
             and_(
                 SalesInvoice.discount_status == DiscountStatus.PENDING_APPROVAL,
                 SalesInvoice.employee_id != employee_id,
@@ -558,6 +559,16 @@ def serialize_sales_invoice(invoice):
         "delivered_at": invoice.delivered_at.isoformat() if invoice.delivered_at else None,
         "delivery_recipient": invoice.delivery_recipient,
         "delivery_note": invoice.delivery_note,
+        "delivery_method": invoice.delivery_method,
+        "delivery_employee": {
+            "id": invoice.delivery_employee.id,
+            "full_name": invoice.delivery_employee.full_name,
+        } if invoice.delivery_employee else None,
+        "delivery_service": invoice.delivery_service,
+        "tracking_number": invoice.tracking_number,
+        "shipping_fee": float(invoice.shipping_fee) if invoice.shipping_fee is not None else None,
+        "shipping_fund_method": invoice.shipping_fund_method,
+        "shipping_charged_at": invoice.shipping_charged_at.isoformat() if invoice.shipping_charged_at else None,
         "sale_source": invoice.sale_source.value,
         "payment_status": invoice.payment_status.value,
         "paid_amount": float(invoice.paid_amount),
@@ -885,8 +896,8 @@ def complete_sales_invoice_service(invoice_id, employee_id, payment_amount=0, pa
         raise ValidationError("Đơn hàng đã được xuất kho trước đó")
     
                                                    
-    if invoice.status != InvoiceStatus.DELIVERING or not invoice.delivered_at:
-        raise ValidationError("Chỉ có thể hoàn thành đơn đã xác nhận giao hàng")
+    if invoice.status != InvoiceStatus.DELIVERING:
+        raise ValidationError("Chỉ có thể hoàn thành đơn đang giao")
 
     if invoice.discount_status == DiscountStatus.PENDING_APPROVAL:
         raise ValidationError(
@@ -958,6 +969,9 @@ def complete_sales_invoice_service(invoice_id, employee_id, payment_amount=0, pa
             if remaining_amount > 0 else None
         )
         invoice.status = InvoiceStatus.COMPLETED
+        # Completing the invoice is the accountant's delivery confirmation.
+        if invoice.delivered_at is None:
+            invoice.delivered_at = vietnam_payment_time()
         invoice.payment_due_date = clean_payment_due_date if remaining_amount > 0 else None
         _apply_invoice_payment(
             invoice, employee_id, credited, final_amount,
@@ -1170,7 +1184,7 @@ def get_sales_invoices_list_service(
     per_page = parse_per_page(per_page_value, default_size)
     status = parse_invoice_status_filter(status_value)
     stage = str(status_value or "").strip().lower()
-    if stage not in {"", "chờ kho", "đã giao"} and status is None:
+    if stage not in {"", "chờ kho"} and status is None:
         raise ValidationError("Trạng thái đơn hàng không hợp lệ")
     from_date, to_date = parse_invoice_date_range(from_date_value, to_date_value)
     keyword = str(keyword or '').strip()
@@ -1190,7 +1204,7 @@ def get_sales_invoices_list_service(
         debt_status=debt_status,
         today=business_today(),
         due_soon_days=PAYMENT_DUE_SOON_DAYS,
-        workflow_stage_filter=stage if stage in {"chờ kho", "đã giao"} else None,
+        workflow_stage_filter=stage if stage == "chờ kho" else None,
     )
     
     pages = math.ceil(total / per_page) if per_page > 0 else 0
@@ -1229,18 +1243,12 @@ def get_status_tracking_board_service():
         SalesInvoice.status == InvoiceStatus.DRAFT,
         SalesInvoice.warehouse_submitted_at.isnot(None),
     ).scalar() or 0
-    delivered = db.session.query(func.count(SalesInvoice.id)).filter(
-        SalesInvoice.status == InvoiceStatus.DELIVERING,
-        SalesInvoice.delivered_at.isnot(None),
-    ).scalar() or 0
     groups[InvoiceStatus.DRAFT.value]["total"] -= int(submitted)
-    groups[InvoiceStatus.DELIVERING.value]["total"] -= int(delivered)
     return [
         groups[InvoiceStatus.DRAFT.value],
         {"status": "chờ kho", "total": int(submitted), "invoices": []},
         groups[InvoiceStatus.PROCESSING.value],
         groups[InvoiceStatus.DELIVERING.value],
-        {"status": "đã giao", "total": int(delivered), "invoices": []},
         groups[InvoiceStatus.COMPLETED.value],
         groups[InvoiceStatus.CANCELLED.value],
     ]
@@ -1280,30 +1288,106 @@ def submit_sales_invoice_to_warehouse_service(invoice_id, employee_id):
     return dao.get_sales_invoice_by_id(invoice.id)
 
 
-def confirm_sales_invoice_delivery_service(invoice_id, employee_id, recipient, note=None):
+def list_delivery_staff_service():
+    return Employee.query.filter(
+        Employee.role == EmployeeRole.NHAN_VIEN_GIAO_HANG,
+        Employee.is_approved.is_(True),
+        Employee.is_locked.is_(False),
+    ).order_by(Employee.full_name.asc(), Employee.id.asc()).all()
+
+
+def serialize_courier_assignment(invoice):
+    return {
+        "id": invoice.id,
+        "status": invoice.status.value,
+        "sold_at": invoice.sold_at.isoformat() if invoice.sold_at else None,
+        "warehouse": invoice.warehouse.name,
+        "customer": {
+            "full_name": invoice.customer.full_name,
+            "phone": invoice.customer.phone,
+            "address": invoice.customer.address,
+        },
+        "items": [
+            {"product_name": item.product.name, "unit": item.product.unit, "quantity": item.quantity}
+            for item in invoice.items
+        ],
+        "cancel_requested": bool(invoice.cancel_requested),
+    }
+
+
+def list_courier_assignments_service(employee_id, page, per_page):
+    query = SalesInvoice.query.filter(
+        SalesInvoice.delivery_method == "internal",
+        SalesInvoice.delivery_employee_id == employee_id,
+    )
+    total = query.count()
+    invoices = query.options(
+        joinedload(SalesInvoice.customer),
+        joinedload(SalesInvoice.warehouse),
+        selectinload(SalesInvoice.items).joinedload(SalesInvoiceItem.product),
+    ).order_by(SalesInvoice.sold_at.desc(), SalesInvoice.id.desc()).offset((page - 1) * per_page).limit(per_page).all()
+    return invoices, total
+
+
+def get_courier_assignment_service(invoice_id, employee_id):
+    invoice = SalesInvoice.query.filter(
+        SalesInvoice.id == invoice_id,
+        SalesInvoice.delivery_method == "internal",
+        SalesInvoice.delivery_employee_id == employee_id,
+    ).first()
+    if not invoice:
+        raise NotFoundError("Đơn giao hàng không tồn tại")
+    return invoice
+
+
+def prepare_sales_invoice_delivery_service(invoice_id, employee_id, data):
     invoice = SalesInvoice.query.filter_by(id=invoice_id).with_for_update().first()
     if not invoice:
         raise NotFoundError("Đơn hàng không tồn tại")
-    employee = Employee.query.get(employee_id)
-    if not employee or employee.role not in {EmployeeRole.NHAN_VIEN_BAN_HANG, EmployeeRole.QUAN_LY}:
-        raise ForbiddenError("Bạn không có quyền xác nhận giao hàng")
-    if employee.role == EmployeeRole.NHAN_VIEN_BAN_HANG and invoice.employee_id != employee_id:
-        raise ForbiddenError("Chỉ được xác nhận đơn do mình tạo")
+    actor = Employee.query.get(employee_id)
+    if not actor or actor.role not in {EmployeeRole.THU_KHO, EmployeeRole.QUAN_LY}:
+        raise ForbiddenError("Chỉ thủ kho hoặc quản lý được chuẩn bị giao hàng")
     ensure_warehouse_access(employee_id, invoice.warehouse_id)
-    if invoice.status != InvoiceStatus.DELIVERING or invoice.delivered_at:
-        raise ValidationError("Chỉ xác nhận đơn đang giao và chưa xác nhận")
-    if invoice.cancel_requested:
-        raise ValidationError("Đơn đang chờ xử lý yêu cầu hủy")
-    clean_recipient = require_text(recipient, "Người nhận", max_length=120)
-    clean_note = str(note or "").strip()
-    if len(clean_note) > 500:
-        raise ValidationError("Ghi chú giao hàng tối đa 500 ký tự")
-    invoice.delivered_at = datetime.now()
-    invoice.delivery_recipient = clean_recipient
-    invoice.delivery_note = clean_note or None
-    _log_workflow_event(invoice, employee_id, "delivery_confirmed", clean_recipient)
-    db.session.commit()
-    return dao.get_sales_invoice_by_id(invoice.id)
+    if invoice.status != InvoiceStatus.PROCESSING or invoice.cancel_requested:
+        raise ValidationError("Chỉ được chọn phương án giao cho đơn đang xử lý và không chờ hủy")
+    if invoice.delivery_method == "third_party" and actor.role != EmployeeRole.QUAN_LY:
+        raise ForbiddenError("Chỉ quản lý được thay đổi phương án giao qua dịch vụ bên ngoài")
+    method = str(data.get("delivery_method") or "").strip()
+    if method not in {"internal", "third_party"}:
+        raise ValidationError("Vui lòng chọn nhân viên công ty hoặc dịch vụ giao hàng")
+
+    if method == "internal":
+        courier_id = validate_positive_integer(data.get("delivery_employee_id"), "Nhân viên giao hàng")
+        courier = Employee.query.get(courier_id)
+        if not courier or courier.role != EmployeeRole.NHAN_VIEN_GIAO_HANG or not courier.is_approved or courier.is_locked:
+            raise ValidationError("Nhân viên giao hàng không còn hoạt động")
+        invoice.delivery_employee_id = courier.id
+        invoice.delivery_service = None
+        invoice.tracking_number = None
+        invoice.shipping_fee = None
+        invoice.shipping_fund_method = None
+        detail = f"Nhân viên công ty: {courier.full_name}"
+    else:
+        if actor.role != EmployeeRole.QUAN_LY:
+            raise ForbiddenError("Chỉ quản lý được duyệt phí giao hàng qua dịch vụ bên ngoài")
+        service = require_text(data.get("delivery_service"), "Dịch vụ giao hàng", max_length=120)
+        tracking = require_text(data.get("tracking_number"), "Mã vận đơn", max_length=120)
+        fee = validate_money_amount(data.get("shipping_fee"), "Phí vận chuyển", allow_zero=False)
+        fund_method = parse_payment_method(data.get("shipping_fund_method"), required=True)
+        invoice.delivery_employee_id = None
+        invoice.delivery_service = service
+        invoice.tracking_number = tracking
+        invoice.shipping_fee = fee
+        invoice.shipping_fund_method = fund_method.value
+        detail = f"{service}: {tracking}"
+    try:
+        invoice.delivery_method = method
+        _log_workflow_event(invoice, employee_id, "delivery_prepared", detail)
+        db.session.commit()
+        return dao.get_sales_invoice_by_id(invoice.id)
+    except Exception:
+        db.session.rollback()
+        raise
 
 
 def update_payment_due_date_service(invoice_id, employee_id, payment_due_date):
@@ -1344,8 +1428,10 @@ def update_invoice_status_service(invoice_id, employee_id, status_value):
 
     ensure_warehouse_access(employee_id, invoice.warehouse_id)
     employee = Employee.query.get(employee_id)
-    if not employee or employee.role not in {EmployeeRole.THU_KHO, EmployeeRole.QUAN_LY}:
-        raise ForbiddenError("Bạn không có quyền chuyển trạng thái kho")
+    if not employee or employee.role not in {
+        EmployeeRole.THU_KHO, EmployeeRole.QUAN_LY, EmployeeRole.NHAN_VIEN_GIAO_HANG,
+    }:
+        raise ForbiddenError("Bạn không có quyền chuyển trạng thái đơn")
     
                   
     text = str(status_value).strip().lower()
@@ -1386,6 +1472,22 @@ def update_invoice_status_service(invoice_id, employee_id, status_value):
     if new_status not in allowed_transitions[invoice.status]:
         raise ValidationError("Chuyá»ƒn tráº¡ng thÃ¡i Ä‘Æ¡n hÃ ng khÃ´ng há»£p lá»‡")
 
+    if new_status == InvoiceStatus.PROCESSING and employee.role not in {
+        EmployeeRole.THU_KHO, EmployeeRole.QUAN_LY,
+    }:
+        raise ForbiddenError("Chỉ thủ kho hoặc quản lý được xác nhận xử lý đơn")
+    if new_status == InvoiceStatus.DELIVERING:
+        if invoice.delivery_method == "internal":
+            if employee.role != EmployeeRole.NHAN_VIEN_GIAO_HANG or invoice.delivery_employee_id != employee_id:
+                raise ForbiddenError("Chỉ nhân viên giao hàng được phân công mới được bắt đầu giao đơn này")
+        elif invoice.delivery_method == "third_party":
+            if employee.role != EmployeeRole.QUAN_LY:
+                raise ForbiddenError("Chỉ quản lý được bàn giao đơn cho dịch vụ vận chuyển")
+            if not all((invoice.delivery_service, invoice.tracking_number, invoice.shipping_fee, invoice.shipping_fund_method)):
+                raise ValidationError("Thiếu thông tin dịch vụ vận chuyển hoặc phí ship")
+        else:
+            raise ValidationError("Vui lòng chọn phương án giao hàng trước khi chuyển trạng thái")
+
     if invoice.status == InvoiceStatus.DRAFT and not invoice.warehouse_submitted_at:
         raise ValidationError("Nhân viên bán hàng chưa gửi đơn cho kho")
     if new_status == InvoiceStatus.DELIVERING and invoice.discount_status in {
@@ -1414,6 +1516,16 @@ def update_invoice_status_service(invoice_id, employee_id, status_value):
                 invoice.warehouse_id,
                 exclude_invoice_id=invoice.id,
             )
+        if new_status == InvoiceStatus.DELIVERING and invoice.delivery_method == "third_party":
+            charge_time = vietnam_payment_time()
+            record_fund_movement(
+                invoice.shipping_fund_method, "out", invoice.shipping_fee,
+                FundEntryType.DELIVERY_SHIPPING.value, invoice.id, employee_id,
+                f"Phí giao hàng đơn bán #{invoice.id}",
+                f"{invoice.delivery_service} · {invoice.tracking_number}",
+                occurred_at=charge_time,
+            )
+            invoice.shipping_charged_at = charge_time
         invoice.status = new_status
         _log_workflow_event(invoice, employee_id,
                             "warehouse_processing" if new_status == InvoiceStatus.PROCESSING else "dispatched")

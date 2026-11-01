@@ -22,6 +22,7 @@ const roleOptions = [
   { value: "nhân viên bán hàng", label: "Nhân viên bán hàng" },
   { value: "thủ kho", label: "Thủ kho" },
   { value: "kế toán", label: "Kế toán" },
+  { value: "nhân viên giao hàng", label: "Nhân viên giao hàng" },
 ];
 
 function Register() {

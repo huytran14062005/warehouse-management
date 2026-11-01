@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { authApis, endpoints } from "../configs/Apis";
 import { getApiError } from "../utils/apiError";
 import useNotificationState from "../utils/useNotificationState";
@@ -300,14 +301,17 @@ function StockTransfers() {
         />
       ) : null}
 
-      {editorOpen && (
+      {editorOpen && createPortal(
         <div className="warehouse-modal-overlay">
           <div
             className="warehouse-modal stock-transfers-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="stock-transfer-editor-title"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="warehouse-modal-header">
-              <h2>Cấp hàng cho nhân viên</h2>
+              <h2 id="stock-transfer-editor-title">Cấp hàng cho nhân viên</h2>
               <button
                 type="button"
                 className="warehouse-modal-close"
@@ -479,7 +483,7 @@ function StockTransfers() {
               </div>
             </form>
           </div>
-        </div>
+        </div>, document.body,
       )}
 
       {productRequestOpen && (
@@ -493,7 +497,7 @@ function StockTransfers() {
         />
       )}
 
-      {detailTransfer && (
+      {detailTransfer && createPortal(
         <div className="warehouse-modal-overlay">
           <div
             className="warehouse-modal stock-transfer-detail-modal"
@@ -631,7 +635,7 @@ function StockTransfers() {
               />
             </div>
           </div>
-        </div>
+        </div>, document.body,
       )}
 
       <section className="stock-transfers-history">

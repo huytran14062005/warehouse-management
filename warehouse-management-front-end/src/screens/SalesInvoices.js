@@ -48,7 +48,6 @@ const STATUS_OPTIONS = [
   { value: "chờ kho", label: "Chờ kho" },
   { value: "đang xử lý", label: "Đang xử lý" },
   { value: "đang giao", label: "Đang giao" },
-  { value: "đã giao", label: "Đã giao" },
   { value: "hoàn thành", label: "Hoàn thành" },
   { value: "đã hủy", label: "Đã hủy" },
 ];
@@ -78,12 +77,12 @@ function notifySalesActionCountChanged() {
   window.dispatchEvent(new Event("sales-invoices:action-count-refresh"));
 }
 
-function formatDateTime(value) {
+function formatDateTime(value, showSeconds = false) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
   const pad = (number) => String(number).padStart(2, "0");
-  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}${showSeconds ? `:${pad(date.getSeconds())}` : ""}`;
 }
 
 function formatDate(value) {
@@ -114,19 +113,19 @@ function getPaymentDueUrgencyClass(invoice) {
 }
 
 export function SalesInvoiceDueCell({ invoice }) {
-  if (!isCompletedStatus(invoice.status) || isCancelledStatus(invoice.status)) {
+  if (isCancelledStatus(invoice.status)) {
     return <span className="sales-due-empty">—</span>;
   }
-  if (Number(invoice.remaining_amount || 0) <= 0) {
+  if (isCompletedStatus(invoice.status) && Number(invoice.remaining_amount || 0) <= 0) {
     return <span className="sales-due-empty">Đã thanh toán</span>;
   }
   if (!invoice.payment_due_date) {
-    return <span className="sales-due-empty">Chưa đặt hạn</span>;
+    return <span className="sales-due-empty">{isCompletedStatus(invoice.status) ? "Chưa đặt hạn" : "—"}</span>;
   }
   return (
     <div className="sales-due-cell">
       <span>{formatDate(invoice.payment_due_date)}</span>
-      {["overdue", "due_today", "due_soon", "not_due"].includes(
+      {isCompletedStatus(invoice.status) && ["overdue", "due_today", "due_soon", "not_due"].includes(
         invoice.payment_due_status,
       ) && (
         <span
@@ -143,7 +142,6 @@ function getStatusClass(status) {
   const value = String(status || "").toLowerCase();
   if (value === "nháp" || value === "draft") return "sales-status-draft";
   if (value === "chờ kho") return "sales-status-processing";
-  if (value === "đã giao") return "sales-status-completed";
   if (value === "đang xử lý" || value === "processing")
     return "sales-status-processing";
   if (value === "đang giao" || value === "delivering")
@@ -177,15 +175,12 @@ export function requiresSalesInvoiceAction(invoice, user) {
     return role === "quản lý" || (role === "nhân viên bán hàng" && ownsInvoice);
   }
   if (invoice.status === "đang xử lý")
-    return ["thủ kho", "quản lý"].includes(role);
-  if (invoice.status === "đang giao") {
-    if (invoice.delivered_at)
-      return (
-        role === "kế toán" &&
-        !["chờ duyệt", "từ chối"].includes(invoice.discount?.status)
-      );
-    return role === "quản lý" || (role === "nhân viên bán hàng" && ownsInvoice);
-  }
+    return invoice.delivery_method === "third_party"
+      ? role === "quản lý"
+      : ["thủ kho", "quản lý"].includes(role);
+  if (invoice.status === "đang giao")
+    return role === "kế toán" &&
+      !["chờ duyệt", "từ chối"].includes(invoice.discount?.status);
   return false;
 }
 
@@ -309,15 +304,11 @@ function SalesPaymentFields({
   onMethodChange,
   total,
   amountLabel,
-  dueDate,
-  onDueDateChange,
 }) {
   const changeAmount =
     method === "cash" ? Math.max(0, (Number(amount) || 0) - total) : 0;
   return (
-    <div
-      className={`sales-payment-entry-fields${dueDate === undefined ? " is-two-columns" : ""}`}
-    >
+    <div className="sales-payment-entry-fields">
       <label className="sales-payment-entry-field">
         <span>{amountLabel}</span>
         <MoneyInput
@@ -340,13 +331,98 @@ function SalesPaymentFields({
         <span>Phương thức thanh toán</span>
         <PaymentMethodDropdown value={method} onChange={onMethodChange} />
       </div>
-      {dueDate !== undefined && (
-        <label className="sales-payment-entry-field">
-          <span>Hạn thanh toán</span>
-          <input type="date" value={dueDate} onChange={onDueDateChange} />
-        </label>
-      )}
     </div>
+  );
+}
+
+function DeliveryPlan({ invoice, canManageStatus, isManager, staff, staffLoading, actionLoading, onPrepare, onDispatch }) {
+  const [editing, setEditing] = useState(!invoice.delivery_method);
+  const [method, setMethod] = useState(invoice.delivery_method || "internal");
+  const [courierId, setCourierId] = useState(String(invoice.delivery_employee?.id || ""));
+  const [service, setService] = useState(invoice.delivery_service || "");
+  const [tracking, setTracking] = useState(invoice.tracking_number || "");
+  const [fee, setFee] = useState(String(invoice.shipping_fee || ""));
+  const [fundMethod, setFundMethod] = useState(invoice.shipping_fund_method || "");
+  useEffect(() => {
+    setEditing(!invoice.delivery_method);
+    setMethod(invoice.delivery_method || "internal");
+    setCourierId(String(invoice.delivery_employee?.id || ""));
+    setService(invoice.delivery_service || "");
+    setTracking(invoice.tracking_number || "");
+    setFee(String(invoice.shipping_fee || ""));
+    setFundMethod(invoice.shipping_fund_method || "");
+  }, [invoice.id, invoice.delivery_method, invoice.delivery_employee?.id, invoice.delivery_service, invoice.tracking_number, invoice.shipping_fee, invoice.shipping_fund_method]);
+  const processing = invoice.status === "đang xử lý";
+  if (!processing && !invoice.delivery_method) return null;
+  const canEdit = processing && canManageStatus && !invoice.cancel_requested &&
+    (invoice.delivery_method !== "third_party" || isManager);
+  const canSave = method === "internal"
+    ? Boolean(courierId)
+    : Boolean(isManager && service.trim() && tracking.trim() && Number(fee) >= 500 && fundMethod);
+  const staffOptions = [
+    { value: "", label: staffLoading ? "Đang tải nhân viên..." : "Chọn nhân viên giao hàng" },
+    ...staff.map((employee) => ({ value: String(employee.id), label: employee.full_name })),
+  ];
+  return (
+    <section className="sales-delivery-plan">
+      <div className="sales-delivery-plan-head">
+        <div>
+          <h3>Phương án giao hàng</h3>
+          <p>Chọn cách giao trước khi chuyển đơn sang Đang giao.</p>
+        </div>
+        {canEdit && invoice.delivery_method && !editing && (
+          <button type="button" className="sales-delivery-edit" onClick={() => setEditing(true)}>Thay đổi</button>
+        )}
+      </div>
+      {canEdit && editing ? (
+        <form onSubmit={(event) => {
+          event.preventDefault();
+          if (!canSave) return;
+          onPrepare(method === "internal"
+            ? { delivery_method: method, delivery_employee_id: Number(courierId) }
+            : { delivery_method: method, delivery_service: service.trim(), tracking_number: tracking.trim(), shipping_fee: Number(fee), shipping_fund_method: fundMethod });
+        }}>
+          <div className="sales-delivery-choice" role="group" aria-label="Hình thức giao hàng">
+            <label><input type="radio" name={`delivery-method-${invoice.id}`} value="internal" checked={method === "internal"} onChange={() => setMethod("internal")} /> Nhân viên công ty</label>
+            {isManager && <label><input type="radio" name={`delivery-method-${invoice.id}`} value="third_party" checked={method === "third_party"} onChange={() => setMethod("third_party")} /> Dịch vụ vận chuyển</label>}
+          </div>
+          {method === "internal" ? (
+            <div className="sales-delivery-fields"><div className="sales-delivery-field"><span>Nhân viên giao hàng</span><SharedSearchableDropdown value={courierId} onChange={setCourierId} options={staffOptions} placeholder="Chọn nhân viên giao hàng" ariaLabel="Nhân viên giao hàng" disabled={staffLoading} /></div></div>
+          ) : (
+            <div className="sales-delivery-fields">
+              <label>Dịch vụ giao hàng<input value={service} onChange={(event) => setService(event.target.value)} maxLength={120} placeholder="Ví dụ: Giao Hàng Nhanh" required /></label>
+              <label>Mã vận đơn<input value={tracking} onChange={(event) => setTracking(event.target.value)} maxLength={120} placeholder="Nhập mã theo dõi" required /></label>
+              <label>Phí vận chuyển<MoneyInput value={fee} onChange={setFee} label="Phí vận chuyển" placeholder="Ví dụ: 35.000" required /></label>
+              <div className="sales-delivery-field"><span>Chi từ quỹ</span><PaymentMethodDropdown value={fundMethod} onChange={setFundMethod} /></div>
+            </div>
+          )}
+          <p className="sales-delivery-hint">{method === "internal"
+            ? (!staffLoading && staff.length === 0 ? "Chưa có nhân viên giao hàng đã được duyệt. Quản lý cần tạo và duyệt tài khoản trước." : "Chỉ nhân viên được chọn mới có thể bắt đầu giao đơn.")
+            : "Phí vận chuyển sẽ trừ khỏi quỹ khi bàn giao đơn cho dịch vụ."}</p>
+          <div className="sales-delivery-actions">
+            {invoice.delivery_method && <button type="button" className="sales-delivery-edit" onClick={() => setEditing(false)}>Hủy sửa</button>}
+            <button type="submit" disabled={actionLoading || !canSave}>Lưu phương án</button>
+          </div>
+        </form>
+      ) : invoice.delivery_method ? (
+        <>
+          {invoice.delivery_method === "internal" ? (
+            <div className="sales-delivery-summary"><span>Nhân viên công ty</span><strong>{invoice.delivery_employee?.full_name || "—"}</strong></div>
+          ) : (
+            <div className="sales-delivery-summary-grid">
+              <div className="sales-delivery-summary"><span>Dịch vụ</span><strong>{invoice.delivery_service}</strong></div>
+              <div className="sales-delivery-summary"><span>Mã vận đơn</span><strong>{invoice.tracking_number}</strong></div>
+              <div className="sales-delivery-summary"><span>Phí vận chuyển</span><strong>{formatCurrency(invoice.shipping_fee)}</strong></div>
+              <div className="sales-delivery-summary"><span>Quỹ chi</span><strong>{invoice.shipping_fund_method === "cash" ? "Tiền mặt" : "Chuyển khoản"}</strong></div>
+            </div>
+          )}
+          {processing && <p className="sales-delivery-hint">{invoice.delivery_method === "internal" ? "Đang chờ nhân viên được phân công bắt đầu giao hàng." : "Quỹ sẽ được trừ khi quản lý xác nhận bàn giao."}</p>}
+          {processing && invoice.delivery_method === "third_party" && isManager && !invoice.cancel_requested && (
+            <div className="sales-delivery-actions"><button type="button" disabled={actionLoading} onClick={onDispatch}>Xác nhận bàn giao cho dịch vụ</button></div>
+          )}
+        </>
+      ) : <p className="sales-delivery-hint">Chưa chọn phương án giao hàng.</p>}
+    </section>
   );
 }
 
@@ -363,8 +439,9 @@ export function SalesInvoiceDetail({
   canManageDueDate,
   canRecordPayment,
   canSubmitWarehouse,
-  canConfirmDelivery,
-  needsAction,
+  isManager,
+  deliveryStaff,
+  deliveryStaffLoading,
   actionLoading,
   actionError,
   onEdit,
@@ -377,17 +454,18 @@ export function SalesInvoiceDetail({
   onUpdateDueDate,
   onRecordPayment,
   onSubmitWarehouse,
-  onConfirmDelivery,
+  onPrepareDelivery,
   onLoadMorePayments,
   paymentHistoryLoading,
 }) {
   const [completionPayment, setCompletionPayment] = useState("");
   const [completionPaymentMethod, setCompletionPaymentMethod] = useState("");
-  const [deliveryRecipient, setDeliveryRecipient] = useState("");
-  const [deliveryNote, setDeliveryNote] = useState("");
   const [paymentDueDate, setPaymentDueDate] = useState(
     invoice.payment_due_date || "",
   );
+  useEffect(() => {
+    setPaymentDueDate(invoice.payment_due_date || "");
+  }, [invoice.id, invoice.payment_due_date]);
   const discountAmount = Number(invoice.discount?.amount || 0);
   const paidAmount = Number(invoice.paid_amount || 0);
   const remainingAmount = Number(invoice.remaining_amount || 0);
@@ -400,7 +478,6 @@ export function SalesInvoiceDetail({
   const awaitingAccounting =
     canComplete &&
     invoice.status === "đang giao" &&
-    Boolean(invoice.delivered_at) &&
     !invoice.cancel_requested &&
     !["chờ duyệt", "từ chối"].includes(invoice.discount?.status);
   const showPaymentDetails =
@@ -437,15 +514,9 @@ export function SalesInvoiceDetail({
           </div>
           <div className="sales-detail-header-tools">
             <strong
-              className={`sales-status-badge sales-detail-status ${getStatusClass(invoice.workflow_stage || invoice.status)}`}
+              className={`sales-status-badge ${getStatusClass(invoice.workflow_stage || invoice.status)}`}
             >
               {getStatusLabel(invoice.workflow_stage || invoice.status)}
-              {needsAction && (
-                <span
-                  className="sales-action-dot"
-                  aria-label="Đơn hàng cần xử lý"
-                />
-              )}
             </strong>
             <button
               type="button"
@@ -573,7 +644,7 @@ export function SalesInvoiceDetail({
                   </SalesDetailLine>
                 )}
               {showPaymentDetails &&
-                completed &&
+                (completed || awaitingAccounting) &&
                 remainingAmount > 0 &&
                 invoice.payment_due_date && (
                   <SalesDetailLine label="Hạn thanh toán">
@@ -597,36 +668,50 @@ export function SalesInvoiceDetail({
             </dl>
           </section>
           {canManageDueDate &&
-            isCompletedStatus(invoice.status) &&
+            (completed || awaitingAccounting) &&
             remainingAmount > 0 &&
-            !canRecordPayment && (
-              <div className="sales-due-date-editor">
-                <label>
-                  <span>Hạn thanh toán</span>
-                  <input
-                    type="date"
-                    value={paymentDueDate}
-                    onChange={(event) => setPaymentDueDate(event.target.value)}
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={() => onUpdateDueDate(paymentDueDate)}
-                  disabled={
-                    actionLoading ||
-                    !paymentDueDate ||
-                    paymentDueDate === invoice.payment_due_date
-                  }
-                >
-                  Lưu hạn thanh toán
-                </button>
-              </div>
+            (
+              <section className="sales-due-date-editor" aria-label="Hạn thanh toán">
+                <div className="sales-due-date-copy">
+                  <strong>Hạn thanh toán</strong>
+                  <p>Ngày khách hẹn trả số tiền còn nợ. Không cần thu tiền để đặt hạn.</p>
+                </div>
+                <div className="sales-due-date-controls">
+                  <label>
+                    <span>Ngày hẹn</span>
+                    <input
+                      type="date"
+                      value={paymentDueDate}
+                      onChange={(event) => setPaymentDueDate(event.target.value)}
+                    />
+                  </label>
+                  {completed && (
+                    <button
+                      type="button"
+                      onClick={() => onUpdateDueDate(paymentDueDate)}
+                      disabled={
+                        actionLoading ||
+                        !paymentDueDate ||
+                        paymentDueDate === invoice.payment_due_date
+                      }
+                    >
+                      Lưu hạn thanh toán
+                    </button>
+                  )}
+                </div>
+                {awaitingAccounting && unpaidAfterEntry > 0 && !paymentDueDate && (
+                  <small>Chọn ngày hẹn để hoàn thành đơn khi khách chưa trả đủ.</small>
+                )}
+              </section>
             )}
           {((canRecordPayment && completed && remainingAmount > 0) ||
             awaitingAccounting) && (
             <div className="sales-detail-actions sales-complete-actions">
               <div className="sales-completion-heading">
-                <strong>Ghi nhận thanh toán</strong>
+                <strong>{awaitingAccounting ? "Thu tiền ngay (không bắt buộc)" : "Ghi nhận thanh toán"}</strong>
+                {awaitingAccounting && (
+                  <p>Khi hoàn thành đơn, kế toán xác nhận đã giao. Nếu khách hẹn trả sau, để trống số tiền.</p>
+                )}
               </div>
               <SalesPaymentFields
                 amount={completionPayment}
@@ -635,22 +720,7 @@ export function SalesInvoiceDetail({
                 onMethodChange={setCompletionPaymentMethod}
                 total={remainingAmount}
                 amountLabel="Số tiền khách trả"
-                dueDate={
-                  canManageDueDate || awaitingAccounting
-                    ? paymentDueDate
-                    : undefined
-                }
-                onDueDateChange={(event) =>
-                  setPaymentDueDate(event.target.value)
-                }
               />
-              {awaitingAccounting &&
-                unpaidAfterEntry > 0 &&
-                !paymentDueDate && (
-                  <small className="sales-payment-hint">
-                    Chọn hạn thanh toán cho số tiền còn nợ.
-                  </small>
-                )}
               <div className="sales-completion-actions">
                 <button
                   type="button"
@@ -664,12 +734,15 @@ export function SalesInvoiceDetail({
                       : onRecordPayment(
                           enteredPayment,
                           completionPaymentMethod,
-                          paymentDueDate,
                         )
                   }
                   disabled={invalidPaymentEntry}
                 >
-                  Lưu thanh toán
+                  {awaitingAccounting
+                    ? enteredPayment > 0
+                      ? "Hoàn thành và thu tiền"
+                      : "Hoàn thành đơn, ghi công nợ"
+                    : "Lưu thanh toán"}
                 </button>
               </div>
             </div>
@@ -695,7 +768,7 @@ export function SalesInvoiceDetail({
                         : "Chưa xác định"}
                     {" ("}
                     <time dateTime={payment.paid_at}>
-                      {formatDateTime(payment.paid_at)}
+                      {formatDateTime(payment.paid_at, true)}
                     </time>
                     {")"}
                     <small>
@@ -740,10 +813,8 @@ export function SalesInvoiceDetail({
           )}
           {Boolean(invoice.workflow_events?.length) && (
             <details className="sales-workflow-history">
-              <summary>
-                Lịch sử xử lý ({invoice.workflow_events.length} gần nhất)
-              </summary>
-              <ol>
+              <summary>Lịch sử xử lý</summary>
+              <ul className="sales-workflow-timeline">
                 {[...invoice.workflow_events].reverse().map((event) => (
                   <li key={event.id}>
                     <div className="sales-workflow-entry-line">
@@ -751,14 +822,15 @@ export function SalesInvoiceDetail({
                         {{
                           submitted_to_warehouse: "Đã gửi kho",
                           warehouse_processing: "Kho bắt đầu xử lý",
-                          dispatched: "Đã xuất xe giao hàng",
+                          delivery_prepared: "Đã chọn phương án giao hàng",
+                          dispatched: "Đã bắt đầu giao hàng",
                           delivery_confirmed: "Đã xác nhận giao hàng",
-                          completed: "Kế toán hoàn thành đơn",
+                          completed: "Kế toán xác nhận giao hàng và hoàn thành đơn",
                           cancelled: "Đã hủy đơn",
                         }[event.action] || event.action}
                       </span>
                       <time dateTime={event.occurred_at}>
-                        ({formatDateTime(event.occurred_at)})
+                        {formatDateTime(event.occurred_at)}
                       </time>
                     </div>
                     <small>
@@ -767,7 +839,7 @@ export function SalesInvoiceDetail({
                     </small>
                   </li>
                 ))}
-              </ol>
+              </ul>
             </details>
           )}
           {(canEdit || canCancel || canApproveCancel) && (
@@ -850,60 +922,21 @@ export function SalesInvoiceDetail({
                 </button>
               </div>
             )}
-          {canManageStatus && invoice.status === "đang xử lý" && (
-            <div className="sales-detail-actions">
-              <button
-                type="button"
-                onClick={() => onAdvanceStatus("đang giao")}
-                disabled={actionLoading}
-              >
-                Chuyển sang đang giao
-              </button>
-            </div>
-          )}
-          {canConfirmDelivery &&
-            invoice.status === "đang giao" &&
-            !invoice.delivered_at && (
-              <form
-                className="sales-delivery-confirm"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  onConfirmDelivery(deliveryRecipient, deliveryNote);
-                }}
-              >
-                <h3>Xác nhận đã giao hàng</h3>
-                <div className="sales-delivery-fields">
-                  <label>
-                    Người nhận
-                    <input
-                      value={deliveryRecipient}
-                      onChange={(event) =>
-                        setDeliveryRecipient(event.target.value)
-                      }
-                      maxLength={120}
-                      required
-                      placeholder="Tên người nhận hàng"
-                    />
-                  </label>
-                  <label>
-                    Ghi chú giao hàng (nếu có)
-                    <input
-                      value={deliveryNote}
-                      onChange={(event) => setDeliveryNote(event.target.value)}
-                      maxLength={500}
-                      placeholder="Ví dụ: Đã kiểm đủ hàng"
-                    />
-                  </label>
-                </div>
-                <button type="submit" disabled={actionLoading}>
-                  Xác nhận đã giao
-                </button>
-              </form>
-            )}
+          <DeliveryPlan
+            invoice={invoice}
+            canManageStatus={canManageStatus}
+            isManager={isManager}
+            staff={deliveryStaff}
+            staffLoading={deliveryStaffLoading}
+            actionLoading={actionLoading}
+            onPrepare={onPrepareDelivery}
+            onDispatch={() => onAdvanceStatus("đang giao")}
+          />
           {invoice.delivered_at && (
             <p className="sales-delivery-proof">
-              Đã giao cho {invoice.delivery_recipient} lúc{" "}
-              {formatDateTime(invoice.delivered_at)}
+              {invoice.delivery_recipient
+                ? `Đã giao cho ${invoice.delivery_recipient} lúc ${formatDateTime(invoice.delivered_at)}`
+                : `Kế toán xác nhận giao hàng lúc ${formatDateTime(invoice.delivered_at)}`}
               {invoice.delivery_note ? ` · ${invoice.delivery_note}` : ""}
             </p>
           )}
@@ -1833,15 +1866,31 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                           updateItem(index, "unitPrice", String(newUnitPrice));
                         }}
                         label="Tổng giá"
-                        minAmount={comboPriceBounds?.min ? comboPriceBounds.min * Number(item.quantity) : 500}
-                        maxAmount={comboPriceBounds?.max ? comboPriceBounds.max * Number(item.quantity) : null}
+                        minAmount={
+                          comboPriceBounds?.min
+                            ? comboPriceBounds.min * Number(item.quantity)
+                            : 500
+                        }
+                        maxAmount={
+                          comboPriceBounds?.max
+                            ? comboPriceBounds.max * Number(item.quantity)
+                            : null
+                        }
                         placeholder="Nhập tổng giá"
                         aria-label="Tổng giá combo"
                         required
                       />
                       {comboPriceBounds && (
                         <small className="product-entry-range">
-                          Giá 1 bộ: {formatCurrency(item.unitPrice)} • Cho phép: {formatCurrency(comboPriceBounds.min * Number(item.quantity))} – {formatCurrency(comboPriceBounds.max * Number(item.quantity))} (±10%)
+                          Giá 1 bộ: {formatCurrency(item.unitPrice)} • Cho phép:{" "}
+                          {formatCurrency(
+                            comboPriceBounds.min * Number(item.quantity),
+                          )}{" "}
+                          –{" "}
+                          {formatCurrency(
+                            comboPriceBounds.max * Number(item.quantity),
+                          )}{" "}
+                          (±10%)
                         </small>
                       )}
                     </ProductEntryField>
@@ -2033,7 +2082,6 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                           )
                           .join(" + ")}
                       </p>
-                          
                     </div>
                     <button
                       type="button"
@@ -2141,18 +2189,16 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
           </section>
 
           <div className="sales-editor-financials">
-            {saleSource === "employee_stock" && (
-              <label className="sales-editor-field sales-editor-debt-date">
-                <span>Hạn thanh toán (nếu cho nợ)</span>
-                <input
-                  type="date"
-                  aria-label="Hạn thanh toán (nếu cho nợ)"
-                  value={paymentDueDate}
-                  onChange={(event) => setPaymentDueDate(event.target.value)}
-                />
-                <small>Kế toán sẽ ghi nhận tiền sau khi đơn được lập.</small>
-              </label>
-            )}
+            <label className="sales-editor-field sales-editor-debt-date">
+              <span>Hạn thanh toán (nếu cho nợ)</span>
+              <input
+                type="date"
+                aria-label="Hạn thanh toán (nếu cho nợ)"
+                value={paymentDueDate}
+                onChange={(event) => setPaymentDueDate(event.target.value)}
+              />
+              <small>Đặt ngày khách hẹn trả; có thể thu tiền sau.</small>
+            </label>
             <div className="sales-editor-totals">
               <div className="sales-editor-total">
                 <span>Tiền hàng</span>
@@ -2246,6 +2292,8 @@ function SalesInvoices() {
   const [error, setError] = useNotificationState();
   const [dateWarning, setDateWarning] = useNotificationState();
   const [selectedInvoice, setSelectedInvoice] = useState(null);
+  const [deliveryStaff, setDeliveryStaff] = useState([]);
+  const [deliveryStaffLoading, setDeliveryStaffLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useNotificationState();
   const [actionLoading, setActionLoading] = useState(false);
@@ -2294,7 +2342,6 @@ function SalesInvoices() {
   const canSubmitWarehouse = ["nhân viên bán hàng", "quản lý"].includes(
     currentUser.role,
   );
-  const canConfirmDelivery = canSubmitWarehouse;
   const canRecordPayment = currentUser.role === "kế toán";
   const canCompleteSales = currentUser.role === "kế toán";
 
@@ -2302,6 +2349,17 @@ function SalesInvoices() {
   const canViewStatusBoard = currentUser.role === "quản lý";
 
   const canManageDueDate = canApproveCancel;
+
+  useEffect(() => {
+    if (!canManageStatus || selectedInvoice?.status !== "đang xử lý") return;
+    let active = true;
+    setDeliveryStaffLoading(true);
+    authApis().get(endpoints.deliveryStaff)
+      .then((response) => { if (active) setDeliveryStaff(response.data?.employees || []); })
+      .catch((requestError) => { if (active) setActionError(getApiError(requestError)); })
+      .finally(() => { if (active) setDeliveryStaffLoading(false); });
+    return () => { active = false; };
+  }, [canManageStatus, selectedInvoice?.id, selectedInvoice?.status, setActionError]);
 
   const fetchStatusBoard = useCallback(async () => {
     if (!canViewStatusBoard) return;
@@ -2567,18 +2625,17 @@ function SalesInvoices() {
     }
   };
 
-  const confirmInvoiceDelivery = async (recipient, note) => {
+  const prepareInvoiceDelivery = async (deliveryPlan) => {
     if (!selectedInvoice) return;
     try {
       setActionLoading(true);
       setActionError("");
-      const response = await authApis().post(
-        endpoints.confirmSalesInvoiceDelivery(selectedInvoice.id),
-        { recipient, note },
+      const response = await authApis().put(
+        endpoints.prepareSalesInvoiceDelivery(selectedInvoice.id),
+        deliveryPlan,
       );
       setSelectedInvoice(response.data?.invoice || selectedInvoice);
-      await Promise.all([fetchInvoices(), fetchStatusBoard()]);
-      notifySalesActionCountChanged();
+      await fetchInvoices();
     } catch (requestError) {
       setActionError(getApiError(requestError));
     } finally {
@@ -2612,11 +2669,7 @@ function SalesInvoices() {
     }
   };
 
-  const recordInvoicePayment = async (
-    amount,
-    paymentMethod,
-    paymentDueDate,
-  ) => {
+  const recordInvoicePayment = async (amount, paymentMethod) => {
     if (!selectedInvoice) return;
     try {
       setActionLoading(true);
@@ -2626,7 +2679,6 @@ function SalesInvoices() {
         {
           amount,
           payment_method: paymentMethod,
-          payment_due_date: paymentDueDate || null,
         },
       );
       setSelectedInvoice(response.data?.invoice || selectedInvoice);
@@ -2699,6 +2751,11 @@ function SalesInvoices() {
 
   const executeConfirmedAction = async () => {
     if (!selectedInvoice || !confirmAction) return;
+    if (confirmAction === "dispatch-third-party") {
+      setConfirmAction(null);
+      await advanceInvoiceStatus("đang giao");
+      return;
+    }
     try {
       setActionLoading(true);
       setActionError("");
@@ -3067,6 +3124,11 @@ function SalesInvoices() {
                 {invoices.map((invoice) => (
                   <tr
                     key={invoice.id}
+                    className={
+                      requiresSalesInvoiceAction(invoice, currentUser)
+                        ? "sales-row-needs-action"
+                        : undefined
+                    }
                     tabIndex="0"
                     onClick={() => openDetail(invoice.id)}
                     onKeyDown={(event) => {
@@ -3074,16 +3136,7 @@ function SalesInvoices() {
                         openDetail(invoice.id);
                     }}
                   >
-                    <td className="sales-order-start-cell">
-                      {formatDateTime(invoice.sold_at)}
-                      {requiresSalesInvoiceAction(invoice, currentUser) && (
-                        <span
-                          className="sales-action-dot"
-                          aria-label={`Đơn hàng #${invoice.id} cần xử lý`}
-                          title="Đơn hàng cần xử lý"
-                        />
-                      )}
-                    </td>
+                    <td>{formatDateTime(invoice.sold_at)}</td>
                     <td>
                       {invoice.sale_source === "hàng nhân viên"
                         ? "Hàng nhân viên"
@@ -3188,15 +3241,9 @@ function SalesInvoices() {
               (currentUser.role === "quản lý" ||
                 Number(selectedInvoice.employee?.id) === Number(currentUser.id))
             }
-            canConfirmDelivery={
-              canConfirmDelivery &&
-              (currentUser.role === "quản lý" ||
-                Number(selectedInvoice.employee?.id) === Number(currentUser.id))
-            }
-            needsAction={requiresSalesInvoiceAction(
-              selectedInvoice,
-              currentUser,
-            )}
+            isManager={currentUser.role === "quản lý"}
+            deliveryStaff={deliveryStaff}
+            deliveryStaffLoading={deliveryStaffLoading}
             canApproveCancel={canApproveCancel}
             canManageDueDate={canManageDueDate}
             actionLoading={actionLoading}
@@ -3205,13 +3252,19 @@ function SalesInvoices() {
             onCancelDraft={handleCancelDraft}
             onCancelRequest={handleCancelRequest}
             onCancelDirect={handleCancelDirect}
-            onAdvanceStatus={advanceInvoiceStatus}
+            onAdvanceStatus={(nextStatus) => {
+              if (nextStatus === "đang giao" && selectedInvoice.delivery_method === "third_party") {
+                setConfirmAction("dispatch-third-party");
+              } else {
+                advanceInvoiceStatus(nextStatus);
+              }
+            }}
             onComplete={completeInvoice}
             onRecordPayment={recordInvoicePayment}
             onLoadMorePayments={loadMoreInvoicePayments}
             paymentHistoryLoading={paymentHistoryLoading}
             onSubmitWarehouse={submitInvoiceToWarehouse}
-            onConfirmDelivery={confirmInvoiceDelivery}
+            onPrepareDelivery={prepareInvoiceDelivery}
             onUpdateDueDate={updatePaymentDueDate}
             onApproveCancel={(approved) =>
               setConfirmAction(approved ? "approve-cancel" : "reject-cancel")
@@ -3221,7 +3274,9 @@ function SalesInvoices() {
       <ConfirmDialog
         open={Boolean(confirmAction)}
         title={
-          confirmAction === "cancel-draft"
+          confirmAction === "dispatch-third-party"
+            ? "Bàn giao cho dịch vụ vận chuyển?"
+            : confirmAction === "cancel-draft"
             ? "Hủy đơn nháp?"
             : isManagerCancel
               ? "Hủy đơn trực tiếp?"
@@ -3232,7 +3287,9 @@ function SalesInvoices() {
                   : "Gửi yêu cầu hủy đơn?"
         }
         message={
-          confirmAction === "cancel-draft"
+          confirmAction === "dispatch-third-party"
+            ? `Đơn #${selectedInvoice?.id || ""} sẽ chuyển sang Đang giao. Phí ${formatCurrency(selectedInvoice?.shipping_fee)} sẽ được trừ từ quỹ ${selectedInvoice?.shipping_fund_method === "cash" ? "tiền mặt" : "chuyển khoản"}.`
+            : confirmAction === "cancel-draft"
             ? "Bạn có chắc muốn hủy đơn nháp này không?"
             : isManagerCancel
               ? "Bạn có chắc muốn hủy đơn này với quyền quản lý không?"
@@ -3243,7 +3300,9 @@ function SalesInvoices() {
                   : "Bạn có chắc muốn gửi yêu cầu hủy đơn này không?"
         }
         confirmLabel={
-          confirmAction === "cancel-draft"
+          confirmAction === "dispatch-third-party"
+            ? "Xác nhận bàn giao"
+            : confirmAction === "cancel-draft"
             ? "Hủy đơn"
             : isManagerCancel
               ? "Hủy đơn"
@@ -3254,7 +3313,7 @@ function SalesInvoices() {
                   : "Gửi yêu cầu"
         }
         cancelLabel="Quay lại"
-        danger={!isCancelApproval}
+        danger={!isCancelApproval && confirmAction !== "dispatch-third-party"}
         loading={actionLoading}
         onConfirm={executeConfirmedAction}
         onCancel={() => setConfirmAction(null)}

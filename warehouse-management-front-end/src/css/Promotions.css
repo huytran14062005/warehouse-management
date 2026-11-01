@@ -45,10 +45,10 @@
   .promotions-page { width: min(100% - 32px, 560px); padding-top: 26px; }
   .promotions-header { align-items: stretch; flex-direction: column; }
   .promotions-header > button { width: 100%; min-height: 44px; }
-  .promotion-modal-overlay { align-items: flex-end; padding: 0; }
-  .promotion-modal { width: 100%; max-height: 96dvh; border-radius: 12px 12px 0 0; }
+  .promotion-modal-overlay { align-items: center; padding: 12px; }
+  .promotion-modal { width: 100%; max-height: calc(100dvh - 24px); border-radius: 12px; }
   .promotion-modal-header { position: sticky; top: 0; z-index: 2; padding: 14px 16px; background: #fff; }
-  .promotion-form { grid-template-columns: 1fr; max-height: calc(96dvh - 70px); padding: 16px; }
+  .promotion-form { grid-template-columns: 1fr; max-height: calc(100dvh - 94px); padding: 16px; }
   .promotion-field-wide, .promotion-form .promotion-alert { grid-column: auto; }
   .promotion-form-actions { flex-direction: column-reverse; }
   .promotion-form-actions button { width: 100%; min-height: 44px; }

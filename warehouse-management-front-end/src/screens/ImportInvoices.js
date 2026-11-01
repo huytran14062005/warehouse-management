@@ -274,7 +274,7 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = false }) {
     invoice?.supplier?.name || "",
   );
   const [supplierSearchLoading, setSupplierSearchLoading] = useState(false);
-  const [newSupplier, setNewSupplier] = useState({ name: "", address: "" });
+  const [newSupplier, setNewSupplier] = useState({ name: "", phone: "", address: "" });
   const [importedAt, setImportedAt] = useState(
     toDateInputValue(invoice?.imported_at),
   );
@@ -402,6 +402,7 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = false }) {
           supplierMode === "new"
             ? {
                 name: newSupplier.name.trim(),
+                phone: newSupplier.phone.trim(),
                 address: newSupplier.address.trim(),
               }
             : undefined,
@@ -529,6 +530,18 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = false }) {
                     }
                     placeholder="Tên nhà cung cấp"
                     aria-label="Tên nhà cung cấp mới"
+                  />
+                  <input
+                    type="tel"
+                    value={newSupplier.phone}
+                    onChange={(event) =>
+                      setNewSupplier((current) => ({
+                        ...current,
+                        phone: event.target.value,
+                      }))
+                    }
+                    placeholder="Số điện thoại (không bắt buộc)"
+                    aria-label="Số điện thoại nhà cung cấp mới"
                   />
                   <input
                     value={newSupplier.address}

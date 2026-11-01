@@ -195,14 +195,13 @@ def get_movements_report(from_date, to_date, warehouse_id=None):
     )
     by_product = []
     for product_id, data in product_summary.items():
+        product_inventory = inventory_by_product.get(product_id, {})
         data["net_change"] = (
             data["imported"] - data["exported"] - data["damaged"]
             - data["transferred"] + field_damaged_by_product.get(product_id, 0)
         )
-        data["current_stock"] = inventory_by_product.get(
-            product_id,
-            {"available_stock": 0},
-        )["available_stock"]
+        data["current_stock"] = product_inventory.get("available_stock", 0)
+        data["total_imported"] = product_inventory.get("total_imported", 0)
         
         by_product.append(data)
     

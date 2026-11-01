@@ -1,7 +1,8 @@
 import hmac
 from datetime import timedelta
+from io import BytesIO
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, send_file
 from web import app
 
 from web.blueprints.api_errors import handle_api_errors
@@ -14,6 +15,10 @@ from web.services.reports_service import (
 )
 from web.services.manager_reports_service import get_manager_sales_analytics_service
 from web.services.overdue_debt_report_service import send_overdue_debt_report
+from web.services.warehouse_report_export_service import (
+    EXCEL_CONTENT_TYPE,
+    build_warehouse_report_workbook,
+)
 from web.services.sales_invoice_service import business_today
 from web.services.inventory_settings_service import get_low_stock_percentage
 from web.services.authorization import scoped_central_warehouse_id, scoped_warehouse_id
@@ -123,7 +128,28 @@ def get_movements_report():
     )), 200
 
 
-def _build_movements_report(warehouse_id):
+@reports_bp.route("/movements/export", methods=["GET"])
+@verify_token
+@verify_role(EmployeeRole.THU_KHO, EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY)
+@handle_api_errors
+def export_movements_report():
+    warehouse_id = scoped_central_warehouse_id(request.employee_id)
+    report = _build_movements_report(warehouse_id, include_all_products=True)
+    filename = (
+        f"bao-cao-nhap-xuat-kho-{report['period']['from'] or 'tat-ca'}"
+        f"-{report['period']['to'] or 'tat-ca'}.xlsx"
+    )
+    response = send_file(
+        BytesIO(build_warehouse_report_workbook(report)),
+        mimetype=EXCEL_CONTENT_TYPE,
+        as_attachment=True,
+        download_name=filename,
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+def _build_movements_report(warehouse_id, include_all_products=False):
     report_data, warehouse, from_date, to_date = get_movements_report_service(
         from_date_value=request.args.get('from_date'),
         to_date_value=request.args.get('to_date'),
@@ -176,6 +202,18 @@ def _build_movements_report(warehouse_id):
         "stock_transfers_count": len(report_data["stock_transfers"]),
         "total_transferred_quantity": total_transferred_quantity,
     }
+    low_stock_percentage = float(get_low_stock_percentage())
+    summary["current_stock"] = sum(int(p["current_stock"] or 0) for p in report_data["by_product"])
+    summary["out_of_stock_count"] = sum(
+        int(p["current_stock"] or 0) <= 0 for p in report_data["by_product"]
+    )
+    summary["low_stock_count"] = sum(
+        int(p["current_stock"] or 0) > 0
+        and int(p["total_imported"] or 0) > 0
+        and int(p["current_stock"] or 0) <= int(p["total_imported"] or 0) * low_stock_percentage / 100
+        for p in report_data["by_product"]
+    )
+    summary["low_stock_percentage"] = low_stock_percentage
     
     try:
         page = max(1, int(request.args.get("page", 1)))
@@ -194,7 +232,7 @@ def _build_movements_report(warehouse_id):
         ]
     total_products = len(by_product)
     start = (page - 1) * per_page
-    paged_products = by_product[start : start + per_page]
+    paged_products = by_product if include_all_products else by_product[start : start + per_page]
 
     return {
         "period": {

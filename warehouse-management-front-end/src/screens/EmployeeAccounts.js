@@ -14,6 +14,7 @@ const roleLabels = {
   "kế toán": "Kế toán",
   "nhân viên bán hàng": "Nhân viên bán hàng",
   "thủ kho": "Thủ kho",
+  "nhân viên giao hàng": "Nhân viên giao hàng",
 };
 
 function EmployeeAccounts() {

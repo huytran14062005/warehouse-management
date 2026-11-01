@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from web import db
-from web.models import CompanyFund, CompanyFundAdjustment, CompanyFundEntry, EmployeeRole, FundEntryType, PaymentMethod
+from web.models import CompanyFund, CompanyFundAdjustment, CompanyFundEntry, Employee, EmployeeRole, FundEntryType, PaymentMethod
 from web.services.authorization import get_employee_or_404
 from web.services.exceptions import ForbiddenError, ValidationError
 from web.utils.pagination import build_pagination
@@ -160,7 +160,7 @@ def adjust_company_fund(employee_id, method, new_balance, expected_balance, reas
     return get_company_funds()
 
 
-def record_fund_movement(method, direction, amount, source_type, source_id, employee_id, description, note=None):
+def record_fund_movement(method, direction, amount, source_type, source_id, employee_id, description, note=None, occurred_at=None):
     """Append one entry in the caller's transaction; never commit here.
 
     Historical payments are represented by the manager's opening balance and
@@ -181,7 +181,7 @@ def record_fund_movement(method, direction, amount, source_type, source_id, empl
     next_balance = balance + amount if direction == "in" else balance - amount
     if next_balance < 0:
         label = "tiền mặt" if method == PaymentMethod.CASH.value else "ngân hàng"
-        raise ValidationError(f"Số dư {label} không đủ để trả nhà cung cấp")
+        raise ValidationError(f"Số dư {label} không đủ cho khoản chi này")
     if next_balance > MAX_MONEY:
         raise ValidationError("Số dư quỹ vượt giới hạn cho phép")
     fund.balance = next_balance
@@ -190,6 +190,7 @@ def record_fund_movement(method, direction, amount, source_type, source_id, empl
         amount=amount, balance_after=next_balance,
         source_type=source_type, source_id=source_id, employee_id=employee_id,
         description=description, note=note,
+        **({"occurred_at": occurred_at} if occurred_at is not None else {}),
     )
     db.session.add(entry)
     return entry
@@ -227,3 +228,26 @@ def list_company_fund_entries(method=None, page=1, per_page=20):
         for row in rows
     ]
     return {"entries": entries, "pagination": build_pagination(page, per_page, total)}
+
+
+def get_company_fund_export_rows(method=None):
+    """Return every matching ledger entry with exact monetary values."""
+    if method and method not in FUND_METHODS:
+        raise ValidationError("Quỹ cần xem không hợp lệ")
+    if not _fund_tables_exist():
+        return iter(())
+    query = db.session.query(
+        CompanyFundEntry.occurred_at,
+        CompanyFundEntry.description,
+        CompanyFundEntry.method,
+        CompanyFundEntry.direction,
+        CompanyFundEntry.amount,
+        CompanyFundEntry.balance_after,
+        Employee.full_name.label("employee_name"),
+    ).outerjoin(Employee, Employee.id == CompanyFundEntry.employee_id)
+    if method:
+        query = query.filter(CompanyFundEntry.method == method)
+    return query.order_by(
+        CompanyFundEntry.occurred_at.desc(),
+        CompanyFundEntry.id.desc(),
+    ).execution_options(stream_results=True).yield_per(500)

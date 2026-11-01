@@ -24,6 +24,7 @@ function Sidebar({ user, pendingRequests, isMobileOpen = false, onMobileClose = 
     "thủ kho",
     "quản lý",
   ].includes(user?.role);
+  const isCourier = user?.role === "nhân viên giao hàng";
   const canManageStockTransfers = ["thủ kho", "quản lý"].includes(user?.role);
   const canViewImportInvoices = ["thủ kho", "kế toán", "quản lý"].includes(user?.role);
   const canViewCompanyFunds = ["kế toán", "quản lý"].includes(user?.role);
@@ -164,6 +165,17 @@ function Sidebar({ user, pendingRequests, isMobileOpen = false, onMobileClose = 
                     {salesActionCount}
                   </span>
                 )}
+              </NavLink>
+            )}
+            {isCourier && (
+              <NavLink
+                to="/my-deliveries"
+                onClick={onMobileClose}
+                className={({ isActive }) =>
+                  `internal-sidebar-link${isActive ? " is-active" : ""}`
+                }
+              >
+                <span>Đơn giao hàng của tôi</span>
               </NavLink>
             )}
             {canManageEmployeeAccounts && (

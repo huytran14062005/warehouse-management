@@ -247,8 +247,8 @@
   .sales-detail-overlay,
   .sales-editor-overlay,
   .warehouse-modal-overlay {
-    align-items: flex-end;
-    padding: 0;
+    align-items: center;
+    padding: 12px;
   }
 
   .customer-modal,
@@ -257,20 +257,17 @@
   .warehouse-modal {
     width: 100%;
     max-width: 100%;
-    max-height: 94vh;
-    max-height: 94dvh;
-    border-right: 0;
-    border-bottom: 0;
-    border-left: 0;
-    border-radius: 14px 14px 0 0;
+    max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px);
+    border-radius: 12px;
   }
 
   .customer-modal-body,
   .sales-detail-body,
   .sales-editor-body,
   .warehouse-modal-body {
-    max-height: calc(94vh - 68px);
-    max-height: calc(94dvh - 68px);
+    max-height: calc(100vh - 92px);
+    max-height: calc(100dvh - 92px);
     padding: 16px;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
@@ -517,7 +514,7 @@
   .customer-modal,
   .sales-detail-modal,
   .sales-editor-modal,
-  .warehouse-modal { max-height: 100dvh; border-radius: 0; }
+  .warehouse-modal { max-height: calc(100dvh - 24px); border-radius: 12px; }
 }
 
 @media (pointer: coarse) and (max-width: 768px) {

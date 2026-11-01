@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { authApis, endpoints } from "../configs/Apis";
 import { getApiError } from "../utils/apiError";
@@ -10,58 +10,63 @@ import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import "../css/WarehouseOperations.css";
 
+function formatLocalDate(date) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 function getDateBefore(days) {
   const date = new Date();
   date.setDate(date.getDate() - days);
-  return date.toISOString().slice(0, 10);
+  return formatLocalDate(date);
 }
 
 function WarehouseReports() {
   const navigate = useNavigate();
   const [fromDate, setFromDate] = useState(getDateBefore(30));
-  const [toDate, setToDate] = useState(new Date().toISOString().slice(0, 10));
+  const [toDate, setToDate] = useState(() => formatLocalDate(new Date()));
   const [report, setReport] = useState(null);
-  const [inventoryProducts, setInventoryProducts] = useState([]);
   const [lowStockPercentage, setLowStockPercentage] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useNotificationState();
   const [productKeyword, setProductKeyword] = useState("");
+  const [appliedKeyword, setAppliedKeyword] = useState("");
+  const reportRequestIdRef = useRef(0);
   const [productPage, setProductPage] = useState(1);
   const [productPagination, setProductPagination] = useState({ total: 0, total_pages: 1 });
 
   const loadReport = useCallback(
     async (event) => {
       event?.preventDefault();
+      const requestId = ++reportRequestIdRef.current;
       if (fromDate && toDate && fromDate > toDate) {
         setError("Từ ngày không được lớn hơn đến ngày.");
+        setLoading(false);
         return;
       }
       try {
         setLoading(true);
         setError("");
-        const [movementsResponse, inventoryResponse] = await Promise.all([
-          authApis().get(endpoints.reportsMovements, {
-            params: {
-              source: "central",
-              from_date: fromDate || undefined,
-              to_date: toDate || undefined,
-              page: productPage,
-              per_page: 10,
-              keyword: productKeyword.trim() || undefined,
-            },
-          }),
-          authApis().get(endpoints.reportsInventory, {
-            params: { source: "central" },
-          }),
-        ]);
+        const movementsResponse = await authApis().get(endpoints.reportsMovements, {
+          params: {
+            source: "central",
+            from_date: fromDate || undefined,
+            to_date: toDate || undefined,
+            page: productPage,
+            per_page: 10,
+            keyword: productKeyword.trim() || undefined,
+          },
+        });
+        if (requestId !== reportRequestIdRef.current) return;
         setReport(movementsResponse.data || {});
         setProductPagination(movementsResponse.data?.pagination || { total: 0, total_pages: 1 });
-        setInventoryProducts(inventoryResponse.data?.products || []);
-        setLowStockPercentage(inventoryResponse.data?.low_stock_percentage ?? null);
+        setLowStockPercentage(movementsResponse.data?.summary?.low_stock_percentage ?? null);
+        setAppliedKeyword(productKeyword.trim());
       } catch (requestError) {
-        setError(getApiError(requestError));
+        if (requestId === reportRequestIdRef.current) setError(getApiError(requestError));
       } finally {
-        setLoading(false);
+        if (requestId === reportRequestIdRef.current) setLoading(false);
       }
     },
     [fromDate, productKeyword, productPage, setError, toDate],
@@ -88,39 +93,64 @@ function WarehouseReports() {
 
   const summary = report?.summary || {};
   const productRows = report?.by_product || [];
-  const inventoryByProductId = new Map(
-    inventoryProducts.map((product) => [String(product.id), product]),
-  );
-  const productRowsWithInventory = productRows.map((product) => ({
-    ...product,
-    total_imported:
-      inventoryByProductId.get(String(product.product_id))?.total_imported ??
-      product.total_imported,
-    current_stock:
-      inventoryByProductId.get(String(product.product_id))?.available_stock ??
-      product.current_stock,
-  }));
   const productTotalPages = Number(productPagination.total_pages || 1);
   const safeProductPage = Math.min(productPage, productTotalPages);
-  const visibleProducts = productRowsWithInventory;
-  const currentStockQuantity = inventoryProducts.reduce(
-    (total, product) => total + Number(product.available_stock || 0),
-    0,
-  );
-  const outOfStockCount = inventoryProducts.filter(
-    (product) => Number(product.available_stock || 0) <= 0,
-  ).length;
-  const lowStockCount = inventoryProducts.filter(
-    (product) =>
-      getInventoryStatus(product.available_stock, product.total_imported, lowStockPercentage)
-        .key === "low",
-  ).length;
+  const visibleProducts = productRows;
+  const currentStockQuantity = Number(summary.current_stock || 0);
+  const outOfStockCount = Number(summary.out_of_stock_count || 0);
+  const lowStockCount = Number(summary.low_stock_count || 0);
+  const reportMatchesFilters =
+    (report?.period?.from || "") === fromDate &&
+    (report?.period?.to || "") === toDate &&
+    appliedKeyword === productKeyword.trim();
+
+  const exportExcel = async () => {
+    if (!report || !reportMatchesFilters || loading || exporting) return;
+    try {
+      setExporting(true);
+      setError("");
+      const period = report.period || {};
+      const response = await authApis().get(endpoints.reportsMovementsExport, {
+        params: {
+          from_date: period.from || undefined,
+          to_date: period.to || undefined,
+          keyword: appliedKeyword || undefined,
+        },
+        responseType: "blob",
+      });
+      const url = window.URL.createObjectURL(response.data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `bao-cao-nhap-xuat-kho-${period.from || "tat-ca"}-${period.to || "tat-ca"}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+    } catch (requestError) {
+      if (requestError.response?.data instanceof Blob) {
+        try {
+          const payload = JSON.parse(await requestError.response.data.text());
+          setError(payload.error || "Không thể xuất báo cáo Excel.");
+        } catch {
+          setError("Không thể xuất báo cáo Excel.");
+        }
+      } else {
+        setError(getApiError(requestError));
+      }
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="warehouse-page">
       <div className="warehouse-page-header">
         <div>
           <h1>Báo cáo nhập – xuất kho</h1>
         </div>
+        <button type="button" className="warehouse-export-button" onClick={exportExcel} disabled={!report || !reportMatchesFilters || loading || exporting}>
+          {exporting ? "Đang xuất Excel..." : "Xuất Excel"}
+        </button>
       </div>
       <form className="warehouse-report-filter" onSubmit={loadReport}>
         <label>

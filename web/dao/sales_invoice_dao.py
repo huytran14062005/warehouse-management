@@ -185,14 +185,9 @@ def get_sales_invoices_list(
         query = query.filter(SalesInvoice.status == status)
         if status == InvoiceStatus.DRAFT:
             query = query.filter(SalesInvoice.warehouse_submitted_at.is_(None))
-        elif status == InvoiceStatus.DELIVERING:
-            query = query.filter(SalesInvoice.delivered_at.is_(None))
     if workflow_stage_filter == "chờ kho":
         query = query.filter(SalesInvoice.status == InvoiceStatus.DRAFT,
                              SalesInvoice.warehouse_submitted_at.isnot(None))
-    elif workflow_stage_filter == "đã giao":
-        query = query.filter(SalesInvoice.status == InvoiceStatus.DELIVERING,
-                             SalesInvoice.delivered_at.isnot(None))
     if warehouse_id:
         query = query.filter(SalesInvoice.warehouse_id == warehouse_id)
 

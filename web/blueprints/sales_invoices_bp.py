@@ -9,16 +9,20 @@ from web.services.sales_invoice_service import (
     business_today,
     cancel_invoice_service,
     complete_sales_invoice_service,
-    confirm_sales_invoice_delivery_service,
     create_sales_invoice_service,
     get_pending_discount_invoices_service,
     get_sales_invoice_detail_service,
     get_sales_invoice_action_count_service,
+    get_courier_assignment_service,
     get_sales_invoices_list_service,
+    list_courier_assignments_service,
+    list_delivery_staff_service,
     get_status_tracking_board_service,
     request_cancel_invoice_service,
     record_sales_invoice_payment_service,
+    prepare_sales_invoice_delivery_service,
     serialize_invoice_summary,
+    serialize_courier_assignment,
     serialize_sales_invoice,
     serialize_sales_invoice_payment,
     submit_sales_invoice_to_warehouse_service,
@@ -31,10 +35,44 @@ from web.services.authorization import ensure_warehouse_access, scoped_warehouse
 from web.services.validators import parse_bool
 from web.services.customer_service import parse_page, parse_per_page
 from web.services.exceptions import NotFoundError
+from web.utils.pagination import build_pagination
 from web.utils.query_cache import cached_query
 
 
 sales_invoices_bp = Blueprint("sales_invoices", __name__, url_prefix="/api/sales-invoices")
+
+
+@sales_invoices_bp.route("/my-deliveries", methods=["GET"])
+@verify_token
+@verify_role(EmployeeRole.NHAN_VIEN_GIAO_HANG)
+@handle_api_errors
+def get_my_deliveries():
+    page = parse_page(request.args.get("page"))
+    per_page = min(parse_per_page(request.args.get("per_page"), 10), 50)
+    invoices, total = list_courier_assignments_service(request.employee_id, page, per_page)
+    return jsonify({
+        "invoices": [serialize_courier_assignment(invoice) for invoice in invoices],
+        "pagination": build_pagination(page, per_page, total),
+    }), 200
+
+
+@sales_invoices_bp.route("/my-deliveries/<int:invoice_id>", methods=["GET"])
+@verify_token
+@verify_role(EmployeeRole.NHAN_VIEN_GIAO_HANG)
+@handle_api_errors
+def get_my_delivery(invoice_id):
+    invoice = get_courier_assignment_service(invoice_id, request.employee_id)
+    return jsonify({"invoice": serialize_courier_assignment(invoice)}), 200
+
+
+@sales_invoices_bp.route("/my-deliveries/<int:invoice_id>/start", methods=["POST"])
+@verify_token
+@verify_role(EmployeeRole.NHAN_VIEN_GIAO_HANG)
+@handle_api_errors
+def start_my_delivery(invoice_id):
+    get_courier_assignment_service(invoice_id, request.employee_id)
+    invoice = update_invoice_status_service(invoice_id, request.employee_id, "đang giao")
+    return jsonify({"message": "Đã bắt đầu giao hàng", "invoice": serialize_courier_assignment(invoice)}), 200
 
 
 @sales_invoices_bp.route("/action-count", methods=["GET"])
@@ -200,6 +238,29 @@ def update_invoice_status(invoice_id):
     }), 200
 
 
+@sales_invoices_bp.route("/delivery-staff", methods=["GET"])
+@verify_token
+@verify_role(EmployeeRole.THU_KHO, EmployeeRole.QUAN_LY)
+@handle_api_errors
+def get_delivery_staff():
+    staff = list_delivery_staff_service()
+    return jsonify({"employees": [
+        {"id": employee.id, "full_name": employee.full_name}
+        for employee in staff
+    ]}), 200
+
+
+@sales_invoices_bp.route("/<int:invoice_id>/prepare-delivery", methods=["PUT"])
+@verify_token
+@verify_role(EmployeeRole.THU_KHO, EmployeeRole.QUAN_LY)
+@handle_api_errors
+def prepare_sales_invoice_delivery(invoice_id):
+    invoice = prepare_sales_invoice_delivery_service(
+        invoice_id, request.employee_id, request.get_json(silent=True) or {},
+    )
+    return jsonify({"message": "Đã lưu phương án giao hàng", "invoice": serialize_sales_invoice(invoice)}), 200
+
+
 @sales_invoices_bp.route("/<int:invoice_id>/submit-to-warehouse", methods=["POST"])
 @verify_token
 @verify_role(EmployeeRole.NHAN_VIEN_BAN_HANG, EmployeeRole.QUAN_LY)
@@ -207,18 +268,6 @@ def update_invoice_status(invoice_id):
 def submit_sales_invoice_to_warehouse(invoice_id):
     invoice = submit_sales_invoice_to_warehouse_service(invoice_id, request.employee_id)
     return jsonify({"message": "Đã gửi đơn cho kho", "invoice": serialize_sales_invoice(invoice)}), 200
-
-
-@sales_invoices_bp.route("/<int:invoice_id>/confirm-delivery", methods=["POST"])
-@verify_token
-@verify_role(EmployeeRole.NHAN_VIEN_BAN_HANG, EmployeeRole.QUAN_LY)
-@handle_api_errors
-def confirm_sales_invoice_delivery(invoice_id):
-    data = request.get_json(silent=True) or {}
-    invoice = confirm_sales_invoice_delivery_service(
-        invoice_id, request.employee_id, data.get("recipient"), data.get("note"),
-    )
-    return jsonify({"message": "Đã xác nhận giao hàng", "invoice": serialize_sales_invoice(invoice)}), 200
 
 
 @sales_invoices_bp.route("/<int:invoice_id>", methods=["DELETE"])
