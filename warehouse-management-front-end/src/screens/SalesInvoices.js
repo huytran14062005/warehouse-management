@@ -12,7 +12,10 @@ import ProductRequestModal from "../components/ProductRequestModal";
 import SharedSearchableDropdown from "../components/SearchableDropdown";
 import CustomerFields from "../components/CustomerFields";
 import PaymentMethodDropdown from "../components/PaymentMethodDropdown";
-import { ProductEntryField, ProductEntryInfo } from "../components/ProductEntryFields";
+import {
+  ProductEntryField,
+  ProductEntryInfo,
+} from "../components/ProductEntryFields";
 import { getSalePriceBounds } from "../utils/salePrice";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
@@ -103,7 +106,8 @@ function getPaymentDueLabel(invoice) {
 function getPaymentDueUrgencyClass(invoice) {
   if (invoice.payment_due_status === "overdue") return "is-overdue";
   const days = Number(invoice.days_until_due);
-  if (invoice.payment_due_status === "due_today" || days <= 1) return "is-due-red";
+  if (invoice.payment_due_status === "due_today" || days <= 1)
+    return "is-due-red";
   if (days <= 3) return "is-due-orange-dark";
   if (days <= 6) return "is-due-orange-light";
   return "is-due-yellow";
@@ -122,8 +126,12 @@ export function SalesInvoiceDueCell({ invoice }) {
   return (
     <div className="sales-due-cell">
       <span>{formatDate(invoice.payment_due_date)}</span>
-      {["overdue", "due_today", "due_soon", "not_due"].includes(invoice.payment_due_status) && (
-        <span className={`sales-due-badge ${getPaymentDueUrgencyClass(invoice)}`}>
+      {["overdue", "due_today", "due_soon", "not_due"].includes(
+        invoice.payment_due_status,
+      ) && (
+        <span
+          className={`sales-due-badge ${getPaymentDueUrgencyClass(invoice)}`}
+        >
           {getPaymentDueLabel(invoice)}
         </span>
       )}
@@ -154,16 +162,28 @@ function getStatusLabel(status) {
 
 export function requiresSalesInvoiceAction(invoice, user) {
   const role = user?.role;
-  const ownsInvoice = Number(user?.id) === Number(invoice.employee?.id) && user?.id != null;
+  const ownsInvoice =
+    Number(user?.id) === Number(invoice.employee?.id) && user?.id != null;
   if (invoice.cancel_requested) return ["kế toán", "quản lý"].includes(role);
-  if (role === "quản lý" && invoice.discount?.status === "chờ duyệt" && !ownsInvoice) return true;
+  if (
+    role === "quản lý" &&
+    invoice.discount?.status === "chờ duyệt" &&
+    !ownsInvoice
+  )
+    return true;
   if (invoice.status === "nháp") {
-    if (invoice.warehouse_submitted_at) return ["thủ kho", "quản lý"].includes(role);
+    if (invoice.warehouse_submitted_at)
+      return ["thủ kho", "quản lý"].includes(role);
     return role === "quản lý" || (role === "nhân viên bán hàng" && ownsInvoice);
   }
-  if (invoice.status === "đang xử lý") return ["thủ kho", "quản lý"].includes(role);
+  if (invoice.status === "đang xử lý")
+    return ["thủ kho", "quản lý"].includes(role);
   if (invoice.status === "đang giao") {
-    if (invoice.delivered_at) return role === "kế toán" && !["chờ duyệt", "từ chối"].includes(invoice.discount?.status);
+    if (invoice.delivered_at)
+      return (
+        role === "kế toán" &&
+        !["chờ duyệt", "từ chối"].includes(invoice.discount?.status)
+      );
     return role === "quản lý" || (role === "nhân viên bán hàng" && ownsInvoice);
   }
   return false;
@@ -197,7 +217,12 @@ function getPaymentStatusClass(status) {
   return "is-unpaid";
 }
 
-function evaluatePromotionForOrder(promotion, subtotal, totalQuantity, ignoreDates = false) {
+function evaluatePromotionForOrder(
+  promotion,
+  subtotal,
+  totalQuantity,
+  ignoreDates = false,
+) {
   if (!promotion) return { eligible: true, discount: 0, reason: "" };
   const currentDate = new Date();
   const today = [
@@ -206,7 +231,11 @@ function evaluatePromotionForOrder(promotion, subtotal, totalQuantity, ignoreDat
     String(currentDate.getDate()).padStart(2, "0"),
   ].join("-");
   if (!ignoreDates && promotion.start_date && today < promotion.start_date) {
-    return { eligible: false, discount: 0, reason: "Khuyến mãi chưa đến thời gian áp dụng." };
+    return {
+      eligible: false,
+      discount: 0,
+      reason: "Khuyến mãi chưa đến thời gian áp dụng.",
+    };
   }
   if (!ignoreDates && promotion.end_date && today > promotion.end_date) {
     return { eligible: false, discount: 0, reason: "Khuyến mãi đã hết hạn." };
@@ -233,7 +262,7 @@ function evaluatePromotionForOrder(promotion, subtotal, totalQuantity, ignoreDat
   }
   let discount = Number(promotion.discount_value || 0);
   if (promotion.discount_type === "percentage") {
-    discount = subtotal * discount / 100;
+    discount = (subtotal * discount) / 100;
     if (Number(promotion.max_discount_amount || 0) > 0) {
       discount = Math.min(discount, Number(promotion.max_discount_amount));
     }
@@ -242,7 +271,10 @@ function evaluatePromotionForOrder(promotion, subtotal, totalQuantity, ignoreDat
   return {
     eligible: discount > 0,
     discount,
-    reason: discount > 0 ? "Đủ điều kiện áp dụng." : "Đơn chưa phát sinh giá trị để giảm.",
+    reason:
+      discount > 0
+        ? "Đủ điều kiện áp dụng."
+        : "Đơn chưa phát sinh giá trị để giảm.",
   };
 }
 
@@ -250,7 +282,7 @@ function hasActiveCancelRequest(invoice) {
   const status = String(invoice?.status || "").toLowerCase();
   return Boolean(
     invoice?.cancel_requested &&
-      ["đang xử lý", "đang giao", "processing", "delivering"].includes(status),
+    ["đang xử lý", "đang giao", "processing", "delivering"].includes(status),
   );
 }
 
@@ -280,9 +312,12 @@ function SalesPaymentFields({
   dueDate,
   onDueDateChange,
 }) {
-  const changeAmount = method === "cash" ? Math.max(0, (Number(amount) || 0) - total) : 0;
+  const changeAmount =
+    method === "cash" ? Math.max(0, (Number(amount) || 0) - total) : 0;
   return (
-    <div className={`sales-payment-entry-fields${dueDate === undefined ? " is-two-columns" : ""}`}>
+    <div
+      className={`sales-payment-entry-fields${dueDate === undefined ? " is-two-columns" : ""}`}
+    >
       <label className="sales-payment-entry-field">
         <span>{amountLabel}</span>
         <MoneyInput
@@ -356,20 +391,31 @@ export function SalesInvoiceDetail({
   const discountAmount = Number(invoice.discount?.amount || 0);
   const paidAmount = Number(invoice.paid_amount || 0);
   const remainingAmount = Number(invoice.remaining_amount || 0);
-  const draft = ["nháp", "draft"].includes(String(invoice.status || "").toLowerCase());
+  const draft = ["nháp", "draft"].includes(
+    String(invoice.status || "").toLowerCase(),
+  );
   const completed = isCompletedStatus(invoice.status);
   const cancelled = isCancelledStatus(invoice.status);
   const discountPending = invoice.discount?.status === "chờ duyệt";
-  const awaitingAccounting = canComplete && invoice.status === "đang giao" && Boolean(invoice.delivered_at) &&
-    !invoice.cancel_requested && !["chờ duyệt", "từ chối"].includes(invoice.discount?.status);
-  const showPaymentDetails = !draft && !cancelled && (completed || paidAmount > 0 || awaitingAccounting);
+  const awaitingAccounting =
+    canComplete &&
+    invoice.status === "đang giao" &&
+    Boolean(invoice.delivered_at) &&
+    !invoice.cancel_requested &&
+    !["chờ duyệt", "từ chối"].includes(invoice.discount?.status);
+  const showPaymentDetails =
+    !draft && !cancelled && (completed || paidAmount > 0 || awaitingAccounting);
   const enteredPayment = Number(completionPayment) || 0;
-  const unpaidAfterEntry = Math.max(0, remainingAmount - Math.min(enteredPayment, remainingAmount));
-  const invalidPaymentEntry = actionLoading ||
+  const unpaidAfterEntry = Math.max(
+    0,
+    remainingAmount - Math.min(enteredPayment, remainingAmount),
+  );
+  const invalidPaymentEntry =
+    actionLoading ||
     (enteredPayment > 0 && !completionPaymentMethod) ||
     (completionPaymentMethod !== "cash" && enteredPayment > remainingAmount) ||
     (awaitingAccounting
-      ? (unpaidAfterEntry > 0 && !paymentDueDate)
+      ? unpaidAfterEntry > 0 && !paymentDueDate
       : enteredPayment <= 0);
   useEffect(() => {
     setCompletionPayment("");
@@ -394,7 +440,12 @@ export function SalesInvoiceDetail({
               className={`sales-status-badge sales-detail-status ${getStatusClass(invoice.workflow_stage || invoice.status)}`}
             >
               {getStatusLabel(invoice.workflow_stage || invoice.status)}
-              {needsAction && <span className="sales-action-dot" aria-label="Đơn hàng cần xử lý" />}
+              {needsAction && (
+                <span
+                  className="sales-action-dot"
+                  aria-label="Đơn hàng cần xử lý"
+                />
+              )}
             </strong>
             <button
               type="button"
@@ -412,8 +463,12 @@ export function SalesInvoiceDetail({
             <section className="sales-detail-info-section">
               <h3>Thông tin đơn</h3>
               <dl>
-                <SalesDetailLine label="Thời gian lập đơn">{formatDateTime(invoice.sold_at)}</SalesDetailLine>
-                <SalesDetailLine label="Nhân viên lập đơn">{invoice.employee?.full_name || "—"}</SalesDetailLine>
+                <SalesDetailLine label="Thời gian lập đơn">
+                  {formatDateTime(invoice.sold_at)}
+                </SalesDetailLine>
+                <SalesDetailLine label="Nhân viên lập đơn">
+                  {invoice.employee?.full_name || "—"}
+                </SalesDetailLine>
                 <SalesDetailLine label="Nguồn hàng">
                   {invoice.sale_source === "hàng nhân viên"
                     ? "Hàng nhân viên đi tỉnh"
@@ -425,9 +480,15 @@ export function SalesInvoiceDetail({
             <section className="sales-detail-info-section">
               <h3>Khách hàng</h3>
               <dl>
-                <SalesDetailLine label="Họ và tên">{invoice.customer?.full_name || "—"}</SalesDetailLine>
-                <SalesDetailLine label="Số điện thoại">{invoice.customer?.phone || "—"}</SalesDetailLine>
-                <SalesDetailLine label="Địa chỉ giao hàng">{invoice.customer?.address || "—"}</SalesDetailLine>
+                <SalesDetailLine label="Họ và tên">
+                  {invoice.customer?.full_name || "—"}
+                </SalesDetailLine>
+                <SalesDetailLine label="Số điện thoại">
+                  {invoice.customer?.phone || "—"}
+                </SalesDetailLine>
+                <SalesDetailLine label="Địa chỉ giao hàng">
+                  {invoice.customer?.address || "—"}
+                </SalesDetailLine>
               </dl>
             </section>
           </div>
@@ -473,62 +534,96 @@ export function SalesInvoiceDetail({
             {showPaymentDetails && (
               <div className="sales-detail-section-heading">
                 <h3>Thanh toán</h3>
-                <span className={`sales-payment-status ${getPaymentStatusClass(invoice.payment_status)}`}>
+                <span
+                  className={`sales-payment-status ${getPaymentStatusClass(invoice.payment_status)}`}
+                >
                   {getPaymentStatusLabel(invoice.payment_status)}
                 </span>
               </div>
             )}
             <dl>
               {!draft && !cancelled && discountAmount > 0 && (
-                <SalesDetailLine label={`Khuyến mãi${discountPending ? " (chờ duyệt)" : ""}`}>
+                <SalesDetailLine
+                  label={`Khuyến mãi${discountPending ? " (chờ duyệt)" : ""}`}
+                >
                   -{formatCurrency(discountAmount)}
                 </SalesDetailLine>
               )}
               <SalesDetailLine
-                label={cancelled ? "Giá trị đơn trước khi hủy" : "Tổng tiền đơn"}
+                label={
+                  cancelled ? "Giá trị đơn trước khi hủy" : "Tổng tiền đơn"
+                }
                 className="sales-payment-total"
               >
                 {formatCurrency(invoice.final_amount)}
               </SalesDetailLine>
               {!draft && paidAmount > 0 && (
-                <SalesDetailLine label="Khách đã trả">{formatCurrency(paidAmount)}</SalesDetailLine>
-              )}
-              {showPaymentDetails && (completed || awaitingAccounting) && remainingAmount > 0 && (
-                <SalesDetailLine label="Số tiền cần trả" className="sales-payment-remaining">
-                  {formatCurrency(remainingAmount)}
+                <SalesDetailLine label="Khách đã trả">
+                  {formatCurrency(paidAmount)}
                 </SalesDetailLine>
               )}
-              {showPaymentDetails && completed && remainingAmount > 0 && invoice.payment_due_date && (
-                <SalesDetailLine label="Hạn thanh toán">{formatDate(invoice.payment_due_date)}</SalesDetailLine>
-              )}
-              {showPaymentDetails && completed && remainingAmount > 0 && invoice.payment_due_date &&
-                ["overdue", "due_today", "due_soon", "not_due"].includes(invoice.payment_due_status) && (
-                  <SalesDetailLine label="Tình trạng hạn" className={`sales-payment-due-status ${getPaymentDueUrgencyClass(invoice)}`}>
+              {showPaymentDetails &&
+                (completed || awaitingAccounting) &&
+                remainingAmount > 0 && (
+                  <SalesDetailLine
+                    label="Số tiền cần trả"
+                    className="sales-payment-remaining"
+                  >
+                    {formatCurrency(remainingAmount)}
+                  </SalesDetailLine>
+                )}
+              {showPaymentDetails &&
+                completed &&
+                remainingAmount > 0 &&
+                invoice.payment_due_date && (
+                  <SalesDetailLine label="Hạn thanh toán">
+                    {formatDate(invoice.payment_due_date)}
+                  </SalesDetailLine>
+                )}
+              {showPaymentDetails &&
+                completed &&
+                remainingAmount > 0 &&
+                invoice.payment_due_date &&
+                ["overdue", "due_today", "due_soon", "not_due"].includes(
+                  invoice.payment_due_status,
+                ) && (
+                  <SalesDetailLine
+                    label="Tình trạng hạn"
+                    className={`sales-payment-due-status ${getPaymentDueUrgencyClass(invoice)}`}
+                  >
                     {getPaymentDueLabel(invoice)}
                   </SalesDetailLine>
                 )}
             </dl>
           </section>
-          {canManageDueDate && isCompletedStatus(invoice.status) && remainingAmount > 0 && !canRecordPayment && (
-            <div className="sales-due-date-editor">
-              <label>
-                <span>Hạn thanh toán</span>
-                <input
-                  type="date"
-                  value={paymentDueDate}
-                  onChange={(event) => setPaymentDueDate(event.target.value)}
-                />
-              </label>
-              <button
-                type="button"
-                onClick={() => onUpdateDueDate(paymentDueDate)}
-                disabled={actionLoading || !paymentDueDate || paymentDueDate === invoice.payment_due_date}
-              >
-                Lưu hạn thanh toán
-              </button>
-            </div>
-          )}
-          {((canRecordPayment && completed && remainingAmount > 0) || awaitingAccounting) && (
+          {canManageDueDate &&
+            isCompletedStatus(invoice.status) &&
+            remainingAmount > 0 &&
+            !canRecordPayment && (
+              <div className="sales-due-date-editor">
+                <label>
+                  <span>Hạn thanh toán</span>
+                  <input
+                    type="date"
+                    value={paymentDueDate}
+                    onChange={(event) => setPaymentDueDate(event.target.value)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => onUpdateDueDate(paymentDueDate)}
+                  disabled={
+                    actionLoading ||
+                    !paymentDueDate ||
+                    paymentDueDate === invoice.payment_due_date
+                  }
+                >
+                  Lưu hạn thanh toán
+                </button>
+              </div>
+            )}
+          {((canRecordPayment && completed && remainingAmount > 0) ||
+            awaitingAccounting) && (
             <div className="sales-detail-actions sales-complete-actions">
               <div className="sales-completion-heading">
                 <strong>Ghi nhận thanh toán</strong>
@@ -540,18 +635,38 @@ export function SalesInvoiceDetail({
                 onMethodChange={setCompletionPaymentMethod}
                 total={remainingAmount}
                 amountLabel="Số tiền khách trả"
-                dueDate={canManageDueDate || awaitingAccounting ? paymentDueDate : undefined}
-                onDueDateChange={(event) => setPaymentDueDate(event.target.value)}
+                dueDate={
+                  canManageDueDate || awaitingAccounting
+                    ? paymentDueDate
+                    : undefined
+                }
+                onDueDateChange={(event) =>
+                  setPaymentDueDate(event.target.value)
+                }
               />
-              {awaitingAccounting && unpaidAfterEntry > 0 && !paymentDueDate && (
-                <small className="sales-payment-hint">Chọn hạn thanh toán cho số tiền còn nợ.</small>
-              )}
+              {awaitingAccounting &&
+                unpaidAfterEntry > 0 &&
+                !paymentDueDate && (
+                  <small className="sales-payment-hint">
+                    Chọn hạn thanh toán cho số tiền còn nợ.
+                  </small>
+                )}
               <div className="sales-completion-actions">
                 <button
                   type="button"
-                  onClick={() => awaitingAccounting
-                    ? onComplete(enteredPayment, completionPaymentMethod || null, paymentDueDate)
-                    : onRecordPayment(enteredPayment, completionPaymentMethod, paymentDueDate)}
+                  onClick={() =>
+                    awaitingAccounting
+                      ? onComplete(
+                          enteredPayment,
+                          completionPaymentMethod || null,
+                          paymentDueDate,
+                        )
+                      : onRecordPayment(
+                          enteredPayment,
+                          completionPaymentMethod,
+                          paymentDueDate,
+                        )
+                  }
                   disabled={invalidPaymentEntry}
                 >
                   Lưu thanh toán
@@ -560,8 +675,16 @@ export function SalesInvoiceDetail({
             </div>
           )}
           {!draft && invoice.payments?.length > 0 && (
-            <section className="sales-payment-history" aria-label="Lịch sử thanh toán">
-              <h4>Lịch sử thanh toán{invoice.payments_total > 0 ? ` (${invoice.payments_total})` : ""}</h4>
+            <section
+              className="sales-payment-history"
+              aria-label="Lịch sử thanh toán"
+            >
+              <h4>
+                Lịch sử thanh toán
+                {invoice.payments_total > 0
+                  ? ` (${invoice.payments_total})`
+                  : ""}
+              </h4>
               {invoice.payments.map((payment) => (
                 <div key={payment.id}>
                   <span>
@@ -570,19 +693,37 @@ export function SalesInvoiceDetail({
                       : payment.payment_method === "bank_transfer"
                         ? "Chuyển khoản"
                         : "Chưa xác định"}
-                    {" ("}<time dateTime={payment.paid_at}>{formatDateTime(payment.paid_at)}</time>{")"}
-                    <small>Người xác nhận thanh toán: {payment.confirmed_by?.full_name || "Chưa có thông tin"}</small>
-                    {payment.note?.startsWith("Khách đưa ") && <small>{payment.note}</small>}
+                    {" ("}
+                    <time dateTime={payment.paid_at}>
+                      {formatDateTime(payment.paid_at)}
+                    </time>
+                    {")"}
+                    <small>
+                      Người xác nhận thanh toán:{" "}
+                      {payment.confirmed_by?.full_name || "Chưa có thông tin"}
+                    </small>
+                    {payment.note?.startsWith("Khách đưa ") && (
+                      <small>{payment.note}</small>
+                    )}
                   </span>
                   <strong>{formatCurrency(payment.amount)}</strong>
                 </div>
               ))}
-              {invoice.payments.length < Number(invoice.payments_total || invoice.payments.length) &&
-                Number(invoice.payments_page || 1) < Math.ceil(Number(invoice.payments_total || 0) / 20) && (
-                <button type="button" className="sales-payment-more" onClick={onLoadMorePayments} disabled={paymentHistoryLoading}>
-                  {paymentHistoryLoading ? "Đang tải..." : "Xem thêm thanh toán"}
-                </button>
-              )}
+              {invoice.payments.length <
+                Number(invoice.payments_total || invoice.payments.length) &&
+                Number(invoice.payments_page || 1) <
+                  Math.ceil(Number(invoice.payments_total || 0) / 20) && (
+                  <button
+                    type="button"
+                    className="sales-payment-more"
+                    onClick={onLoadMorePayments}
+                    disabled={paymentHistoryLoading}
+                  >
+                    {paymentHistoryLoading
+                      ? "Đang tải..."
+                      : "Xem thêm thanh toán"}
+                  </button>
+                )}
             </section>
           )}
           {invoice.cancel_note && (
@@ -599,22 +740,31 @@ export function SalesInvoiceDetail({
           )}
           {Boolean(invoice.workflow_events?.length) && (
             <details className="sales-workflow-history">
-              <summary>Lịch sử xử lý ({invoice.workflow_events.length} gần nhất)</summary>
+              <summary>
+                Lịch sử xử lý ({invoice.workflow_events.length} gần nhất)
+              </summary>
               <ol>
                 {[...invoice.workflow_events].reverse().map((event) => (
                   <li key={event.id}>
                     <div className="sales-workflow-entry-line">
-                      <span>{({
-                        submitted_to_warehouse: "Đã gửi kho",
-                        warehouse_processing: "Kho bắt đầu xử lý",
-                        dispatched: "Đã xuất xe giao hàng",
-                        delivery_confirmed: "Đã xác nhận giao hàng",
-                        completed: "Kế toán hoàn thành đơn",
-                        cancelled: "Đã hủy đơn",
-                      })[event.action] || event.action}</span>
-                      <time dateTime={event.occurred_at}>({formatDateTime(event.occurred_at)})</time>
+                      <span>
+                        {{
+                          submitted_to_warehouse: "Đã gửi kho",
+                          warehouse_processing: "Kho bắt đầu xử lý",
+                          dispatched: "Đã xuất xe giao hàng",
+                          delivery_confirmed: "Đã xác nhận giao hàng",
+                          completed: "Kế toán hoàn thành đơn",
+                          cancelled: "Đã hủy đơn",
+                        }[event.action] || event.action}
+                      </span>
+                      <time dateTime={event.occurred_at}>
+                        ({formatDateTime(event.occurred_at)})
+                      </time>
                     </div>
-                    <small>{event.actor || "Nhân viên"}{event.detail ? ` · ${event.detail}` : ""}</small>
+                    <small>
+                      {event.actor || "Nhân viên"}
+                      {event.detail ? ` · ${event.detail}` : ""}
+                    </small>
                   </li>
                 ))}
               </ol>
@@ -622,11 +772,17 @@ export function SalesInvoiceDetail({
           )}
           {(canEdit || canCancel || canApproveCancel) && (
             <div className="sales-detail-actions">
-              {canEdit && invoice.status === "nháp" && !invoice.warehouse_submitted_at && (
-                <button type="button" onClick={onEdit} disabled={actionLoading}>
-                  Chỉnh sửa đơn nháp
-                </button>
-              )}
+              {canEdit &&
+                invoice.status === "nháp" &&
+                !invoice.warehouse_submitted_at && (
+                  <button
+                    type="button"
+                    onClick={onEdit}
+                    disabled={actionLoading}
+                  >
+                    Chỉnh sửa đơn nháp
+                  </button>
+                )}
               {canCancel && invoice.status === "nháp" && (
                 <button
                   type="button"
@@ -668,24 +824,32 @@ export function SalesInvoiceDetail({
               )}
             </div>
           )}
-          {canSubmitWarehouse && invoice.status === "nháp" && !invoice.warehouse_submitted_at && (
-            <div className="sales-detail-actions">
-              <button type="button" onClick={onSubmitWarehouse} disabled={actionLoading}>
-                Gửi đơn cho kho
-              </button>
-            </div>
-          )}
-          {canManageStatus && invoice.status === "nháp" && Boolean(invoice.warehouse_submitted_at) && (
-            <div className="sales-detail-actions">
-              <button
-                type="button"
-                onClick={() => onAdvanceStatus("đang xử lý")}
-                disabled={actionLoading}
-              >
-                Xác nhận xử lý đơn
-              </button>
-            </div>
-          )}
+          {canSubmitWarehouse &&
+            invoice.status === "nháp" &&
+            !invoice.warehouse_submitted_at && (
+              <div className="sales-detail-actions">
+                <button
+                  type="button"
+                  onClick={onSubmitWarehouse}
+                  disabled={actionLoading}
+                >
+                  Gửi đơn cho kho
+                </button>
+              </div>
+            )}
+          {canManageStatus &&
+            invoice.status === "nháp" &&
+            Boolean(invoice.warehouse_submitted_at) && (
+              <div className="sales-detail-actions">
+                <button
+                  type="button"
+                  onClick={() => onAdvanceStatus("đang xử lý")}
+                  disabled={actionLoading}
+                >
+                  Xác nhận xử lý đơn
+                </button>
+              </div>
+            )}
           {canManageStatus && invoice.status === "đang xử lý" && (
             <div className="sales-detail-actions">
               <button
@@ -697,25 +861,51 @@ export function SalesInvoiceDetail({
               </button>
             </div>
           )}
-          {canConfirmDelivery && invoice.status === "đang giao" && !invoice.delivered_at && (
-            <form className="sales-delivery-confirm" onSubmit={(event) => {
-              event.preventDefault();
-              onConfirmDelivery(deliveryRecipient, deliveryNote);
-            }}>
-              <h3>Xác nhận đã giao hàng</h3>
-              <div className="sales-delivery-fields">
-                <label>Người nhận
-                  <input value={deliveryRecipient} onChange={(event) => setDeliveryRecipient(event.target.value)} maxLength={120} required placeholder="Tên người nhận hàng" />
-                </label>
-                <label>Ghi chú giao hàng (nếu có)
-                  <input value={deliveryNote} onChange={(event) => setDeliveryNote(event.target.value)} maxLength={500} placeholder="Ví dụ: Đã kiểm đủ hàng" />
-                </label>
-              </div>
-              <button type="submit" disabled={actionLoading}>Xác nhận đã giao</button>
-            </form>
-          )}
+          {canConfirmDelivery &&
+            invoice.status === "đang giao" &&
+            !invoice.delivered_at && (
+              <form
+                className="sales-delivery-confirm"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  onConfirmDelivery(deliveryRecipient, deliveryNote);
+                }}
+              >
+                <h3>Xác nhận đã giao hàng</h3>
+                <div className="sales-delivery-fields">
+                  <label>
+                    Người nhận
+                    <input
+                      value={deliveryRecipient}
+                      onChange={(event) =>
+                        setDeliveryRecipient(event.target.value)
+                      }
+                      maxLength={120}
+                      required
+                      placeholder="Tên người nhận hàng"
+                    />
+                  </label>
+                  <label>
+                    Ghi chú giao hàng (nếu có)
+                    <input
+                      value={deliveryNote}
+                      onChange={(event) => setDeliveryNote(event.target.value)}
+                      maxLength={500}
+                      placeholder="Ví dụ: Đã kiểm đủ hàng"
+                    />
+                  </label>
+                </div>
+                <button type="submit" disabled={actionLoading}>
+                  Xác nhận đã giao
+                </button>
+              </form>
+            )}
           {invoice.delivered_at && (
-            <p className="sales-delivery-proof">Đã giao cho {invoice.delivery_recipient} lúc {formatDateTime(invoice.delivered_at)}{invoice.delivery_note ? ` · ${invoice.delivery_note}` : ""}</p>
+            <p className="sales-delivery-proof">
+              Đã giao cho {invoice.delivery_recipient} lúc{" "}
+              {formatDateTime(invoice.delivered_at)}
+              {invoice.delivery_note ? ` · ${invoice.delivery_note}` : ""}
+            </p>
           )}
           {canApproveCancel && hasActiveCancelRequest(invoice) && (
             <div className="sales-detail-actions">
@@ -784,7 +974,9 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
       : "central_warehouse",
   );
   const [warehouses, setWarehouses] = useState([]);
-  const [warehouseId, setWarehouseId] = useState(String(invoice?.warehouse_id || ""));
+  const [warehouseId, setWarehouseId] = useState(
+    String(invoice?.warehouse_id || ""),
+  );
   const [employeeStock, setEmployeeStock] = useState([]);
   const [employeeStockLoading, setEmployeeStockLoading] = useState(false);
   const [paymentDueDate, setPaymentDueDate] = useState(
@@ -801,7 +993,8 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
       productId: String(item.product_id),
       productSearch: item.product_name || "",
       unit: item.unit || "",
-      defaultPrice: item.default_sale_price != null ? String(item.default_sale_price) : "",
+      defaultPrice:
+        item.default_sale_price != null ? String(item.default_sale_price) : "",
       quantity: String(item.quantity),
       unitPrice: String(item.unit_price),
     })),
@@ -821,7 +1014,7 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
   const [comboSuggestion, setComboSuggestion] = useState(null);
   const [comboSets, setComboSets] = useState("1");
   const [applyingCombo, setApplyingCombo] = useState(false);
-  const [comboNotice, setComboNotice] = useState("");
+  const [formSuccess, setFormSuccess] = useState("");
   const customerSearchTimerRef = useRef(null);
   const customerSearchTouchedRef = useRef(false);
   const productSearchTimerRefs = useRef({});
@@ -829,16 +1022,22 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
 
   useEffect(() => {
     let cancelled = false;
-    authApis().get(endpoints.warehouses)
+    authApis()
+      .get(endpoints.warehouses)
       .then((response) => {
         if (cancelled) return;
         setWarehouses(response.data?.warehouses || []);
-        setWarehouseId((current) => current || String(response.data?.default_warehouse_id || ""));
+        setWarehouseId(
+          (current) =>
+            current || String(response.data?.default_warehouse_id || ""),
+        );
       })
       .catch((requestError) => {
         if (!cancelled) setFormError(getApiError(requestError));
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [setFormError]);
 
   useEffect(() => {
@@ -891,14 +1090,17 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
 
   useEffect(() => {
     let active = true;
-    authApis().get(endpoints.productCombos)
+    authApis()
+      .get(endpoints.productCombos)
       .then((response) => {
         if (active) setCombos(response.data?.combos || []);
       })
       .catch((requestError) => {
         if (active) setFormError(getApiError(requestError));
       });
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [setFormError]);
 
   useEffect(() => {
@@ -984,8 +1186,11 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
         }))
       : [];
   const suggestedCombos = comboSuggestion
-    ? combos.filter((combo) => combo.items.some((part) =>
-        String(part.product_id) === comboSuggestion.productId))
+    ? combos.filter((combo) =>
+        combo.items.some(
+          (part) => String(part.product_id) === comboSuggestion.productId,
+        ),
+      )
     : [];
 
   const openPromotionPicker = async () => {
@@ -1007,7 +1212,13 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
     setItems((current) =>
       current.map((item, itemIndex) =>
         itemIndex === index
-          ? { ...item, productId: "", productSearch: value, defaultPrice: "", unitPrice: "" }
+          ? {
+              ...item,
+              productId: "",
+              productSearch: value,
+              defaultPrice: "",
+              unitPrice: "",
+            }
           : item,
       ),
     );
@@ -1075,9 +1286,10 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
           productId: value,
           productSearch: selectedProduct?.name || "",
           unit: selectedProduct?.unit || item.unit,
-          defaultPrice: selectedProduct?.default_sale_price != null
-            ? String(selectedProduct.default_sale_price)
-            : "",
+          defaultPrice:
+            selectedProduct?.default_sale_price != null
+              ? String(selectedProduct.default_sale_price)
+              : "",
           unitPrice: selectedProduct
             ? String(selectedProduct.default_sale_price ?? "")
             : "",
@@ -1089,7 +1301,7 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
   const handleProductSelect = (index, value) => {
     const productId = String(value);
     updateItem(index, "productId", productId);
-    setComboNotice("");
+    setFormSuccess("");
     setComboSets("1");
     setComboSuggestion(productId ? { index, productId } : null);
   };
@@ -1102,65 +1314,105 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
       return;
     }
     const numberOfSets = Number(comboSets);
-    if (!Number.isInteger(numberOfSets) || numberOfSets < 1 || numberOfSets > 1000) {
+    if (
+      !Number.isInteger(numberOfSets) ||
+      numberOfSets < 1 ||
+      numberOfSets > 1000
+    ) {
       setFormError("Số bộ combo phải là số nguyên từ 1 đến 1.000.");
       return;
     }
-    if (items.some((item, itemIndex) => itemIndex !== index && String(item.productId) === productId)) {
-      setFormError("Sản phẩm đang chọn đã có ở dòng khác. Hãy gộp về một dòng trước khi dùng combo.");
+    if (
+      items.some(
+        (item, itemIndex) =>
+          itemIndex !== index && String(item.productId) === productId,
+      )
+    ) {
+      setFormError(
+        "Sản phẩm đang chọn đã có ở dòng khác. Hãy gộp về một dòng trước khi dùng combo.",
+      );
       return;
     }
     try {
       setApplyingCombo(true);
       setFormError("");
-      const productDetails = await Promise.all(combo.items.map(async (part) => {
-        if (saleSource === "employee_stock") {
-          return saleProducts.find((product) => String(product.id) === String(part.product_id));
-        }
-        const response = await authApis().get(endpoints.productDetail(part.product_id), {
-          params: { warehouse_id: warehouseId },
-        });
-        return response.data?.product;
-      }));
+      const productDetails = await Promise.all(
+        combo.items.map(async (part) => {
+          if (saleSource === "employee_stock") {
+            return saleProducts.find(
+              (product) => String(product.id) === String(part.product_id),
+            );
+          }
+          const response = await authApis().get(
+            endpoints.productDetail(part.product_id),
+            {
+              params: { warehouse_id: warehouseId },
+            },
+          );
+          return response.data?.product;
+        }),
+      );
       if (productDetails.some((product) => !product)) {
-        setFormError("Một số sản phẩm của combo chưa có trong nguồn hàng đã chọn.");
+        setFormError(
+          "Một số sản phẩm của combo chưa có trong nguồn hàng đã chọn.",
+        );
         return;
       }
-      const unpricedProduct = productDetails.find((product) => !getSalePriceBounds(product.default_sale_price));
+      const unpricedProduct = productDetails.find(
+        (product) => !getSalePriceBounds(product.default_sale_price),
+      );
       if (unpricedProduct) {
-        setFormError(`${unpricedProduct.name} cần có giá bán mặc định từ 500 đ trước khi thêm combo.`);
+        setFormError(
+          `${unpricedProduct.name} cần có giá bán mặc định từ 500 đ trước khi thêm combo.`,
+        );
         return;
       }
+
+      // Kiểm tra tồn kho và tính tổng giá combo
       const next = [...items];
+      let totalComboPrice = 0;
+      const comboProducts = [];
+
       for (const [partIndex, part] of combo.items.entries()) {
         const product = productDetails[partIndex];
-        const rowIndex = String(part.product_id) === productId
-          ? index
-          : next.findIndex((row) => String(row.productId) === String(part.product_id));
-        const currentQuantity = rowIndex >= 0 && rowIndex !== index
-          ? Number(next[rowIndex].quantity || 0) : 0;
-        const requestedQuantity = currentQuantity + Number(part.quantity) * numberOfSets;
+        const requestedQuantity = Number(part.quantity) * numberOfSets;
+
         if (Number(product.available_stock || 0) < requestedQuantity) {
-          setFormError(`${product.name} không đủ tồn kho để thêm combo (${requestedQuantity} cần, ${product.available_stock || 0} còn).`);
+          setFormError(
+            `${product.name} không đủ tồn kho để thêm combo (${requestedQuantity} cần, ${product.available_stock || 0} còn).`,
+          );
           return;
         }
-        const row = {
-          productId: String(product.id),
-          productSearch: product.name,
+
+        totalComboPrice +=
+          Number(product.default_sale_price) * Number(part.quantity);
+        comboProducts.push({
+          product_id: String(product.id),
+          product_name: product.name,
           unit: product.unit,
-          defaultPrice: String(product.default_sale_price ?? ""),
-          unitPrice: rowIndex >= 0 && next[rowIndex].unitPrice
-            ? next[rowIndex].unitPrice
-            : String(product.default_sale_price ?? ""),
-          quantity: String(requestedQuantity),
-          availableStock: product.available_stock,
-        };
-        if (rowIndex >= 0) next[rowIndex] = { ...next[rowIndex], ...row };
-        else next.push(row);
+          quantity: Number(part.quantity),
+          unit_price: Number(product.default_sale_price),
+          available_stock: product.available_stock,
+        });
       }
+
+      // Tạo 1 item duy nhất đại diện cho combo
+      next[index] = {
+        type: "combo",
+        comboId: String(combo.id),
+        comboName: combo.name,
+        comboProducts: comboProducts,
+        quantity: String(numberOfSets),
+        unitPrice: String(totalComboPrice),
+        productId: "",
+        productSearch: combo.name,
+      };
+
       setItems(next);
       setComboSuggestion(null);
-      setComboNotice(`Đã thêm combo “${combo.name}” (${numberOfSets} bộ). Bạn có thể chỉnh số lượng và giá của từng sản phẩm trước khi lưu đơn.`);
+      setFormSuccess(
+        `Đã thêm combo "${combo.name}" (${numberOfSets} bộ). Bạn có thể chỉnh số lượng trước khi lưu đơn.`,
+      );
     } catch (requestError) {
       setFormError(getApiError(requestError));
     } finally {
@@ -1178,7 +1430,7 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
   const handleSaleSourceChange = (value) => {
     setSaleSource(String(value));
     setComboSuggestion(null);
-    setComboNotice("");
+    setFormSuccess("");
     setItems([
       { productId: "", productSearch: "", quantity: "1", unitPrice: "" },
     ]);
@@ -1189,12 +1441,14 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
   const handleWarehouseChange = (value) => {
     setWarehouseId(String(value));
     setComboSuggestion(null);
-    setComboNotice("");
+    setFormSuccess("");
     Object.values(productSearchTimerRefs.current).forEach(clearTimeout);
     Object.keys(productSearchRequestRefs.current).forEach((key) => {
       productSearchRequestRefs.current[key] += 1;
     });
-    setItems([{ productId: "", productSearch: "", quantity: "1", unitPrice: "" }]);
+    setItems([
+      { productId: "", productSearch: "", quantity: "1", unitPrice: "" },
+    ]);
     setProductSearchResults({});
     setProductSearchLoading({});
   };
@@ -1236,6 +1490,16 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
     }
     const productIds = new Set();
     for (const item of items) {
+      // Skip validation checks for combo items (already validated when combo was added)
+      if (item.type === "combo") {
+        if (Number(item.quantity) <= 0) {
+          setFormError("Số bộ combo phải lớn hơn 0.");
+          return;
+        }
+        continue;
+      }
+
+      // Validation for regular products
       if (
         !item.productId ||
         Number(item.quantity) <= 0 ||
@@ -1246,10 +1510,15 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
       }
       const priceBounds = getSalePriceBounds(item.defaultPrice);
       if (!priceBounds) {
-        setFormError("Sản phẩm đã chọn chưa có giá bán mặc định hợp lệ từ 500 đ. Vui lòng cập nhật giá sản phẩm trước khi bán.");
+        setFormError(
+          "Sản phẩm đã chọn chưa có giá bán mặc định hợp lệ từ 500 đ. Vui lòng cập nhật giá sản phẩm trước khi bán.",
+        );
         return;
       }
-      if (Number(item.unitPrice) < priceBounds.min || Number(item.unitPrice) > priceBounds.max) {
+      if (
+        Number(item.unitPrice) < priceBounds.min ||
+        Number(item.unitPrice) > priceBounds.max
+      ) {
         setFormError(
           `Giá bán sản phẩm phải từ ${formatCurrency(priceBounds.min)} đến ${formatCurrency(priceBounds.max)} (±10% giá bán mặc định).`,
         );
@@ -1280,7 +1549,9 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                 full_name: newCustomer.full_name.trim(),
                 phone: newCustomer.phone.trim(),
                 address: newCustomer.address.trim(),
-                sales_area_id: newCustomer.sales_area_id ? Number(newCustomer.sales_area_id) : null,
+                sales_area_id: newCustomer.sales_area_id
+                  ? Number(newCustomer.sales_area_id)
+                  : null,
               }
             : undefined,
         note: note.trim(),
@@ -1288,11 +1559,25 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
         promotion_id: selectedPromotion?.id || null,
         sale_source: saleSource,
         payment_due_date: paymentDueDate || null,
-        items: items.map((item) => ({
-          product_id: Number(item.productId),
-          quantity: Number(item.quantity),
-          unit_price: Number(item.unitPrice),
-        })),
+        items: items.flatMap((item) => {
+          // Nếu là combo, expand thành các sản phẩm riêng lẻ
+          if (item.type === "combo" && item.comboProducts) {
+            const numberOfSets = Number(item.quantity);
+            return item.comboProducts.map((comboProduct) => ({
+              product_id: Number(comboProduct.product_id),
+              quantity: Number(comboProduct.quantity) * numberOfSets,
+              unit_price: Number(comboProduct.unit_price),
+            }));
+          }
+          // Sản phẩm thường
+          return [
+            {
+              product_id: Number(item.productId),
+              quantity: Number(item.quantity),
+              unit_price: Number(item.unitPrice),
+            },
+          ];
+        }),
       };
       const response = isEditing
         ? await authApis().put(
@@ -1336,199 +1621,280 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
         </div>
         <form className="sales-editor-body" onSubmit={handleSubmit}>
           <AutoDismissMessage message={formError} className="sales-alert" />
-              {!isEditing && (
-                <div className="sales-editor-field">
-                  <span>Nguồn hàng</span>
-                  <SharedSearchableDropdown
-                    value={saleSource}
-                    placeholder="Chọn nguồn hàng"
-                    ariaLabel="Chọn nguồn hàng"
-                    onChange={handleSaleSourceChange}
-                    options={[
-                      {
-                        value: "central_warehouse",
-                        label: "Xuất từ kho",
-                      },
-                      ...(canUseEmployeeStock
-                        ? [
-                            {
-                              value: "employee_stock",
-                              label: "Hàng nhân viên mang đi tỉnh",
-                            },
-                          ]
-                        : []),
-                    ]}
-                  />
-                  {saleSource === "employee_stock" && (
-                    <small>
-                      {employeeStockLoading
-                        ? "Đang tải tồn hàng của bạn..."
-                        : "Đơn sẽ hoàn thành ngay sau khi lưu và trừ vào tồn kho của bạn."}
-                    </small>
-                  )}
-                </div>
+          <AutoDismissMessage message={formSuccess} type="success" />
+          {!isEditing && (
+            <div className="sales-editor-field">
+              <span>Nguồn hàng</span>
+              <SharedSearchableDropdown
+                value={saleSource}
+                placeholder="Chọn nguồn hàng"
+                ariaLabel="Chọn nguồn hàng"
+                onChange={handleSaleSourceChange}
+                options={[
+                  {
+                    value: "central_warehouse",
+                    label: "Xuất từ kho",
+                  },
+                  ...(canUseEmployeeStock
+                    ? [
+                        {
+                          value: "employee_stock",
+                          label: "Hàng nhân viên mang đi tỉnh",
+                        },
+                      ]
+                    : []),
+                ]}
+              />
+              {saleSource === "employee_stock" && (
+                <small>
+                  {employeeStockLoading
+                    ? "Đang tải tồn hàng của bạn..."
+                    : "Đơn sẽ hoàn thành ngay sau khi lưu và trừ vào tồn kho của bạn."}
+                </small>
               )}
-              {saleSource === "central_warehouse" && (
-                <div className="sales-editor-field">
-                  <span>Kho xuất hàng</span>
-                  <SharedSearchableDropdown
-                    value={warehouseId}
-                    onChange={handleWarehouseChange}
-                    options={warehouses.map((warehouse) => ({ value: warehouse.id, label: warehouse.name }))}
-                    placeholder="Chọn kho xuất hàng"
-                    ariaLabel="Chọn kho xuất hàng"
-                    disabled={isEditing}
-                  />
-                </div>
-              )}
-              <div className="sales-editor-field">
-                <span>Khách hàng</span>
-                {!isEditing && (
-                  <div className="sales-customer-mode">
-                    <button
-                      type="button"
-                      className={customerMode === "existing" ? "is-active" : ""}
-                      onClick={() => setCustomerMode("existing")}
-                    >
-                      Khách hàng đã lưu
-                    </button>
-                    <button
-                      type="button"
-                      className={customerMode === "new" ? "is-active" : ""}
-                      onClick={() => setCustomerMode("new")}
-                    >
-                      Khách hàng mới
-                    </button>
-                  </div>
-                )}
-                {isEditing ? (
-                  <div className="sales-customer-contact">
-                    <span>
-                      <strong>{invoice.customer?.full_name || "—"}</strong>
-                    </span>
-                    <span>
-                      Số điện thoại:{" "}
-                      <strong>{invoice.customer?.phone || "—"}</strong>
-                    </span>
-                    <span>
-                      Địa chỉ: <strong>{invoice.customer?.address || "—"}</strong>
-                    </span>
-                    <small>
-                      Khách hàng của đơn không thể thay đổi. Nếu chọn nhầm,
-                      hãy hủy đơn này và tạo đơn mới.
-                    </small>
-                  </div>
-                ) : customerMode === "existing" ? (
-                  <>
-                    <SharedSearchableDropdown
-                      value={customerId}
-                      placeholder="Chọn khách hàng"
-                      ariaLabel="Chọn khách hàng"
-                      searchValue={customerSearchInput}
-                      onSearchChange={handleCustomerSearchChange}
-                      searching={customerSearchLoading}
-                      onChange={handleCustomerSelect}
-                      emptyLabel="Không tìm thấy khách hàng."
-                      options={[
-                        ...customers.map((customer) => ({
-                          value: customer.id,
-                          label: customer.full_name,
-                        })),
-                        ...(invoice?.customer &&
-                        !customers.some(
-                          (customer) => customer.id === invoice.customer.id,
-                        )
-                          ? [
-                              {
-                                value: invoice.customer.id,
-                                label: invoice.customer.full_name,
-                              },
-                            ]
-                          : []),
-                      ]}
-                    />
-                    {selectedCustomer && (
-                      <div className="sales-customer-contact">
-                        <span>
-                          Số điện thoại:{" "}
-                          <strong>{selectedCustomer.phone || "—"}</strong>
-                        </span>
-                        <span>
-                          Địa chỉ:{" "}
-                          <strong>{selectedCustomer.address || "—"}</strong>
-                        </span>
-                        <span>
-                          Công nợ hiện tại:{" "}
-                          <strong>
-                            {formatCurrency(selectedCustomer.debt_amount)}
-                          </strong>
-                        </span>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <CustomerFields
-                    value={newCustomer}
-                    onChange={(field, value) =>
-                      setNewCustomer((current) => ({ ...current, [field]: value }))
-                    }
-                    salesAreas={salesAreas}
-                    salesAreasLoading={salesAreasLoading}
-                    requireSalesArea
-                  />
-                )}
-              </div>
-
-              <div className="sales-editor-section-heading">
-                <h3>Sản phẩm</h3>
+            </div>
+          )}
+          {saleSource === "central_warehouse" && (
+            <div className="sales-editor-field">
+              <span>Kho xuất hàng</span>
+              <SharedSearchableDropdown
+                value={warehouseId}
+                onChange={handleWarehouseChange}
+                options={warehouses.map((warehouse) => ({
+                  value: warehouse.id,
+                  label: warehouse.name,
+                }))}
+                placeholder="Chọn kho xuất hàng"
+                ariaLabel="Chọn kho xuất hàng"
+                disabled={isEditing}
+              />
+            </div>
+          )}
+          <div className="sales-editor-field">
+            <span>Khách hàng</span>
+            {!isEditing && (
+              <div className="sales-customer-mode">
                 <button
                   type="button"
-                  className="sales-editor-add"
-                  onClick={addItem}
+                  className={customerMode === "existing" ? "is-active" : ""}
+                  onClick={() => setCustomerMode("existing")}
                 >
-                  + Thêm sản phẩm
+                  Khách hàng đã lưu
+                </button>
+                <button
+                  type="button"
+                  className={customerMode === "new" ? "is-active" : ""}
+                  onClick={() => setCustomerMode("new")}
+                >
+                  Khách hàng mới
                 </button>
               </div>
-              <div className="sales-editor-items">
-                {items.map((item, index) => {
-                  const searchedProducts =
-                    productSearchResults[index] || saleProducts;
-                  const selectedProduct =
-                    searchedProducts.find(
-                      (product) =>
-                        String(product.id) === String(item.productId),
-                    ) ||
-                    (item.productId
-                      ? {
-                          id: item.productId,
-                          name: item.productSearch,
-                          unit: item.unit,
-                          default_sale_price: item.defaultPrice || undefined,
-                          available_stock: item.availableStock,
-                        }
-                      : null);
-                  const productOptions =
-                    selectedProduct &&
-                    !searchedProducts.some(
-                      (product) =>
-                        String(product.id) === String(selectedProduct.id),
+            )}
+            {isEditing ? (
+              <div className="sales-customer-contact">
+                <span>
+                  <strong>{invoice.customer?.full_name || "—"}</strong>
+                </span>
+                <span>
+                  Số điện thoại:{" "}
+                  <strong>{invoice.customer?.phone || "—"}</strong>
+                </span>
+                <span>
+                  Địa chỉ: <strong>{invoice.customer?.address || "—"}</strong>
+                </span>
+                <small>
+                  Khách hàng của đơn không thể thay đổi. Nếu chọn nhầm, hãy hủy
+                  đơn này và tạo đơn mới.
+                </small>
+              </div>
+            ) : customerMode === "existing" ? (
+              <>
+                <SharedSearchableDropdown
+                  value={customerId}
+                  placeholder="Chọn khách hàng"
+                  ariaLabel="Chọn khách hàng"
+                  searchValue={customerSearchInput}
+                  onSearchChange={handleCustomerSearchChange}
+                  searching={customerSearchLoading}
+                  onChange={handleCustomerSelect}
+                  emptyLabel="Không tìm thấy khách hàng."
+                  options={[
+                    ...customers.map((customer) => ({
+                      value: customer.id,
+                      label: customer.full_name,
+                    })),
+                    ...(invoice?.customer &&
+                    !customers.some(
+                      (customer) => customer.id === invoice.customer.id,
                     )
-                      ? [selectedProduct, ...searchedProducts]
-                      : searchedProducts;
-                  const priceBounds = getSalePriceBounds(
-                    selectedProduct?.default_sale_price ?? item.defaultPrice,
-                  );
-                  const warehouseName = warehouses.find(
-                    (warehouse) => String(warehouse.id) === warehouseId,
-                  )?.name;
-                  return (
-                    <div
-                      className="sales-editor-item"
-                      key={`${item.productId || "new"}-${index}`}
+                      ? [
+                          {
+                            value: invoice.customer.id,
+                            label: invoice.customer.full_name,
+                          },
+                        ]
+                      : []),
+                  ]}
+                />
+                {selectedCustomer && (
+                  <div className="sales-customer-contact">
+                    <span>
+                      Số điện thoại:{" "}
+                      <strong>{selectedCustomer.phone || "—"}</strong>
+                    </span>
+                    <span>
+                      Địa chỉ:{" "}
+                      <strong>{selectedCustomer.address || "—"}</strong>
+                    </span>
+                    <span>
+                      Công nợ hiện tại:{" "}
+                      <strong>
+                        {formatCurrency(selectedCustomer.debt_amount)}
+                      </strong>
+                    </span>
+                  </div>
+                )}
+              </>
+            ) : (
+              <CustomerFields
+                value={newCustomer}
+                onChange={(field, value) =>
+                  setNewCustomer((current) => ({ ...current, [field]: value }))
+                }
+                salesAreas={salesAreas}
+                salesAreasLoading={salesAreasLoading}
+                requireSalesArea
+              />
+            )}
+          </div>
+
+          <div className="sales-editor-section-heading">
+            <h3>Sản phẩm</h3>
+            <button
+              type="button"
+              className="sales-editor-add"
+              onClick={addItem}
+            >
+              + Thêm sản phẩm
+            </button>
+          </div>
+          <div className="sales-editor-items">
+            {items.map((item, index) => {
+              // Render cho COMBO
+              if (item.type === "combo") {
+                const comboProductsList =
+                  item.comboProducts
+                    ?.map((cp) => `${cp.product_name} × ${cp.quantity}`)
+                    .join(", ") || "";
+                const totalPrice =
+                  Number(item.unitPrice) * Number(item.quantity);
+                // Tính priceBounds cho combo (±10% giá gốc của combo)
+                const comboPriceBounds = getSalePriceBounds(item.unitPrice);
+
+                return (
+                  <div
+                    className="sales-editor-item sales-editor-item-combo"
+                    key={`combo-${item.comboId}-${index}`}
+                  >
+                    <div className="sales-editor-product-field">
+                      <ProductEntryField label="Sản phẩm">
+                        <div className="sales-combo-display">
+                          <strong>
+                            {item.comboName} ({item.quantity} bộ)
+                          </strong>
+                          <small className="sales-combo-detail">
+                            Gồm: {comboProductsList}
+                          </small>
+                        </div>
+                      </ProductEntryField>
+                    </div>
+                    <ProductEntryField label="Số bộ">
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={item.quantity}
+                        onChange={(event) =>
+                          updateItem(index, "quantity", event.target.value)
+                        }
+                        placeholder="Số bộ"
+                        aria-label="Số bộ combo"
+                        required
+                      />
+                    </ProductEntryField>
+                    <ProductEntryField label="Tổng giá">
+                      <MoneyInput
+                        value={String(totalPrice)}
+                        onChange={(value) => {
+                          // Tính lại unitPrice khi thay đổi tổng giá
+                          const newTotalPrice = Number(value);
+                          const quantity = Number(item.quantity) || 1;
+                          const newUnitPrice = newTotalPrice / quantity;
+                          updateItem(index, "unitPrice", String(newUnitPrice));
+                        }}
+                        label="Tổng giá"
+                        minAmount={comboPriceBounds?.min ? comboPriceBounds.min * Number(item.quantity) : 500}
+                        maxAmount={comboPriceBounds?.max ? comboPriceBounds.max * Number(item.quantity) : null}
+                        placeholder="Nhập tổng giá"
+                        aria-label="Tổng giá combo"
+                        required
+                      />
+                      {comboPriceBounds && (
+                        <small className="product-entry-range">
+                          Giá 1 bộ: {formatCurrency(item.unitPrice)} • Cho phép: {formatCurrency(comboPriceBounds.min * Number(item.quantity))} – {formatCurrency(comboPriceBounds.max * Number(item.quantity))} (±10%)
+                        </small>
+                      )}
+                    </ProductEntryField>
+                    <button
+                      type="button"
+                      className="sales-editor-remove"
+                      onClick={() => removeItem(index)}
+                      aria-label="Xóa combo"
                     >
-                      <div className="sales-editor-product-field">
-                        <ProductEntryField label="Sản phẩm">
-                          <SharedSearchableDropdown
+                      ×
+                    </button>
+                  </div>
+                );
+              }
+
+              // Render cho SẢN PHẨM THƯỜNG
+              const searchedProducts =
+                productSearchResults[index] || saleProducts;
+              const selectedProduct =
+                searchedProducts.find(
+                  (product) => String(product.id) === String(item.productId),
+                ) ||
+                (item.productId
+                  ? {
+                      id: item.productId,
+                      name: item.productSearch,
+                      unit: item.unit,
+                      default_sale_price: item.defaultPrice || undefined,
+                      available_stock: item.availableStock,
+                    }
+                  : null);
+              const productOptions =
+                selectedProduct &&
+                !searchedProducts.some(
+                  (product) =>
+                    String(product.id) === String(selectedProduct.id),
+                )
+                  ? [selectedProduct, ...searchedProducts]
+                  : searchedProducts;
+              const priceBounds = getSalePriceBounds(
+                selectedProduct?.default_sale_price ?? item.defaultPrice,
+              );
+              const warehouseName = warehouses.find(
+                (warehouse) => String(warehouse.id) === warehouseId,
+              )?.name;
+              return (
+                <div
+                  className="sales-editor-item"
+                  key={`${item.productId || "new"}-${index}`}
+                >
+                  <div className="sales-editor-product-field">
+                    <ProductEntryField label="Sản phẩm">
+                      <SharedSearchableDropdown
                         value={item.productId}
                         placeholder="Chọn sản phẩm"
                         ariaLabel="Chọn sản phẩm"
@@ -1548,7 +1914,9 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                               type="button"
                               className="searchable-dropdown-action"
                               onClick={() => {
-                                setProductRequestName(item.productSearch.trim());
+                                setProductRequestName(
+                                  item.productSearch.trim(),
+                                );
                                 setProductRequestOpen(true);
                               }}
                             >
@@ -1564,252 +1932,286 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                             label: product.name,
                           })),
                         ]}
-                          />
-                        </ProductEntryField>
-                        <ProductEntryInfo
-                          product={selectedProduct}
-                          stockLabel={saleSource === "employee_stock"
-                            ? "Tồn kho của bạn"
-                            : `Số lượng còn lại ở ${warehouseName === "Kho trung tâm"
-                              ? "kho trung tâm"
-                              : warehouseName || "kho đã chọn"}`}
-                          stockQuantity={selectedProduct?.available_stock}
-                        />
-                      </div>
-                      <ProductEntryField label="Số lượng">
-                        <input
-                          type="number"
-                          min="1"
-                          step="1"
-                          value={item.quantity}
-                          onChange={(event) =>
-                            updateItem(index, "quantity", event.target.value)
-                          }
-                          placeholder="Nhập số lượng"
-                          aria-label="Số lượng"
-                          required
-                        />
-                      </ProductEntryField>
-                      <ProductEntryField label="Giá bán">
-                        <MoneyInput
-                          value={item.unitPrice}
-                          onChange={(value) => updateItem(index, "unitPrice", value)}
-                          label="Giá bán"
-                          minAmount={priceBounds?.min || 500}
-                          maxAmount={priceBounds?.max || null}
-                          placeholder="Nhập giá bán"
-                          aria-label="Giá bán"
-                          required
-                        />
-                        {selectedProduct && (
-                          <small className={priceBounds ? "product-entry-range" : "product-entry-range is-invalid"}>
-                            {priceBounds
-                              ? `Cho phép: ${formatCurrency(priceBounds.min)} – ${formatCurrency(priceBounds.max)} (±10%)`
-                              : "Cần đặt giá bán mặc định từ 500 đ trước khi bán."}
-                          </small>
-                        )}
-                      </ProductEntryField>
-                      <button
-                        type="button"
-                        className="sales-editor-remove"
-                        onClick={() => removeItem(index)}
-                        aria-label="Xóa sản phẩm"
+                      />
+                    </ProductEntryField>
+                    <ProductEntryInfo
+                      product={selectedProduct}
+                      stockLabel={
+                        saleSource === "employee_stock"
+                          ? "Tồn kho của bạn"
+                          : `Số lượng còn lại ở ${
+                              warehouseName === "Kho trung tâm"
+                                ? "kho trung tâm"
+                                : warehouseName || "kho đã chọn"
+                            }`
+                      }
+                      stockQuantity={selectedProduct?.available_stock}
+                    />
+                  </div>
+                  <ProductEntryField label="Số lượng">
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={item.quantity}
+                      onChange={(event) =>
+                        updateItem(index, "quantity", event.target.value)
+                      }
+                      placeholder="Nhập số lượng"
+                      aria-label="Số lượng"
+                      required
+                    />
+                  </ProductEntryField>
+                  <ProductEntryField label="Giá bán">
+                    <MoneyInput
+                      value={item.unitPrice}
+                      onChange={(value) =>
+                        updateItem(index, "unitPrice", value)
+                      }
+                      label="Giá bán"
+                      minAmount={priceBounds?.min || 500}
+                      maxAmount={priceBounds?.max || null}
+                      placeholder="Nhập giá bán"
+                      aria-label="Giá bán"
+                      required
+                    />
+                    {selectedProduct && (
+                      <small
+                        className={
+                          priceBounds
+                            ? "product-entry-range"
+                            : "product-entry-range is-invalid"
+                        }
                       >
-                        ×
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {suggestedCombos.length > 0 && (
-                <section className="sales-combo-suggestion" aria-label="Gợi ý combo">
-                  <div className="sales-combo-suggestion-heading">
-                    <div>
-                      <span>GỢI Ý BÁN THEO BỘ</span>
-                      <h4>Sản phẩm này có trong combo</h4>
-                      <p>Chọn một bộ để tự thêm sản phẩm đi kèm, hoặc giữ sản phẩm đang chọn để bán lẻ.</p>
-                    </div>
-                    <button type="button" onClick={() => setComboSuggestion(null)} disabled={applyingCombo}>Chỉ bán lẻ</button>
-                  </div>
-                  <label className="sales-combo-set-count">
-                    <span>Số bộ cần thêm</span>
-                    <input type="number" min="1" max="1000" step="1" value={comboSets}
-                      onChange={(event) => setComboSets(event.target.value)} aria-label="Số bộ combo" />
-                  </label>
-                  <div className="sales-combo-options">
-                    {suggestedCombos.map((combo) => (
-                      <article className="sales-combo-option" key={combo.id}>
-                        <div>
-                          <strong>{combo.name}</strong>
-                          <p>{combo.items.map((part) => `${part.quantity} ${part.unit} ${part.product_name}`).join(" + ")}</p>
-                          <small>Số lượng sản phẩm tự nhân theo số bộ; có thể chỉnh từng dòng sau khi thêm.</small>
-                        </div>
-                        <button type="button" onClick={() => applyCombo(combo)} disabled={applyingCombo}>
-                          {applyingCombo ? "Đang kiểm tra..." : "Dùng combo"}
-                        </button>
-                      </article>
-                    ))}
-                  </div>
-                </section>
-              )}
-              {comboNotice && <div className="sales-combo-notice" role="status">{comboNotice}</div>}
-
-              <section className="sales-promotion-selector">
-                <div className="sales-promotion-selector-heading">
-                  <div>
-                    <h3>Khuyến mãi</h3>
-                    <p>Chỉ áp dụng chương trình đáp ứng điều kiện của đơn.</p>
-                  </div>
-                  <button type="button" onClick={openPromotionPicker}>
-                    {selectedPromotion ? "Đổi khuyến mãi" : "Chọn khuyến mãi"}
+                        {priceBounds
+                          ? `Cho phép: ${formatCurrency(priceBounds.min)} – ${formatCurrency(priceBounds.max)} (±10%)`
+                          : "Cần đặt giá bán mặc định từ 500 đ trước khi bán."}
+                      </small>
+                    )}
+                  </ProductEntryField>
+                  <button
+                    type="button"
+                    className="sales-editor-remove"
+                    onClick={() => removeItem(index)}
+                    aria-label="Xóa sản phẩm"
+                  >
+                    ×
                   </button>
                 </div>
-                {selectedPromotion ? (
-                  <div className={`sales-selected-promotion${promotionEvaluation.eligible ? "" : " is-invalid"}`}>
+              );
+            })}
+          </div>
+
+          {suggestedCombos.length > 0 && (
+            <section
+              className="sales-combo-suggestion"
+              aria-label="Gợi ý combo"
+            >
+              <div className="sales-combo-suggestion-heading">
+                <div>
+                  <h4>Danh sách combo của sản phẩm đã chọn</h4>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setComboSuggestion(null)}
+                  disabled={applyingCombo}
+                >
+                  Chỉ bán lẻ
+                </button>
+              </div>
+
+              <div className="sales-combo-options">
+                {suggestedCombos.map((combo) => (
+                  <article className="sales-combo-option" key={combo.id}>
                     <div>
-                      <strong>{selectedPromotion.name}</strong>
-                      <span>{selectedPromotion.condition_summary}</span>
-                      <small>{selectedPromotion.benefit_summary}</small>
-                    </div>
-                    <div className="sales-selected-promotion-value">
-                      <span>Mức giảm của đơn</span>
-                      <strong>-{formatCurrency(discount)}</strong>
+                      <strong>{combo.name}</strong>
+                      <p>
+                        {combo.items
+                          .map(
+                            (part) =>
+                              `${part.quantity} ${part.unit} ${part.product_name}`,
+                          )
+                          .join(" + ")}
+                      </p>
+                          
                     </div>
                     <button
                       type="button"
-                      className="sales-promotion-remove"
-                      onClick={() => {
-                        setSelectedPromotion(null);
-                        setPromotionPickerOpen(false);
-                      }}
+                      onClick={() => applyCombo(combo)}
+                      disabled={applyingCombo}
                     >
-                      Xóa khỏi đơn
+                      {applyingCombo ? "Đang kiểm tra..." : "Dùng combo"}
                     </button>
-                    {!promotionEvaluation.eligible && (
-                      <p>{promotionEvaluation.reason}</p>
-                    )}
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <section className="sales-promotion-selector">
+            <div className="sales-promotion-selector-heading">
+              <div>
+                <h3>Khuyến mãi</h3>
+                <p>Chỉ áp dụng chương trình đáp ứng điều kiện của đơn.</p>
+              </div>
+              <button type="button" onClick={openPromotionPicker}>
+                {selectedPromotion ? "Đổi khuyến mãi" : "Chọn khuyến mãi"}
+              </button>
+            </div>
+            {selectedPromotion ? (
+              <div
+                className={`sales-selected-promotion${promotionEvaluation.eligible ? "" : " is-invalid"}`}
+              >
+                <div>
+                  <strong>{selectedPromotion.name}</strong>
+                  <span>{selectedPromotion.condition_summary}</span>
+                  <small>{selectedPromotion.benefit_summary}</small>
+                </div>
+                <div className="sales-selected-promotion-value">
+                  <span>Mức giảm của đơn</span>
+                  <strong>-{formatCurrency(discount)}</strong>
+                </div>
+                <button
+                  type="button"
+                  className="sales-promotion-remove"
+                  onClick={() => {
+                    setSelectedPromotion(null);
+                    setPromotionPickerOpen(false);
+                  }}
+                >
+                  Xóa khỏi đơn
+                </button>
+                {!promotionEvaluation.eligible && (
+                  <p>{promotionEvaluation.reason}</p>
+                )}
+              </div>
+            ) : (
+              <div className="sales-promotion-empty">
+                Đơn này không áp dụng khuyến mãi.
+              </div>
+            )}
+
+            {promotionPickerOpen && (
+              <div className="sales-promotion-picker">
+                <div className="sales-promotion-picker-header">
+                  <strong>Chương trình hiện có</strong>
+                  <button
+                    type="button"
+                    onClick={() => setPromotionPickerOpen(false)}
+                  >
+                    Đóng
+                  </button>
+                </div>
+                {promotionsLoading ? (
+                  <div className="sales-promotion-picker-state">
+                    Đang kiểm tra điều kiện...
+                  </div>
+                ) : promotionOptions.length ? (
+                  <div className="sales-promotion-options">
+                    {promotionOptions.map((promotion) => (
+                      <button
+                        type="button"
+                        key={promotion.id}
+                        className={
+                          promotion.eligible ? "is-eligible" : "is-ineligible"
+                        }
+                        disabled={!promotion.eligible}
+                        onClick={() => {
+                          setSelectedPromotion(promotion);
+                          setPromotionPickerOpen(false);
+                        }}
+                      >
+                        <strong>{promotion.name}</strong>
+                        <span>{promotion.condition_summary}</span>
+                        <small>
+                          {promotion.eligible
+                            ? `${promotion.benefit_summary} · Giảm ${formatCurrency(promotion.calculated_discount)}`
+                            : promotion.eligibility_reason}
+                        </small>
+                      </button>
+                    ))}
                   </div>
                 ) : (
-                  <div className="sales-promotion-empty">
-                    Đơn này không áp dụng khuyến mãi.
+                  <div className="sales-promotion-picker-state">
+                    Chưa có chương trình khuyến mãi đang hoạt động.
                   </div>
                 )}
-
-                {promotionPickerOpen && (
-                  <div className="sales-promotion-picker">
-                    <div className="sales-promotion-picker-header">
-                      <strong>Chương trình hiện có</strong>
-                      <button type="button" onClick={() => setPromotionPickerOpen(false)}>
-                        Đóng
-                      </button>
-                    </div>
-                    {promotionsLoading ? (
-                      <div className="sales-promotion-picker-state">Đang kiểm tra điều kiện...</div>
-                    ) : promotionOptions.length ? (
-                      <div className="sales-promotion-options">
-                        {promotionOptions.map((promotion) => (
-                          <button
-                            type="button"
-                            key={promotion.id}
-                            className={promotion.eligible ? "is-eligible" : "is-ineligible"}
-                            disabled={!promotion.eligible}
-                            onClick={() => {
-                              setSelectedPromotion(promotion);
-                              setPromotionPickerOpen(false);
-                            }}
-                          >
-                            <strong>{promotion.name}</strong>
-                            <span>{promotion.condition_summary}</span>
-                            <small>
-                              {promotion.eligible
-                                ? `${promotion.benefit_summary} · Giảm ${formatCurrency(promotion.calculated_discount)}`
-                                : promotion.eligibility_reason}
-                            </small>
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="sales-promotion-picker-state">
-                        Chưa có chương trình khuyến mãi đang hoạt động.
-                      </div>
-                    )}
-                  </div>
-                )}
-              </section>
-
-              <div className="sales-editor-financials">
-                {saleSource === "employee_stock" && (
-                  <label className="sales-editor-field sales-editor-debt-date">
-                    <span>Hạn thanh toán (nếu cho nợ)</span>
-                    <input
-                      type="date"
-                      aria-label="Hạn thanh toán (nếu cho nợ)"
-                      value={paymentDueDate}
-                      onChange={(event) => setPaymentDueDate(event.target.value)}
-                    />
-                    <small>Kế toán sẽ ghi nhận tiền sau khi đơn được lập.</small>
-                  </label>
-                )}
-                <div className="sales-editor-totals">
-                  <div className="sales-editor-total">
-                    <span>Tiền hàng</span>
-                    <strong>{formatCurrency(subtotal)}</strong>
-                  </div>
-                  {discount > 0 && (
-                    <div className="sales-editor-total sales-editor-discount">
-                      <span>Khuyến mãi</span>
-                      <strong>-{formatCurrency(discount)}</strong>
-                    </div>
-                  )}
-                  <div className="sales-editor-total sales-editor-final-total">
-                    <span>Tổng tiền đơn</span>
-                    <strong>
-                      {formatCurrency(Math.max(0, subtotal - discount))}
-                    </strong>
-                  </div>
-                </div>
               </div>
-              <label className="sales-editor-field">
-                <span>Ghi chú</span>
-                <textarea
-                  rows="3"
-                  value={note}
-                  onChange={(event) => setNote(event.target.value)}
-                  placeholder="Nhập ghi chú cho đơn hàng"
+            )}
+          </section>
+
+          <div className="sales-editor-financials">
+            {saleSource === "employee_stock" && (
+              <label className="sales-editor-field sales-editor-debt-date">
+                <span>Hạn thanh toán (nếu cho nợ)</span>
+                <input
+                  type="date"
+                  aria-label="Hạn thanh toán (nếu cho nợ)"
+                  value={paymentDueDate}
+                  onChange={(event) => setPaymentDueDate(event.target.value)}
                 />
+                <small>Kế toán sẽ ghi nhận tiền sau khi đơn được lập.</small>
               </label>
-              <div className="sales-editor-actions">
-                <button type="button" onClick={onClose} disabled={saving}>
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  className="sales-editor-submit"
-                  disabled={saving}
-                >
-                  {saving
-                    ? "Đang lưu..."
-                    : isEditing
-                      ? "Lưu thay đổi"
-                      : saleSource === "employee_stock"
-                        ? "Tạo và hoàn thành"
-                        : "Tạo đơn nháp"}
-                </button>
+            )}
+            <div className="sales-editor-totals">
+              <div className="sales-editor-total">
+                <span>Tiền hàng</span>
+                <strong>{formatCurrency(subtotal)}</strong>
               </div>
+              {discount > 0 && (
+                <div className="sales-editor-total sales-editor-discount">
+                  <span>Khuyến mãi</span>
+                  <strong>-{formatCurrency(discount)}</strong>
+                </div>
+              )}
+              <div className="sales-editor-total sales-editor-final-total">
+                <span>Tổng tiền đơn</span>
+                <strong>
+                  {formatCurrency(Math.max(0, subtotal - discount))}
+                </strong>
+              </div>
+            </div>
+          </div>
+          <label className="sales-editor-field">
+            <span>Ghi chú</span>
+            <textarea
+              rows="3"
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              placeholder="Nhập ghi chú cho đơn hàng"
+            />
+          </label>
+          <div className="sales-editor-actions">
+            <button type="button" onClick={onClose} disabled={saving}>
+              Hủy
+            </button>
+            <button
+              type="submit"
+              className="sales-editor-submit"
+              disabled={saving}
+            >
+              {saving
+                ? "Đang lưu..."
+                : isEditing
+                  ? "Lưu thay đổi"
+                  : saleSource === "employee_stock"
+                    ? "Tạo và hoàn thành"
+                    : "Tạo đơn nháp"}
+            </button>
+          </div>
         </form>
       </div>
-        {productRequestOpen && (
-          <ProductRequestModal
-            initialName={productRequestName}
-            onClose={() => setProductRequestOpen(false)}
-            onSaved={() => {
-              setProductRequestOpen(false);
-              setFormError("Đã gửi yêu cầu thêm sản phẩm đến quản lý.");
-            }}
-          />
-        )}
-      </div>,
+      {productRequestOpen && (
+        <ProductRequestModal
+          initialName={productRequestName}
+          onClose={() => setProductRequestOpen(false)}
+          onSaved={() => {
+            setProductRequestOpen(false);
+            setFormError("Đã gửi yêu cầu thêm sản phẩm đến quản lý.");
+          }}
+        />
+      )}
+    </div>,
     document.body,
   );
 }
@@ -1819,9 +2221,13 @@ function SalesInvoices() {
   const [searchParams] = useSearchParams();
   const initialCancelRequestFilter =
     searchParams.get("cancel_requested") === "pending" ? "pending" : "";
-  const initialDebtStatus = !initialCancelRequestFilter && ["overdue", "due_today", "due_soon"].includes(
-    searchParams.get("debt_status"),
-  ) ? searchParams.get("debt_status") : "";
+  const initialDebtStatus =
+    !initialCancelRequestFilter &&
+    ["overdue", "due_today", "due_soon"].includes(
+      searchParams.get("debt_status"),
+    )
+      ? searchParams.get("debt_status")
+      : "";
   const [invoices, setInvoices] = useState([]);
   const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
@@ -1885,7 +2291,9 @@ function SalesInvoices() {
   const canRequestCancel = currentUser.role === "nhân viên bán hàng";
   const canCancelDirect = currentUser.role === "quản lý";
   const canManageStatus = ["thủ kho", "quản lý"].includes(currentUser.role);
-  const canSubmitWarehouse = ["nhân viên bán hàng", "quản lý"].includes(currentUser.role);
+  const canSubmitWarehouse = ["nhân viên bán hàng", "quản lý"].includes(
+    currentUser.role,
+  );
   const canConfirmDelivery = canSubmitWarehouse;
   const canRecordPayment = currentUser.role === "kế toán";
   const canCompleteSales = currentUser.role === "kế toán";
@@ -1940,46 +2348,59 @@ function SalesInvoices() {
     }
   }, [canViewStatusBoard, pendingDiscountPage, setPendingDiscountError]);
 
-  const fetchInvoices = useCallback(async (silent = false) => {
-    if (!localStorage.getItem("token")) {
-      navigate("/login", {
-        replace: true,
-        state: { message: "Vui lòng đăng nhập để xem đơn bán hàng." },
-      });
-      return;
-    }
+  const fetchInvoices = useCallback(
+    async (silent = false) => {
+      if (!localStorage.getItem("token")) {
+        navigate("/login", {
+          replace: true,
+          state: { message: "Vui lòng đăng nhập để xem đơn bán hàng." },
+        });
+        return;
+      }
 
-    const requestId = ++invoiceRequestIdRef.current;
+      const requestId = ++invoiceRequestIdRef.current;
 
-    try {
-      if (!silent) setLoading(true);
-      setError("");
-      const response = await authApis().get(endpoints.salesInvoices, {
-        params: {
-          page,
-          per_page: PER_PAGE,
-          keyword: keyword || undefined,
-          status: status || undefined,
-          from_date: fromDate || undefined,
-          to_date: toDate || undefined,
-          cancel_requested:
-            cancelRequestFilter === "pending" ? "true" : undefined,
-          debt_status: debtStatus || undefined,
-        },
-      });
-      if (requestId !== invoiceRequestIdRef.current) return;
-      const data = response.data || {};
-      setInvoices(data.invoices || []);
-      setPagination({
-        total: Number(data.total || 0),
-        totalPages: Number(data.pages || 1),
-      });
-    } catch (requestError) {
-      if (requestId === invoiceRequestIdRef.current) setError(getApiError(requestError));
-    } finally {
-      if (requestId === invoiceRequestIdRef.current) setLoading(false);
-    }
-  }, [cancelRequestFilter, debtStatus, fromDate, keyword, navigate, page, status, toDate]);
+      try {
+        if (!silent) setLoading(true);
+        setError("");
+        const response = await authApis().get(endpoints.salesInvoices, {
+          params: {
+            page,
+            per_page: PER_PAGE,
+            keyword: keyword || undefined,
+            status: status || undefined,
+            from_date: fromDate || undefined,
+            to_date: toDate || undefined,
+            cancel_requested:
+              cancelRequestFilter === "pending" ? "true" : undefined,
+            debt_status: debtStatus || undefined,
+          },
+        });
+        if (requestId !== invoiceRequestIdRef.current) return;
+        const data = response.data || {};
+        setInvoices(data.invoices || []);
+        setPagination({
+          total: Number(data.total || 0),
+          totalPages: Number(data.pages || 1),
+        });
+      } catch (requestError) {
+        if (requestId === invoiceRequestIdRef.current)
+          setError(getApiError(requestError));
+      } finally {
+        if (requestId === invoiceRequestIdRef.current) setLoading(false);
+      }
+    },
+    [
+      cancelRequestFilter,
+      debtStatus,
+      fromDate,
+      keyword,
+      navigate,
+      page,
+      status,
+      toDate,
+    ],
+  );
 
   useEffect(() => {
     fetchInvoices();
@@ -2020,7 +2441,8 @@ function SalesInvoices() {
         value === keyword &&
         nextFromDate === fromDate &&
         nextToDate === toDate
-      ) return;
+      )
+        return;
       setDateWarning("");
       setPage(1);
       setKeyword(value);
@@ -2132,7 +2554,9 @@ function SalesInvoices() {
     try {
       setActionLoading(true);
       setActionError("");
-      const response = await authApis().post(endpoints.submitSalesInvoiceToWarehouse(selectedInvoice.id));
+      const response = await authApis().post(
+        endpoints.submitSalesInvoiceToWarehouse(selectedInvoice.id),
+      );
       setSelectedInvoice(response.data?.invoice || selectedInvoice);
       await Promise.all([fetchInvoices(), fetchStatusBoard()]);
       notifySalesActionCountChanged();
@@ -2148,7 +2572,10 @@ function SalesInvoices() {
     try {
       setActionLoading(true);
       setActionError("");
-      const response = await authApis().post(endpoints.confirmSalesInvoiceDelivery(selectedInvoice.id), { recipient, note });
+      const response = await authApis().post(
+        endpoints.confirmSalesInvoiceDelivery(selectedInvoice.id),
+        { recipient, note },
+      );
       setSelectedInvoice(response.data?.invoice || selectedInvoice);
       await Promise.all([fetchInvoices(), fetchStatusBoard()]);
       notifySalesActionCountChanged();
@@ -2166,7 +2593,11 @@ function SalesInvoices() {
       setActionError("");
       const response = await authApis().put(
         endpoints.completeSalesInvoice(selectedInvoice.id),
-        { payment_amount: amount, payment_method: method, payment_due_date: paymentDueDate || null },
+        {
+          payment_amount: amount,
+          payment_method: method,
+          payment_due_date: paymentDueDate || null,
+        },
       );
       notifyInventoryChanged();
       setSelectedInvoice(response.data?.invoice || selectedInvoice);
@@ -2181,16 +2612,23 @@ function SalesInvoices() {
     }
   };
 
-  const recordInvoicePayment = async (amount, paymentMethod, paymentDueDate) => {
+  const recordInvoicePayment = async (
+    amount,
+    paymentMethod,
+    paymentDueDate,
+  ) => {
     if (!selectedInvoice) return;
     try {
       setActionLoading(true);
       setActionError("");
-      const response = await authApis().post(endpoints.salesInvoicePayments(selectedInvoice.id), {
-        amount,
-        payment_method: paymentMethod,
-        payment_due_date: paymentDueDate || null,
-      });
+      const response = await authApis().post(
+        endpoints.salesInvoicePayments(selectedInvoice.id),
+        {
+          amount,
+          payment_method: paymentMethod,
+          payment_due_date: paymentDueDate || null,
+        },
+      );
       setSelectedInvoice(response.data?.invoice || selectedInvoice);
       await fetchInvoices();
       window.dispatchEvent(new Event("pending-requests:refresh"));
@@ -2207,15 +2645,28 @@ function SalesInvoices() {
     try {
       setPaymentHistoryLoading(true);
       setActionError("");
-      const response = await authApis().get(endpoints.salesInvoicePayments(invoiceId), {
-        params: { page: Number(selectedInvoice.payments_page || 1) + 1, per_page: 20 },
-      });
+      const response = await authApis().get(
+        endpoints.salesInvoicePayments(invoiceId),
+        {
+          params: {
+            page: Number(selectedInvoice.payments_page || 1) + 1,
+            per_page: 20,
+          },
+        },
+      );
       setSelectedInvoice((current) => {
         if (current?.id !== invoiceId) return current;
-        const existingIds = new Set((current.payments || []).map((payment) => payment.id));
+        const existingIds = new Set(
+          (current.payments || []).map((payment) => payment.id),
+        );
         return {
           ...current,
-          payments: [...(current.payments || []), ...(response.data?.payments || []).filter((payment) => !existingIds.has(payment.id))],
+          payments: [
+            ...(current.payments || []),
+            ...(response.data?.payments || []).filter(
+              (payment) => !existingIds.has(payment.id),
+            ),
+          ],
           payments_total: Number(response.data?.total || 0),
           payments_page: Number(response.data?.page || 1),
         };
@@ -2429,8 +2880,13 @@ function SalesInvoices() {
                         {formatCurrency(invoice.total_amount)}
                       </td>
                       <td className="sales-money sales-discount-pending-amount">
-                        <strong>{formatCurrency(invoice.discount?.amount)}</strong>
-                        <small>{invoice.discount?.promotion?.name || "Điều chỉnh giá cũ"}</small>
+                        <strong>
+                          {formatCurrency(invoice.discount?.amount)}
+                        </strong>
+                        <small>
+                          {invoice.discount?.promotion?.name ||
+                            "Điều chỉnh giá cũ"}
+                        </small>
                       </td>
                       <td>
                         <div
@@ -2478,95 +2934,109 @@ function SalesInvoices() {
         onSubmit={(event) => event.preventDefault()}
       >
         <div className="sales-toolbar-primary">
-        <input
-          type="search"
-          value={keywordInput}
-          onChange={(event) => setKeywordInput(event.target.value)}
-          placeholder="Tìm theo mã đơn, tên hoặc số điện thoại khách hàng"
-          aria-label="Tìm kiếm đơn bán hàng"
-        />
-        <div className="sales-status-dropdown">
-          <SharedSearchableDropdown
-            value={status}
-            options={STATUS_OPTIONS}
-            placeholder="Tất cả trạng thái"
-            onChange={(value) => {
-              setPage(1);
-              setStatus(String(value));
-              if (value && value !== "hoàn thành") setDebtStatus("");
-              if (value && !["đang xử lý", "đang giao"].includes(value)) {
-                setCancelRequestFilter("");
-              }
-            }}
-            ariaLabel="Lọc theo trạng thái đơn hàng"
+          <input
+            type="search"
+            value={keywordInput}
+            onChange={(event) => setKeywordInput(event.target.value)}
+            placeholder="Tìm theo mã đơn, tên hoặc số điện thoại khách hàng"
+            aria-label="Tìm kiếm đơn bán hàng"
           />
-        </div>
-        <div className="sales-debt-dropdown">
-          <SharedSearchableDropdown
-            value={debtStatus}
-            options={DEBT_STATUS_OPTIONS}
-            placeholder="Không lọc hạn thanh toán"
-            onChange={(value) => {
-              setPage(1);
-              setDebtStatus(String(value));
-              if (value) {
-                setCancelRequestFilter("");
-                setStatus("");
-              }
-            }}
-            ariaLabel="Lọc theo hạn thanh toán"
-          />
-        </div>
+          <div className="sales-status-dropdown">
+            <SharedSearchableDropdown
+              value={status}
+              options={STATUS_OPTIONS}
+              placeholder="Tất cả trạng thái"
+              onChange={(value) => {
+                setPage(1);
+                setStatus(String(value));
+                if (value && value !== "hoàn thành") setDebtStatus("");
+                if (value && !["đang xử lý", "đang giao"].includes(value)) {
+                  setCancelRequestFilter("");
+                }
+              }}
+              ariaLabel="Lọc theo trạng thái đơn hàng"
+            />
+          </div>
+          <div className="sales-debt-dropdown">
+            <SharedSearchableDropdown
+              value={debtStatus}
+              options={DEBT_STATUS_OPTIONS}
+              placeholder="Không lọc hạn thanh toán"
+              onChange={(value) => {
+                setPage(1);
+                setDebtStatus(String(value));
+                if (value) {
+                  setCancelRequestFilter("");
+                  setStatus("");
+                }
+              }}
+              ariaLabel="Lọc theo hạn thanh toán"
+            />
+          </div>
         </div>
         <div className="sales-toolbar-secondary">
-        <div className="sales-date-range" role="group" aria-label="Lọc theo ngày bán">
-          <label className="sales-date-field">
-            <span>Từ ngày</span>
+          <div
+            className="sales-date-range"
+            role="group"
+            aria-label="Lọc theo ngày bán"
+          >
+            <label className="sales-date-field">
+              <span>Từ ngày</span>
+              <input
+                type="date"
+                value={fromDateInput}
+                onChange={(event) => setFromDateInput(event.target.value)}
+                aria-label="Ngày bán từ"
+              />
+            </label>
+            <span className="sales-date-separator" aria-hidden="true">
+              –
+            </span>
+            <label className="sales-date-field">
+              <span>Đến ngày</span>
+              <input
+                type="date"
+                value={toDateInput}
+                onChange={(event) => setToDateInput(event.target.value)}
+                aria-label="Ngày bán đến"
+              />
+            </label>
+          </div>
+          <label className="sales-cancel-filter">
             <input
-              type="date"
-              value={fromDateInput}
-              onChange={(event) => setFromDateInput(event.target.value)}
-              aria-label="Ngày bán từ"
+              type="checkbox"
+              checked={cancelRequestFilter === "pending"}
+              onChange={(event) => {
+                setPage(1);
+                const pendingOnly = event.target.checked;
+                setCancelRequestFilter(pendingOnly ? "pending" : "");
+                if (pendingOnly) {
+                  setDebtStatus("");
+                  setStatus("");
+                }
+              }}
             />
+            <span>Chỉ xem đơn chờ duyệt hủy</span>
           </label>
-          <span className="sales-date-separator" aria-hidden="true">–</span>
-          <label className="sales-date-field">
-            <span>Đến ngày</span>
-            <input
-              type="date"
-              value={toDateInput}
-              onChange={(event) => setToDateInput(event.target.value)}
-              aria-label="Ngày bán đến"
-            />
-          </label>
-        </div>
-        <label className="sales-cancel-filter">
-          <input
-            type="checkbox"
-            checked={cancelRequestFilter === "pending"}
-            onChange={(event) => {
-              setPage(1);
-              const pendingOnly = event.target.checked;
-              setCancelRequestFilter(pendingOnly ? "pending" : "");
-              if (pendingOnly) {
-                setDebtStatus("");
-                setStatus("");
-              }
-            }}
-          />
-          <span>Chỉ xem đơn chờ duyệt hủy</span>
-        </label>
         </div>
       </form>
 
       {cancelRequestFilter === "pending" && (
-        <p className="sales-filter-context">Chỉ hiển thị đơn đang xử lý hoặc đang giao có yêu cầu hủy chờ duyệt.</p>
+        <p className="sales-filter-context">
+          Chỉ hiển thị đơn đang xử lý hoặc đang giao có yêu cầu hủy chờ duyệt.
+        </p>
       )}
       {debtStatus && (
-        <p className="sales-filter-context">Chỉ hiển thị đơn hoàn thành còn nợ có hạn thanh toán phù hợp.</p>
+        <p className="sales-filter-context">
+          Chỉ hiển thị đơn hoàn thành còn nợ có hạn thanh toán phù hợp.
+        </p>
       )}
 
-      <AutoDismissMessage message={dateWarning} type="warning" className="sales-date-warning" />
+      <AutoDismissMessage
+        message={dateWarning}
+        type="warning"
+        className="sales-date-warning"
+      />
       <AutoDismissMessage message={error} className="sales-alert" />
       <div className="sales-card">
         {loading ? (
@@ -2607,10 +3077,18 @@ function SalesInvoices() {
                     <td className="sales-order-start-cell">
                       {formatDateTime(invoice.sold_at)}
                       {requiresSalesInvoiceAction(invoice, currentUser) && (
-                        <span className="sales-action-dot" aria-label={`Đơn hàng #${invoice.id} cần xử lý`} title="Đơn hàng cần xử lý" />
+                        <span
+                          className="sales-action-dot"
+                          aria-label={`Đơn hàng #${invoice.id} cần xử lý`}
+                          title="Đơn hàng cần xử lý"
+                        />
                       )}
                     </td>
-                    <td>{invoice.sale_source === "hàng nhân viên" ? "Hàng nhân viên" : invoice.warehouse?.name || "—"}</td>
+                    <td>
+                      {invoice.sale_source === "hàng nhân viên"
+                        ? "Hàng nhân viên"
+                        : invoice.warehouse?.name || "—"}
+                    </td>
                     <td>
                       <strong>{invoice.customer?.full_name || "—"}</strong>
                       <small>{invoice.customer?.phone || ""}</small>
@@ -2620,7 +3098,9 @@ function SalesInvoices() {
                         <span
                           className={`sales-status-badge ${getStatusClass(invoice.workflow_stage || invoice.status)}`}
                         >
-                          {getStatusLabel(invoice.workflow_stage || invoice.status)}
+                          {getStatusLabel(
+                            invoice.workflow_stage || invoice.status,
+                          )}
                         </span>
                         {hasActiveCancelRequest(invoice) && (
                           <span
@@ -2632,7 +3112,9 @@ function SalesInvoices() {
                         )}
                       </div>
                     </td>
-                    <td><SalesInvoiceDueCell invoice={invoice} /></td>
+                    <td>
+                      <SalesInvoiceDueCell invoice={invoice} />
+                    </td>
                     <td>{invoice.items_count || 0}</td>
                     <td className="sales-money">
                       {formatCurrency(invoice.final_amount)}
@@ -2701,9 +3183,20 @@ function SalesInvoices() {
             canManageStatus={canManageStatus}
             canComplete={canCompleteSales}
             canRecordPayment={canRecordPayment}
-            canSubmitWarehouse={canSubmitWarehouse && (currentUser.role === "quản lý" || Number(selectedInvoice.employee?.id) === Number(currentUser.id))}
-            canConfirmDelivery={canConfirmDelivery && (currentUser.role === "quản lý" || Number(selectedInvoice.employee?.id) === Number(currentUser.id))}
-            needsAction={requiresSalesInvoiceAction(selectedInvoice, currentUser)}
+            canSubmitWarehouse={
+              canSubmitWarehouse &&
+              (currentUser.role === "quản lý" ||
+                Number(selectedInvoice.employee?.id) === Number(currentUser.id))
+            }
+            canConfirmDelivery={
+              canConfirmDelivery &&
+              (currentUser.role === "quản lý" ||
+                Number(selectedInvoice.employee?.id) === Number(currentUser.id))
+            }
+            needsAction={requiresSalesInvoiceAction(
+              selectedInvoice,
+              currentUser,
+            )}
             canApproveCancel={canApproveCancel}
             canManageDueDate={canManageDueDate}
             actionLoading={actionLoading}
@@ -2769,7 +3262,9 @@ function SalesInvoices() {
       <ConfirmDialog
         open={Boolean(discountConfirm)}
         title={
-          discountConfirm?.approved ? "Duyệt khuyến mãi?" : "Từ chối khuyến mãi?"
+          discountConfirm?.approved
+            ? "Duyệt khuyến mãi?"
+            : "Từ chối khuyến mãi?"
         }
         message={
           discountActionError ||
@@ -2777,7 +3272,9 @@ function SalesInvoices() {
             ? `${discountConfirm.approved ? "Duyệt" : "Từ chối"} khuyến mãi ${discountConfirm.invoice.discount?.promotion?.name || "đã chọn"} với mức giảm ${formatCurrency(discountConfirm.invoice.discount?.amount)} cho đơn hàng #${discountConfirm.invoice.id}?`
             : "")
         }
-        confirmLabel={discountConfirm?.approved ? "Duyệt khuyến mãi" : "Từ chối"}
+        confirmLabel={
+          discountConfirm?.approved ? "Duyệt khuyến mãi" : "Từ chối"
+        }
         cancelLabel="Quay lại"
         danger={!discountConfirm?.approved}
         loading={discountActionLoading}

@@ -344,3 +344,9 @@
   .sales-selected-promotion-value { text-align: left; }
   .sales-promotion-remove { min-height: 40px; }
 }
+
+
+.sales-editor-item-combo { border-color: #bdd4e8; background: #f7fbfe; }
+.sales-combo-display { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid #d4e4f2; border-radius: 5px; background: #fff; min-height: 40px; }
+.sales-combo-display strong { color: #0b3158; font-size: 14px; }
+.sales-combo-detail { display: block; color: #5a7594; font-size: 12px; line-height: 1.4; }
