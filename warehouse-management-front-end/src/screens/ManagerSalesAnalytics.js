@@ -275,6 +275,151 @@ function QuantityPieChartCard({
   );
 }
 
+function ProductProfitCard({ report, onTablePageChange, tableLoading }) {
+  const canvasRef = useRef(null);
+  const chartRef = useRef(null);
+  const chartRows = useMemo(() => report?.profit_chart || [], [report?.profit_chart]);
+  const summary = report?.profit_summary || {};
+  const tableRows = report?.profit_table || [];
+
+  useEffect(() => {
+    if (!canvasRef.current || !chartRows.length) return undefined;
+    chartRef.current?.destroy();
+    chartRef.current = new Chart(canvasRef.current, {
+      type: "bar",
+      data: {
+        labels: chartRows.map((row) => shortChartLabel(row.product_name, 22)),
+        datasets: [{
+          label: "Lãi sau chi phí ghi nhận",
+          data: chartRows.map((row) => row.estimated_profit),
+          backgroundColor: chartRows.map((row) =>
+            row.estimated_profit < 0 ? "#bd6a62" : "#4d8c72",
+          ),
+          borderRadius: 4,
+        }],
+      },
+      options: {
+        indexAxis: "y",
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: (items) => chartRows[items[0]?.dataIndex]?.product_name || "",
+              label: (context) => ` Lãi sau chi phí: ${money(context.parsed.x)}`,
+            },
+          },
+        },
+        scales: {
+          x: { ticks: { callback: (value) => chartMoney(value) } },
+          y: { ticks: { autoSkip: false } },
+        },
+      },
+    });
+    return () => {
+      chartRef.current?.destroy();
+      chartRef.current = null;
+    };
+  }, [chartRows]);
+
+  return (
+    <section id="manager-sold-chart" className="manager-analytics-chart-card manager-profit-card">
+      <div className="manager-analytics-card-heading">
+        <div>
+          <h2>Lãi sau chi phí theo sản phẩm</h2>
+          <small>Đơn hoàn thành trong kỳ đã chọn · giá vốn ước tính từ giá nhập trước ngày bán</small>
+        </div>
+        <span>{summary.total_products ? `${quantity(summary.total_products)} sản phẩm` : "Chưa có dữ liệu"}</span>
+      </div>
+      {summary.total_products ? (
+        <>
+          <div className="manager-profit-overview">
+            <div><span>Doanh thu thuần đã tính lãi</span><strong>{summary.priced_products ? money(summary.net_revenue_priced) : "—"}</strong></div>
+            <div><span>Giá vốn ước tính</span><strong>{summary.priced_products ? money(summary.estimated_cogs_priced) : "—"}</strong></div>
+            <div><span>Phí giao đã ghi nhận</span><strong>{summary.priced_products ? money(summary.shipping_cost_priced) : "—"}</strong></div>
+            <div className="manager-profit-total">
+              <span>Lãi sau chi phí ghi nhận</span>
+              <strong className={summary.estimated_profit_priced < 0 ? "is-negative" : "is-positive"}>
+                {summary.priced_products ? money(summary.estimated_profit_priced) : "—"}
+              </strong>
+            </div>
+          </div>
+          <p className="manager-profit-method">
+            Doanh thu thuần = tiền bán − giảm giá. Lãi ước tính = doanh thu thuần − giá nhập bình quân − phí giao bên thứ ba đã ghi nhận.
+            Giảm giá và phí giao được chia cho từng sản phẩm theo tỷ lệ tiền bán trên đơn.
+            Chưa phân bổ hao hụt kho; lương, quảng cáo, đóng gói và chi phí khác chưa được lưu theo sản phẩm.
+          </p>
+          {summary.missing_cost_products > 0 && (
+            <p className="manager-profit-warning">
+              {quantity(summary.missing_cost_products)} sản phẩm thiếu giá nhập trước ngày bán.
+              Tổng lãi phía trên chỉ tính {quantity(summary.priced_products)}/{quantity(summary.total_products)} sản phẩm đủ dữ liệu.
+            </p>
+          )}
+          <div className="manager-profit-content">
+            {chartRows.length > 0 && (
+              <div className="manager-profit-chart">
+                <h3>Sản phẩm có lãi/lỗ nổi bật</h3>
+                <div className="manager-chart-box manager-profit-chart-box">
+                  <canvas ref={canvasRef} />
+                </div>
+              </div>
+            )}
+            <div className="manager-analytics-split-table">
+              <div className="manager-chart-table-wrap">
+                <table className="manager-chart-table manager-profit-table">
+                  <thead>
+                    <tr>
+                      <th>Sản phẩm</th>
+                      <th>Lãi sau chi phí</th>
+                      <th>Đã bán</th>
+                      <th>Doanh thu thuần</th>
+                      <th>Giá vốn ước tính</th>
+                      <th>Phí giao</th>
+                      <th>Biên lãi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tableRows.map((row) => (
+                      <tr key={`profit-${row.product_id}`}>
+                        <td><strong>{row.product_name}</strong></td>
+                        <td className={row.estimated_profit == null ? "is-missing" : row.estimated_profit < 0 ? "is-negative" : "is-positive"}>
+                          {row.estimated_profit == null ? "Chưa đủ dữ liệu" : money(row.estimated_profit)}
+                          {row.missing_cost_quantity > 0 && <small>Thiếu giá nhập cho {quantity(row.missing_cost_quantity)} đơn vị</small>}
+                        </td>
+                        <td>{quantity(row.quantity)} {row.unit}</td>
+                        <td>
+                          {money(row.net_revenue)}
+                          {row.discount > 0 && <small>Đã trừ giảm giá {money(row.discount)}</small>}
+                        </td>
+                        <td>{row.estimated_cogs == null ? "Chưa đủ dữ liệu" : money(row.estimated_cogs)}</td>
+                        <td>{money(row.shipping_cost)}</td>
+                        <td>{row.margin_percent == null ? "—" : `${Number(row.margin_percent).toFixed(1)}%`}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {Number(report?.profit_pagination?.total_pages || 1) > 1 && (
+                <div className="manager-chart-pagination">
+                  <Pagination
+                    page={Number(report?.profit_pagination?.page || 1)}
+                    totalPages={Number(report?.profit_pagination?.total_pages || 1)}
+                    onPageChange={onTablePageChange}
+                    disabled={tableLoading}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="manager-chart-empty">Chưa có sản phẩm được bán trong kỳ đã chọn.</div>
+      )}
+    </section>
+  );
+}
+
 function ManagerAnalyticsCharts({
   report,
   debtPagination,
@@ -719,16 +864,10 @@ function ManagerAnalyticsCharts({
         emptyMessage="Chưa có sản phẩm còn tồn kho."
         showChart={false}
       />
-      <QuantityPieChartCard
-        id="manager-sold-chart"
-        title="Số lượng bán theo sản phẩm"
-        subtitle="Số lượng hàng đã bán trong khoảng thời gian đã chọn"
-        rows={report?.sold_chart}
-        tableRows={report?.sold_table}
-        tablePagination={report?.sold_pagination}
-        onTablePageChange={(nextPage) => onTablePageChange("sold", nextPage)}
-        tableLoading={tableLoading.sold}
-        emptyMessage="Chưa có sản phẩm được bán trong kỳ đã chọn."
+      <ProductProfitCard
+        report={report}
+        onTablePageChange={(nextPage) => onTablePageChange("profit", nextPage)}
+        tableLoading={tableLoading.profit}
       />
     </div>
   );
@@ -754,14 +893,14 @@ function ManagerSalesAnalytics() {
     debt: 1,
     revenue: 1,
     inventory: 1,
-    sold: 1,
+    profit: 1,
     monthly: 1,
   });
   const [tableLoading, setTableLoading] = useState({
     debt: false,
     revenue: false,
     inventory: false,
-    sold: false,
+    profit: false,
     monthly: false,
   });
   const [report, setReport] = useState(null);
@@ -838,8 +977,8 @@ function ManagerSalesAnalytics() {
     }
     filterRevision.current += 1;
     setLoading(true);
-    setTablePages({ debt: 1, revenue: 1, inventory: 1, sold: 1, monthly: 1 });
-    setTableLoading({ debt: false, revenue: false, inventory: false, sold: false, monthly: false });
+    setTablePages({ debt: 1, revenue: 1, inventory: 1, profit: 1, monthly: 1 });
+    setTableLoading({ debt: false, revenue: false, inventory: false, profit: false, monthly: false });
     setAppliedRange(selectedYear
       ? { fromDate: `${selectedYear}-01-01`, toDate: `${selectedYear}-12-31`, granularity: "month", revision: filterRevision.current }
       : { fromDate, toDate, granularity: "day", revision: filterRevision.current });

@@ -20,6 +20,7 @@ from web.models import (
 from web.services.exceptions import ValidationError
 from web.services.authorization import get_central_warehouse
 from web.services.reports_service import parse_date
+from web.services.product_profit import calculate_product_profit_rows, summarize_product_profit
 from web.utils.pagination import build_pagination
 
 
@@ -341,6 +342,52 @@ def _build_customer_period_debts(from_date, to_date):
     return rows
 
 
+def _build_product_profit_rows(from_date, to_date):
+    """Estimate product profit for completed invoices in the selected sale period."""
+    sales = (
+        db.session.query(
+            SalesInvoice.id.label("invoice_id"),
+            SalesInvoice.sold_at,
+            SalesInvoice.discount_amount,
+            SalesInvoice.delivery_method,
+            SalesInvoice.shipping_fee,
+            SalesInvoice.shipping_charged_at,
+            SalesInvoiceItem.id.label("line_id"),
+            SalesInvoiceItem.product_id,
+            SalesInvoiceItem.quantity,
+            SalesInvoiceItem.unit_price,
+            Product.name.label("product_name"),
+            Product.unit,
+        )
+        .join(SalesInvoiceItem, SalesInvoiceItem.sales_invoice_id == SalesInvoice.id)
+        .join(Product, Product.id == SalesInvoiceItem.product_id)
+        .filter(*_completed_invoice_filters(from_date, to_date))
+        .order_by(SalesInvoice.sold_at, SalesInvoice.id, SalesInvoiceItem.id)
+        .all()
+    )
+    if not sales:
+        return []
+
+    purchases = (
+        db.session.query(
+            ImportInvoice.id.label("import_id"),
+            ImportInvoice.imported_at,
+            ImportInvoiceItem.id.label("import_line_id"),
+            ImportInvoiceItem.product_id,
+            ImportInvoiceItem.quantity,
+            ImportInvoiceItem.unit_price,
+        )
+        .join(ImportInvoice, ImportInvoice.id == ImportInvoiceItem.import_invoice_id)
+        .filter(
+            ImportInvoiceItem.product_id.in_({row.product_id for row in sales}),
+            ImportInvoice.imported_at <= sales[-1].sold_at,
+        )
+        .order_by(ImportInvoice.imported_at, ImportInvoice.id, ImportInvoiceItem.id)
+        .all()
+    )
+    return calculate_product_profit_rows(sales, purchases)
+
+
 def _get_manager_sales_table_page(
     table,
     from_date,
@@ -414,6 +461,9 @@ def _get_manager_sales_table_page(
                 })
         rows.sort(key=lambda row: (-row["quantity"], row["product_name"]))
         key = "inventory_table"
+    elif table == "profit":
+        rows = _build_product_profit_rows(from_date, to_date)
+        key = "profit_table"
     elif table == "monthly":
         rows, peak = _build_period_trend(from_date, to_date, granularity)
         page_rows, total = _paginate_rows(rows, page, per_page)
@@ -500,7 +550,7 @@ def get_manager_sales_analytics_service(
     except (TypeError, ValueError):
         table_per_page = min(app.config.get("APPLICATION_SIZE", 10), app.config.get("MAX_PAGE_SIZE", 100))
 
-    if table_value in {"debt", "revenue", "inventory", "sold", "monthly"}:
+    if table_value in {"debt", "revenue", "inventory", "sold", "profit", "monthly"}:
         inventory_warehouse_id = (
             get_central_warehouse().id if table_value == "inventory" else None
         )
@@ -648,6 +698,8 @@ def get_manager_sales_analytics_service(
     revenue_table, revenue_total = _paginate_rows(revenue_by_area, 1, per_page)
     inventory_table, inventory_total = _paginate_rows(inventory_chart, 1, per_page)
     sold_table, sold_total = _paginate_rows(sold_chart, 1, per_page)
+    profit_rows = _build_product_profit_rows(from_date, to_date)
+    profit_table, profit_total = _paginate_rows(profit_rows, 1, per_page)
 
     return {
         "trend_granularity": granularity,
@@ -683,6 +735,14 @@ def get_manager_sales_analytics_service(
         "sold_chart": sold_chart,
         "sold_table": sold_table,
         "sold_pagination": build_pagination(1, per_page, sold_total),
+        "profit_chart": sorted(
+            (row for row in profit_rows if row["estimated_profit"] is not None),
+            key=lambda row: abs(row["estimated_profit"]),
+            reverse=True,
+        )[:8],
+        "profit_table": profit_table,
+        "profit_pagination": build_pagination(1, per_page, profit_total),
+        "profit_summary": summarize_product_profit(profit_rows),
         "monthly_trend": monthly_trend,
         "monthly_table": monthly_trend[:per_page],
         "monthly_pagination": build_pagination(1, per_page, len(monthly_trend)),

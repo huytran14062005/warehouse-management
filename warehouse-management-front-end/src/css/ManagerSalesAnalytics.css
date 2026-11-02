@@ -56,6 +56,24 @@
 .manager-chart-table td strong { color: #183f68; }
 .manager-chart-table td small { display: block; margin-top: 3px; color: #8093aa; }
 .manager-chart-table tbody tr:last-child td { border-bottom: 0; }
+.manager-profit-overview { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 16px 20px; }
+.manager-profit-overview > div { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 14px; border: 1px solid #dce6ef; border-radius: 8px; background: #f8fafc; }
+.manager-profit-overview span { color: #617790; font-size: 12px; }
+.manager-profit-overview strong { color: #173d64; font-size: 19px; white-space: nowrap; }
+.manager-profit-overview .manager-profit-total { border-color: #bbd8ca; background: #edf7f1; }
+.manager-profit-overview .is-positive, .manager-profit-table .is-positive { color: #19754a; font-weight: 700; }
+.manager-profit-overview .is-negative, .manager-profit-table .is-negative { color: #ae514c; font-weight: 700; }
+.manager-profit-table .is-missing { color: #a46512; font-weight: 700; }
+.manager-profit-method, .manager-profit-warning { margin: 0 20px 14px; font-size: 12px; line-height: 1.6; }
+.manager-profit-method { color: #657b93; }
+.manager-profit-warning { padding: 10px 12px; border: 1px solid #e5cb97; border-radius: 6px; background: #fff8e9; color: #86530e; }
+.manager-profit-content { border-top: 1px solid #e4ebf3; }
+.manager-profit-chart { min-width: 0; padding: 16px 4px 12px; border-bottom: 1px solid #e4ebf3; }
+.manager-profit-chart h3 { margin: 0 16px; color: #294c6e; font-size: 13px; }
+.manager-profit-chart-box { height: 320px; max-width: 1000px; margin: 0 auto; }
+.manager-profit-table { min-width: 970px; }
+.manager-profit-table th, .manager-profit-table td { padding: 11px 10px; }
+.manager-profit-table td small { display: block; margin-top: 4px; color: #7c8da1; font-size: 11px; white-space: normal; }
 .manager-chart-pagination { padding: 0 0 16px; }
 .manager-analytics-chart-card > .warehouse-pagination-controls { margin-bottom: 16px; }
 .manager-analytics-card { margin-bottom: 18px; overflow: hidden; }
@@ -73,6 +91,8 @@
 .manager-analytics-empty, .manager-analytics-state { padding: 28px; text-align:center; color:#7186a1; }
 @media (max-width: 1200px) { .manager-analytics-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 900px) { .manager-analytics-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .manager-analytics-filter { flex-wrap: wrap; } }
+@media (max-width: 900px) { .manager-profit-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .manager-profit-overview { grid-template-columns: 1fr; } }
 @media (max-width: 900px) {
   .manager-analytics-split { display: block; }
   .manager-analytics-split-chart { border-right: 0; border-bottom: 1px solid #e4ebf3; }
