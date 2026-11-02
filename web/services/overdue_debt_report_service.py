@@ -1,5 +1,6 @@
 from decimal import Decimal
 from io import BytesIO
+import re
 
 from flask_mail import Message
 from openpyxl import Workbook
@@ -14,6 +15,11 @@ from web.services.sales_invoice_service import business_today
 
 
 EXCEL_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+_INVALID_XML = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
+def _literal_text(value):
+    return _INVALID_XML.sub(" ", str(value or ""))[:32767]
 
 
 def _recipient_emails():
@@ -24,6 +30,11 @@ def _recipient_emails():
     recipients = [str(email).strip() for email in configured if str(email).strip()]
     if recipients:
         return list(dict.fromkeys(recipients))
+
+    # Financial and customer data must not be emailed based on an implicit
+    # account list in production; require an approved destination in config.
+    if current_app.config.get("IS_PRODUCTION"):
+        return []
 
     manager_rows = (
         Employee.query
@@ -126,7 +137,11 @@ def _build_workbook(rows, report_date):
             row["invoice_ids"],
         ]
         for column, value in enumerate(values, start=1):
-            sheet.cell(header_row + index, column, value)
+            if column in (2, 3, 4, 9):
+                cell = sheet.cell(header_row + index, column, _literal_text(value))
+                cell.data_type = "s"
+            else:
+                sheet.cell(header_row + index, column, value)
         sheet.cell(header_row + index, 6).number_format = '#,##0 "đ"'
         sheet.cell(header_row + index, 7).number_format = "dd/mm/yyyy"
 

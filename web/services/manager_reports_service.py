@@ -92,24 +92,18 @@ def _current_financial_totals():
         .group_by(SupplierPayment.import_invoice_id)
         .subquery()
     )
-    supplier_invoice_rows = (
-        db.session.query(
-            invoice_totals.c.invoice_total,
-            func.coalesce(paid_by_invoice.c.paid_total, 0).label("paid_total"),
-        )
+    outstanding = invoice_totals.c.invoice_total - func.coalesce(paid_by_invoice.c.paid_total, 0)
+    supplier_debt = (
+        db.session.query(func.coalesce(func.sum(case((outstanding > 0, outstanding), else_=0)), 0))
         .outerjoin(
             paid_by_invoice,
             paid_by_invoice.c.invoice_id == invoice_totals.c.invoice_id,
         )
-        .all()
-    )
-    supplier_debt = sum(
-        max(float(row.invoice_total or 0) - float(row.paid_total or 0), 0)
-        for row in supplier_invoice_rows
+        .scalar()
     )
 
     return {
-        "supplier_debt_total": supplier_debt,
+        "supplier_debt_total": float(supplier_debt or 0),
     }
 
 

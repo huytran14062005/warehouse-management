@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from web import app, db
+from web.config import Config
 from web.models import (
     Customer,
     CustomerPayment,
@@ -106,6 +107,8 @@ def create_sales_invoice(
 
 
 if __name__ == "__main__":
+    if Config.IS_PRODUCTION:
+        raise RuntimeError("Demo database reset is disabled in production")
     with app.app_context():
         db.drop_all()
         db.create_all()

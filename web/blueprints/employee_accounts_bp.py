@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, jsonify, request
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 
 from web import db
 from web.blueprints.api_errors import handle_api_errors
@@ -94,6 +94,21 @@ def get_pending_requests_summary():
     def count_of(model, *filters):
         return select(func.count(model.id)).where(*filters).scalar_subquery()
 
+    debt_counts = (
+        select(
+            func.count(case((SalesInvoice.payment_due_date < today, SalesInvoice.id))).label("overdue_debts"),
+            func.count(case((SalesInvoice.payment_due_date == today, SalesInvoice.id))).label("due_today_debts"),
+            func.count(case((SalesInvoice.payment_due_date > today, SalesInvoice.id))).label("due_soon_debts"),
+        )
+        .where(
+            SalesInvoice.status == InvoiceStatus.COMPLETED,
+            SalesInvoice.payment_due_date.isnot(None),
+            SalesInvoice.payment_due_date <= due_soon_through,
+            remaining_amount > 0,
+        )
+        .subquery()
+    )
+
     row = db.session.query(
         count_of(
             Employee,
@@ -119,28 +134,9 @@ def get_pending_requests_summary():
             ProductRequest,
             ProductRequest.status == ProductRequestStatus.PENDING.value,
         ).label("product_requests"),
-        count_of(
-            SalesInvoice,
-            SalesInvoice.status == InvoiceStatus.COMPLETED,
-            SalesInvoice.payment_due_date.isnot(None),
-            SalesInvoice.payment_due_date < today,
-            remaining_amount > 0,
-        ).label("overdue_debts"),
-        count_of(
-            SalesInvoice,
-            SalesInvoice.status == InvoiceStatus.COMPLETED,
-            SalesInvoice.payment_due_date.isnot(None),
-            SalesInvoice.payment_due_date == today,
-            remaining_amount > 0,
-        ).label("due_today_debts"),
-        count_of(
-            SalesInvoice,
-            SalesInvoice.status == InvoiceStatus.COMPLETED,
-            SalesInvoice.payment_due_date.isnot(None),
-            SalesInvoice.payment_due_date > today,
-            SalesInvoice.payment_due_date <= due_soon_through,
-            remaining_amount > 0,
-        ).label("due_soon_debts"),
+        debt_counts.c.overdue_debts,
+        debt_counts.c.due_today_debts,
+        debt_counts.c.due_soon_debts,
     ).one()
     counts = {
         key: int(getattr(row, key) or 0)

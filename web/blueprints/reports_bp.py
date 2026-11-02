@@ -155,52 +155,20 @@ def _build_movements_report(warehouse_id, include_all_products=False):
         to_date_value=request.args.get('to_date'),
         warehouse_id_value=warehouse_id,
     )
-    
-                               
-    total_import_quantity = 0
-    total_import_amount = 0
-    
-    for invoice in report_data["import_invoices"]:
-        invoice_quantity = sum(int(item.quantity) for item in invoice.items)
-        invoice_amount = sum(float(item.quantity) * float(item.unit_price) for item in invoice.items)
-        
-        total_import_quantity += invoice_quantity
-        total_import_amount += invoice_amount
-        
-    
-    total_export_quantity = 0
-    total_export_amount = 0
-    
-    for invoice in report_data["sales_invoices"]:
-        invoice_quantity = sum(int(item.quantity) for item in invoice.items)
-        invoice_amount = sum(float(item.quantity) * float(item.unit_price) for item in invoice.items)
-        
-        total_export_quantity += invoice_quantity
-        total_export_amount += invoice_amount
-        
-    total_damage_quantity = 0
-    for report in report_data["damage_reports"]:
-        report_quantity = sum(int(item.quantity) for item in report.items)
-        total_damage_quantity += report_quantity
+    totals = report_data["totals"]
 
-    total_transferred_quantity = 0
-    for transfer in report_data["stock_transfers"]:
-        transfer_quantity = sum(int(item.quantity) for item in transfer.items)
-        total_transferred_quantity += transfer_quantity
-    
-                  
     summary = {
         "total_imported": sum(p["imported"] for p in report_data["by_product"]),
         "total_exported": sum(p["exported"] for p in report_data["by_product"]),
         "net_change": sum(p["net_change"] for p in report_data["by_product"]),
-        "import_invoices_count": len(report_data["import_invoices"]),
-        "sales_invoices_count": len(report_data["sales_invoices"]),
-        "total_import_amount": total_import_amount,
-        "total_export_amount": total_export_amount,
-        "damage_reports_count": len(report_data["damage_reports"]),
-        "total_damage_quantity": total_damage_quantity,
-        "stock_transfers_count": len(report_data["stock_transfers"]),
-        "total_transferred_quantity": total_transferred_quantity,
+        "import_invoices_count": totals["import_invoices_count"],
+        "sales_invoices_count": totals["sales_invoices_count"],
+        "total_import_amount": totals["total_import_amount"],
+        "total_export_amount": totals["total_export_amount"],
+        "damage_reports_count": totals["damage_reports_count"],
+        "total_damage_quantity": totals["total_damage_quantity"],
+        "stock_transfers_count": totals["stock_transfers_count"],
+        "total_transferred_quantity": totals["total_transferred_quantity"],
     }
     low_stock_percentage = float(get_low_stock_percentage())
     summary["current_stock"] = sum(int(p["current_stock"] or 0) for p in report_data["by_product"])

@@ -1,3 +1,5 @@
+import os
+
 from flask import Flask, request
 from flask_cors import CORS
 from flask_mail import Mail
@@ -16,9 +18,9 @@ def _validate_security_config():
         return
 
     for name in ("SECRET_KEY", "JWT_SECRET"):
-        value = app.config.get(name, "")
+        value = os.getenv(name, "")
         if not value or len(value) < 32:
-            raise RuntimeError(f"{name} must be configured with at least 32 characters in production")
+            raise RuntimeError(f"{name} must be explicitly configured with at least 32 characters in production")
 
     if app.config.get("SECRET_KEY") == app.config.get("JWT_SECRET"):
         raise RuntimeError("SECRET_KEY and JWT_SECRET must be different in production")
@@ -29,7 +31,8 @@ def _validate_security_config():
     if str(app.config.get("REFRESH_COOKIE_SAMESITE", "")).lower() not in {"lax", "strict", "none"}:
         raise RuntimeError("REFRESH_COOKIE_SAMESITE must be Lax, Strict, or None")
 
-    if any(not origin.lower().startswith("https://") for origin in app.config.get("FRONTEND_ORIGINS", [])):
+    origins = app.config.get("FRONTEND_ORIGINS", [])
+    if not origins or any(not origin.lower().startswith("https://") for origin in origins):
         raise RuntimeError("Production frontend origins must use HTTPS")
 
 
@@ -91,3 +94,6 @@ app.register_blueprint(sales_areas_bp)
 app.register_blueprint(employee_accounts_bp)
 app.register_blueprint(promotions_bp)
 app.register_blueprint(company_funds_bp)
+
+from web.realtime import init_realtime
+init_realtime(app)

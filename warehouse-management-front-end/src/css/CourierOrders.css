@@ -31,4 +31,8 @@
 .courier-warning { margin: 18px 0 0; }
 .courier-modal-actions { display: flex; justify-content: flex-end; gap: 9px; padding: 16px 20px; border-top: 1px solid #e8edf2; }
 .courier-modal-actions .courier-primary { border-color: #0b3158; background: #0b3158; color: #fff; }
+.courier-delivery-proof { display: grid; gap: 12px; margin-top: 18px; padding: 14px; border: 1px solid #cfdeec; border-radius: 7px; background: #f7fafd; }
+.courier-delivery-proof label { display: grid; gap: 5px; color: #526c84; font-size: 13px; font-weight: 600; }
+.courier-delivery-proof input { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid #c9d8e6; border-radius: 6px; background: #fff; font: inherit; }
+.courier-modal-actions button:disabled { opacity: .55; cursor: not-allowed; }
 @media (max-width: 600px) { .courier-page { width: calc(100% - 28px); padding-top: 24px; } .courier-heading { align-items: start; flex-direction: column; } .courier-order { align-items: start; flex-direction: column; } .courier-modal-body dl > div { grid-template-columns: 1fr; gap: 4px; } }

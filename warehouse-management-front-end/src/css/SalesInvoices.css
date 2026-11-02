@@ -111,6 +111,16 @@
 .sales-delivery-actions button:disabled { opacity: .5; cursor: not-allowed; }
 .sales-delivery-actions .sales-delivery-edit, .sales-delivery-edit { border-color: #b9cadc; background: #fff; color: #12385f; }
 .sales-delivery-proof { margin: 18px 0 0; padding: 10px 12px; border: 1px solid #b6d6c2; border-radius: 6px; color: #286348; background: #f3fbf5; overflow-wrap: anywhere; }
+.sales-assignment-panel { display: grid; gap: 10px; margin: 0 0 16px; padding: 14px; border: 1px solid #cfdeec; border-radius: 7px; background: #f7fafd; color: #173957; }
+.sales-assignment-panel span { color: #60758a; font-size: 13px; }
+.sales-assignment-panel h3 { margin: 0; font-size: 15px; }
+.sales-assignment-panel label, .sales-assignment-picker label { display: block; color: #526c84; font-size: 13px; font-weight: 600; }
+.sales-assignment-panel input { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid #c9d8e6; border-radius: 6px; background: #fff; font: inherit; }
+.sales-assignment-panel button { justify-self: start; min-height: 40px; padding: 8px 14px; border: 1px solid #0b3158; border-radius: 6px; background: #0b3158; color: #fff; font: inherit; cursor: pointer; }
+.sales-assignment-panel button:disabled { opacity: .55; cursor: not-allowed; }
+.sales-assignment-picker { min-width: min(100%, 280px); }
+.sales-mine-filter { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; color: #173957; font-size: 13px; font-weight: 600; }
+.sales-mine-filter input { width: 16px; height: 16px; }
 .sales-workflow-history { margin-top: 18px; border-top: 1px solid #e5ebf1; padding-top: 14px; }
 .sales-workflow-history summary { cursor: pointer; color: #12385f; font-size: 14px; font-weight: 600; }
 .sales-workflow-timeline { margin: 14px 0 0; padding: 0 4px 0 28px; max-height: 240px; overflow-y: auto; list-style: none; font-size: 13px; line-height: 1.45; }

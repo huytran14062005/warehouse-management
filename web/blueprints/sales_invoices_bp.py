@@ -5,6 +5,7 @@ from web.blueprints.api_errors import handle_api_errors
 from web.middleware.auth_middleware import verify_role, verify_token
 from web.services.sales_invoice_service import (
     approve_cancel_request_service,
+    accept_sales_invoice_assignment_service,
     approve_discount_service,
     business_today,
     cancel_invoice_service,
@@ -17,6 +18,9 @@ from web.services.sales_invoice_service import (
     get_sales_invoices_list_service,
     list_courier_assignments_service,
     list_delivery_staff_service,
+    list_sales_invoice_assignees_service,
+    reassign_sales_invoice_service,
+    handoff_sales_invoice_accounting_service,
     get_status_tracking_board_service,
     request_cancel_invoice_service,
     record_sales_invoice_payment_service,
@@ -34,7 +38,7 @@ from web.models import EmployeeRole, SalesInvoice
 from web.services.authorization import ensure_warehouse_access, scoped_warehouse_id
 from web.services.validators import parse_bool
 from web.services.customer_service import parse_page, parse_per_page
-from web.services.exceptions import NotFoundError
+from web.services.exceptions import ForbiddenError, NotFoundError
 from web.utils.pagination import build_pagination
 from web.utils.query_cache import cached_query
 
@@ -75,6 +79,29 @@ def start_my_delivery(invoice_id):
     return jsonify({"message": "Đã bắt đầu giao hàng", "invoice": serialize_courier_assignment(invoice)}), 200
 
 
+@sales_invoices_bp.route("/my-deliveries/<int:invoice_id>/delivered", methods=["POST"])
+@verify_token
+@verify_role(EmployeeRole.NHAN_VIEN_GIAO_HANG)
+@handle_api_errors
+def delivered_my_delivery(invoice_id):
+    data = request.get_json(silent=True) or {}
+    invoice = handoff_sales_invoice_accounting_service(
+        invoice_id, request.employee_id, data.get("accountant_id"),
+        data.get("recipient"), data.get("note"),
+    )
+    return jsonify({"message": "Đã xác nhận giao hàng", "invoice": serialize_courier_assignment(invoice)}), 200
+
+
+@sales_invoices_bp.route("/my-deliveries/<int:invoice_id>/accept", methods=["POST"])
+@verify_token
+@verify_role(EmployeeRole.NHAN_VIEN_GIAO_HANG)
+@handle_api_errors
+def accept_my_delivery(invoice_id):
+    get_courier_assignment_service(invoice_id, request.employee_id)
+    invoice = accept_sales_invoice_assignment_service(invoice_id, request.employee_id)
+    return jsonify({"message": "Đã nhận đơn giao", "invoice": serialize_courier_assignment(invoice)}), 200
+
+
 @sales_invoices_bp.route("/action-count", methods=["GET"])
 @verify_token
 @verify_role(EmployeeRole.NHAN_VIEN_BAN_HANG, EmployeeRole.THU_KHO, EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY)
@@ -83,6 +110,22 @@ def get_sales_invoice_action_count():
     return jsonify({"total": get_sales_invoice_action_count_service(
         request.employee_id, request.employee_role,
     )}), 200
+
+
+@sales_invoices_bp.route("/assignees", methods=["GET"])
+@verify_token
+@verify_role(EmployeeRole.NHAN_VIEN_BAN_HANG, EmployeeRole.THU_KHO, EmployeeRole.NHAN_VIEN_GIAO_HANG, EmployeeRole.QUAN_LY)
+@handle_api_errors
+def get_sales_invoice_assignees():
+    stage = request.args.get("stage", "")
+    allowed = {
+        "warehouse": {EmployeeRole.NHAN_VIEN_BAN_HANG.value, EmployeeRole.THU_KHO.value, EmployeeRole.QUAN_LY.value},
+        "accounting": {EmployeeRole.NHAN_VIEN_GIAO_HANG.value, EmployeeRole.QUAN_LY.value},
+    }
+    if stage in allowed and request.employee_role not in allowed[stage]:
+        raise ForbiddenError("Bạn không có quyền xem người nhận ở công đoạn này")
+    warehouse_id = scoped_warehouse_id(request.employee_id, request.args.get("warehouse_id"))
+    return jsonify({"employees": list_sales_invoice_assignees_service(stage, warehouse_id)}), 200
 
 
 @sales_invoices_bp.route("/status-board", methods=["GET"])
@@ -124,6 +167,7 @@ def get_sales_invoices_list():
             cancel_requested=cancel_requested,
             debt_status=request.args.get('debt_status'),
             warehouse_id=warehouse_id,
+            assignee_id=request.employee_id if request.args.get("mine") == "1" else None,
         )
         return {
             'invoices': [serialize_invoice_summary(invoice) for invoice in invoices],
@@ -269,8 +313,41 @@ def prepare_sales_invoice_delivery(invoice_id):
 @verify_role(EmployeeRole.NHAN_VIEN_BAN_HANG, EmployeeRole.QUAN_LY)
 @handle_api_errors
 def submit_sales_invoice_to_warehouse(invoice_id):
-    invoice = submit_sales_invoice_to_warehouse_service(invoice_id, request.employee_id)
+    data = request.get_json(silent=True) or {}
+    invoice = submit_sales_invoice_to_warehouse_service(invoice_id, request.employee_id, data.get("recipient_id"))
     return jsonify({"message": "Đã gửi đơn cho kho", "invoice": serialize_sales_invoice(invoice)}), 200
+
+
+@sales_invoices_bp.route("/<int:invoice_id>/accept", methods=["POST"])
+@verify_token
+@verify_role(EmployeeRole.THU_KHO, EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY)
+@handle_api_errors
+def accept_sales_invoice_assignment(invoice_id):
+    invoice = accept_sales_invoice_assignment_service(invoice_id, request.employee_id)
+    return jsonify({"message": "Đã nhận xử lý đơn", "invoice": serialize_sales_invoice(invoice)}), 200
+
+
+@sales_invoices_bp.route("/<int:invoice_id>/reassign", methods=["PUT"])
+@verify_token
+@verify_role(EmployeeRole.QUAN_LY)
+@handle_api_errors
+def reassign_sales_invoice(invoice_id):
+    data = request.get_json(silent=True) or {}
+    invoice = reassign_sales_invoice_service(invoice_id, request.employee_id, data.get("recipient_id"))
+    return jsonify({"message": "Đã đổi người phụ trách", "invoice": serialize_sales_invoice(invoice)}), 200
+
+
+@sales_invoices_bp.route("/<int:invoice_id>/delivered", methods=["POST"])
+@verify_token
+@verify_role(EmployeeRole.QUAN_LY)
+@handle_api_errors
+def confirm_third_party_delivery(invoice_id):
+    data = request.get_json(silent=True) or {}
+    invoice = handoff_sales_invoice_accounting_service(
+        invoice_id, request.employee_id, data.get("accountant_id"),
+        data.get("recipient"), data.get("note"),
+    )
+    return jsonify({"message": "Đã xác nhận giao và bàn giao kế toán", "invoice": serialize_sales_invoice(invoice)}), 200
 
 
 @sales_invoices_bp.route("/<int:invoice_id>", methods=["DELETE"])

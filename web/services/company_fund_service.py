@@ -3,9 +3,9 @@
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
-from sqlalchemy import inspect
+from sqlalchemy import func, inspect
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from web import db
 from web.models import CompanyFund, CompanyFundAdjustment, CompanyFundEntry, Employee, EmployeeRole, FundEntryType, PaymentMethod
@@ -207,7 +207,7 @@ def list_company_fund_entries(method=None, page=1, per_page=20):
         raise ValidationError("Số trang không hợp lệ")
     if not _fund_tables_exist():
         return {"entries": [], "pagination": build_pagination(page, per_page, 0)}
-    query = CompanyFundEntry.query
+    query = CompanyFundEntry.query.options(joinedload(CompanyFundEntry.employee))
     if method:
         query = query.filter_by(method=method)
     total = query.count()
@@ -251,3 +251,33 @@ def get_company_fund_export_rows(method=None):
         CompanyFundEntry.occurred_at.desc(),
         CompanyFundEntry.id.desc(),
     ).execution_options(stream_results=True).yield_per(500)
+
+
+def get_company_fund_export_summary(method=None):
+    """Exact totals for the ledger columns and the current selected fund(s)."""
+    if method and method not in FUND_METHODS:
+        raise ValidationError("Quỹ cần xem không hợp lệ")
+
+    summary = {
+        "total_in": Decimal("0"),
+        "total_out": Decimal("0"),
+        "opening_balance": Decimal("0"),
+        "remaining": Decimal("0"),
+    }
+    if not _fund_tables_exist():
+        return summary
+
+    funds = db.session.query(CompanyFund.opening_balance, CompanyFund.balance)
+    movements = db.session.query(
+        CompanyFundEntry.direction, func.sum(CompanyFundEntry.amount),
+    )
+    if method:
+        funds = funds.filter(CompanyFund.method == method)
+        movements = movements.filter(CompanyFundEntry.method == method)
+
+    for opening_balance, balance in funds.all():
+        summary["opening_balance"] += opening_balance
+        summary["remaining"] += balance
+    for direction, amount in movements.group_by(CompanyFundEntry.direction).all():
+        summary["total_in" if direction == "in" else "total_out"] = amount
+    return summary

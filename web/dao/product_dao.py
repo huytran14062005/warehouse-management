@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from sqlalchemy import func
+from sqlalchemy import func, literal, union_all
 from web import app, db
 from web.models import (
     DamageReport,
@@ -204,25 +204,29 @@ def _inventory_for_products(product_ids, warehouse_id=None, exclude_invoice_id=N
 
     import_rows = import_rows.group_by(
         ImportInvoiceItem.product_id, Warehouse.id, Warehouse.name
-    ).all()
+    ).add_columns(literal("imported").label("movement")).statement
     sales_rows = sales_rows.group_by(
         SalesInvoiceItem.product_id, Warehouse.id, Warehouse.name
-    ).all()
+    ).add_columns(literal("sold").label("movement")).statement
     damage_rows = damage_rows.group_by(
         DamageReportItem.product_id, Warehouse.id, Warehouse.name
-    ).all()
+    ).add_columns(literal("damaged").label("movement")).statement
     transfer_rows = transfer_rows.group_by(
         StockTransferItem.product_id, Warehouse.id, Warehouse.name
-    ).all()
+    ).add_columns(literal("transferred").label("movement")).statement
+    movement_rows = db.session.execute(union_all(
+        import_rows, sales_rows, damage_rows, transfer_rows,
+    )).all()
 
-    def add_rows(rows, field):
-        total_field = {
-            "imported": "total_imported",
-            "sold": "total_sold",
-            "damaged": "total_damaged",
-            "transferred": "total_transferred",
-        }[field]
+    def add_rows(rows):
         for row in rows:
+            field = row.movement
+            total_field = {
+                "imported": "total_imported",
+                "sold": "total_sold",
+                "damaged": "total_damaged",
+                "transferred": "total_transferred",
+            }[field]
             quantity = int(row.quantity or 0)
             data = inventory[row.product_id]
             data[total_field] += quantity
@@ -240,17 +244,14 @@ def _inventory_for_products(product_ids, warehouse_id=None, exclude_invoice_id=N
             )
             warehouse[field] += quantity
 
-    add_rows(import_rows, "imported")
-    add_rows(sales_rows, "sold")
-    add_rows(damage_rows, "damaged")
-    add_rows(transfer_rows, "transferred")
+    add_rows(movement_rows)
 
     # A transfer remains "issued" only while the employee still holds it.
     # Field sales move the consumed quantity from issued to sold, leaving
     # warehouse stock unchanged because the goods left at transfer time.
     _, _, field_sales_by_warehouse, field_damage_by_warehouse = (
         calculate_allocated_employee_stock_movements(product_ids)
-        if transfer_rows else ({}, {}, {}, {})
+        if any(row.movement == "transferred" for row in movement_rows) else ({}, {}, {}, {})
     )
     for (product_id, source_warehouse_id), quantity in field_sales_by_warehouse.items():
         if warehouse_id is not None and source_warehouse_id != warehouse_id:

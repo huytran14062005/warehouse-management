@@ -1,10 +1,11 @@
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlalchemy.orm import selectinload
 from web import db
 from web.models import (
     DamageReport,
     DamageReportItem,
     DamageReportStatus,
+    Employee,
     EmployeeRole,
     ImportInvoice,
     ImportInvoiceItem,
@@ -215,3 +216,136 @@ def get_movements_report(from_date, to_date, warehouse_id=None):
         "stock_transfers": stock_transfers,
         "by_product": by_product
     }
+
+
+def get_movements_report_aggregated(from_date, to_date, warehouse_id=None):
+    """Aggregate movement history in SQL; retain one row per catalog product."""
+    import_filters = []
+    sale_filters = [
+        SalesInvoice.status.in_(STOCK_DEDUCTING_SALES_STATUSES),
+        SalesInvoice.sale_source == SaleSource.CENTRAL_WAREHOUSE,
+    ]
+    damage_filters = [DamageReport.status != DamageReportStatus.REJECTED]
+    transfer_filters = []
+    for filters, column in (
+        (import_filters, ImportInvoice.imported_at),
+        (sale_filters, SalesInvoice.sold_at),
+        (damage_filters, DamageReport.reported_at),
+        (transfer_filters, StockTransfer.transferred_at),
+    ):
+        if from_date:
+            filters.append(column >= from_date)
+        if to_date:
+            filters.append(column <= to_date)
+    if warehouse_id:
+        import_filters.append(ImportInvoice.warehouse_id == warehouse_id)
+        sale_filters.append(SalesInvoice.warehouse_id == warehouse_id)
+        damage_filters.extend((
+            DamageReport.warehouse_id == warehouse_id,
+            DamageReport.reported_by_employee.has(role=EmployeeRole.THU_KHO),
+        ))
+        transfer_filters.append(StockTransfer.warehouse_id == warehouse_id)
+
+    counts = {
+        "import_invoices_count": ImportInvoice.query.filter(*import_filters).count(),
+        "sales_invoices_count": SalesInvoice.query.filter(*sale_filters).count(),
+        "damage_reports_count": DamageReport.query.filter(*damage_filters).count(),
+        "stock_transfers_count": StockTransfer.query.filter(*transfer_filters).count(),
+    }
+    products = (
+        db.session.query(Product.id, Product.name, Product.unit)
+        .order_by(Product.name.asc()).all()
+    )
+    product_summary = {
+        product.id: {
+            "product_id": product.id,
+            "product_name": product.name,
+            "unit": product.unit,
+            "imported": 0,
+            "exported": 0,
+            "damaged": 0,
+            "transferred": 0,
+        }
+        for product in products
+    }
+
+    import_rows = (
+        db.session.query(
+            ImportInvoiceItem.product_id,
+            func.sum(ImportInvoiceItem.quantity).label("quantity"),
+            func.sum(ImportInvoiceItem.quantity * ImportInvoiceItem.unit_price).label("amount"),
+        )
+        .join(ImportInvoice, ImportInvoice.id == ImportInvoiceItem.import_invoice_id)
+        .filter(*import_filters)
+        .group_by(ImportInvoiceItem.product_id).all()
+    )
+    sale_rows = (
+        db.session.query(
+            SalesInvoiceItem.product_id,
+            func.sum(SalesInvoiceItem.quantity).label("quantity"),
+            func.sum(SalesInvoiceItem.quantity * SalesInvoiceItem.unit_price).label("amount"),
+        )
+        .join(SalesInvoice, SalesInvoice.id == SalesInvoiceItem.sales_invoice_id)
+        .filter(*sale_filters)
+        .group_by(SalesInvoiceItem.product_id).all()
+    )
+    damage_rows = (
+        db.session.query(
+            DamageReportItem.product_id,
+            func.sum(DamageReportItem.quantity).label("quantity"),
+            func.sum(case((
+                Employee.role == EmployeeRole.NHAN_VIEN_BAN_HANG,
+                DamageReportItem.quantity,
+            ), else_=0)).label("field_quantity"),
+        )
+        .join(DamageReport, DamageReport.id == DamageReportItem.damage_report_id)
+        .join(Employee, Employee.id == DamageReport.reported_by_employee_id)
+        .filter(*damage_filters)
+        .group_by(DamageReportItem.product_id).all()
+    )
+    transfer_rows = (
+        db.session.query(
+            StockTransferItem.product_id,
+            func.sum(StockTransferItem.quantity).label("quantity"),
+        )
+        .join(StockTransfer, StockTransfer.id == StockTransferItem.stock_transfer_id)
+        .filter(*transfer_filters)
+        .group_by(StockTransferItem.product_id).all()
+    )
+
+    totals = {**counts,
+              "total_import_quantity": 0, "total_import_amount": 0,
+              "total_export_quantity": 0, "total_export_amount": 0,
+              "total_damage_quantity": 0, "total_transferred_quantity": 0}
+    field_damaged_by_product = {}
+    for row in import_rows:
+        product_summary[row.product_id]["imported"] = int(row.quantity)
+        totals["total_import_quantity"] += int(row.quantity)
+        totals["total_import_amount"] += float(row.amount)
+    for row in sale_rows:
+        product_summary[row.product_id]["exported"] = int(row.quantity)
+        totals["total_export_quantity"] += int(row.quantity)
+        totals["total_export_amount"] += float(row.amount)
+    for row in damage_rows:
+        product_summary[row.product_id]["damaged"] = int(row.quantity)
+        field_damaged_by_product[row.product_id] = int(row.field_quantity or 0)
+        totals["total_damage_quantity"] += int(row.quantity)
+    for row in transfer_rows:
+        product_summary[row.product_id]["transferred"] = int(row.quantity)
+        totals["total_transferred_quantity"] += int(row.quantity)
+
+    inventory_by_product = calculate_inventory_for_products(
+        list(product_summary), warehouse_id=warehouse_id,
+    )
+    by_product = []
+    for product_id, data in product_summary.items():
+        inventory = inventory_by_product.get(product_id, {})
+        data["net_change"] = (
+            data["imported"] - data["exported"] - data["damaged"]
+            - data["transferred"] + field_damaged_by_product.get(product_id, 0)
+        )
+        data["current_stock"] = inventory.get("available_stock", 0)
+        data["total_imported"] = inventory.get("total_imported", 0)
+        by_product.append(data)
+    by_product.sort(key=lambda row: row["product_name"])
+    return {"by_product": by_product, "totals": totals}

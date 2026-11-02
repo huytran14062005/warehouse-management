@@ -24,6 +24,7 @@ import Register from "./screens/User/Register";
 import EmployeeAccounts from "./screens/EmployeeAccounts";
 import PendingRequests from "./screens/PendingRequests";
 import Promotions from "./screens/Promotions";
+import { connectSalesInvoiceRealtime } from "./utils/salesInvoiceRealtime";
 import {
   authApis,
   endpoints,
@@ -101,6 +102,11 @@ function AppFrame() {
   useEffect(() => {
     currentUserRef.current = currentUser;
   }, [currentUser]);
+
+  useEffect(() => {
+    if (!authReady || !currentUser?.id || !localStorage.getItem("token")) return undefined;
+    return connectSalesInvoiceRealtime();
+  }, [authReady, currentUser?.id]);
 
   useEffect(() => {
     let cancelled = false;

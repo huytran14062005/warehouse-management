@@ -17,6 +17,7 @@ def _invoice_load_options(for_list=False):
         joinedload(SalesInvoice.customer),
         joinedload(SalesInvoice.warehouse),
         joinedload(SalesInvoice.created_by_employee),
+        joinedload(SalesInvoice.current_assignee),
         joinedload(SalesInvoice.sales_area_ref),
     )
     if not for_list:
@@ -172,6 +173,7 @@ def get_sales_invoices_list(
     today=None,
     due_soon_days=7,
     workflow_stage_filter=None,
+    assignee_id=None,
 ):
        
     from web import app
@@ -179,6 +181,8 @@ def get_sales_invoices_list(
     from sqlalchemy import or_
     
     query = SalesInvoice.query.options(*_invoice_load_options(for_list=True))
+    if assignee_id is not None:
+        query = query.filter(SalesInvoice.current_assignee_id == assignee_id)
     
                         
     if status:
@@ -188,6 +192,11 @@ def get_sales_invoices_list(
     if workflow_stage_filter == "chờ kho":
         query = query.filter(SalesInvoice.status == InvoiceStatus.DRAFT,
                              SalesInvoice.warehouse_submitted_at.isnot(None))
+    if workflow_stage_filter == "chờ kế toán":
+        query = query.filter(SalesInvoice.status == InvoiceStatus.DELIVERING,
+                             SalesInvoice.accounting_handoff_at.isnot(None))
+    elif status == InvoiceStatus.DELIVERING:
+        query = query.filter(SalesInvoice.accounting_handoff_at.is_(None))
     if warehouse_id:
         query = query.filter(SalesInvoice.warehouse_id == warehouse_id)
 

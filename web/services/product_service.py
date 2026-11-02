@@ -2,6 +2,7 @@ from decimal import Decimal, InvalidOperation
 from datetime import datetime
 
 from sqlalchemy import func
+from sqlalchemy.orm import joinedload
 
 from web import app, dao, db
 from web.models import Employee, EmployeeRole, Product, ProductRequest, ProductRequestStatus
@@ -203,7 +204,9 @@ def create_product_request_service(employee_id, name, unit, note=""):
 
 
 def get_product_requests_service(status=ProductRequestStatus.PENDING.value):
-    query = ProductRequest.query.order_by(ProductRequest.created_at.desc(), ProductRequest.id.desc())
+    query = ProductRequest.query.options(joinedload(ProductRequest.requested_by_employee)).order_by(
+        ProductRequest.created_at.desc(), ProductRequest.id.desc(),
+    )
     if status:
         query = query.filter(ProductRequest.status == status)
     return query.all()

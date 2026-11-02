@@ -12,7 +12,10 @@ load_dotenv(BASE_DIR / ".env")
 
 class Config:
     APP_ENV = os.getenv("APP_ENV", "development").strip().lower()
-    IS_PRODUCTION = APP_ENV in {"production", "prod"}
+    IS_PRODUCTION = APP_ENV in {"production", "prod"} or any(
+        os.getenv(name, "").strip().lower() == "production"
+        for name in ("VERCEL_ENV", "VERCEL_TARGET_ENV")
+    )
     DB_USER = os.getenv("DB_USER", "root")
     DB_PASSWORD = quote(os.getenv("DB_PASSWORD", ""))
     DB_HOST = os.getenv("DB_HOST", "localhost")
@@ -62,10 +65,7 @@ class Config:
     COMPANY_EMAIL = os.getenv("COMPANY_EMAIL", os.getenv("SMTP_USER", ""))
     OVERDUE_REPORT_RECIPIENTS = tuple(
         email.strip()
-        for email in os.getenv(
-            "OVERDUE_REPORT_RECIPIENTS",
-            "2004laminhtri@gmail.com",
-        ).split(",")
+        for email in os.getenv("OVERDUE_REPORT_RECIPIENTS", "").split(",")
         if email.strip()
     )
     CRON_SECRET = os.getenv("CRON_SECRET", "").strip()

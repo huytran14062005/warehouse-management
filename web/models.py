@@ -490,6 +490,8 @@ class SalesInvoice(BaseModel):
         Index("ix_sales_invoices_status_date", "status", "sold_at"),
         Index("ix_sales_invoices_warehouse_queue", "status", "warehouse_submitted_at"),
         Index("ix_sales_invoices_delivery_queue", "status", "delivered_at"),
+        Index("ix_sales_invoices_status_due_date", "status", "payment_due_date"),
+        Index("ix_sales_invoices_assignee_date", "current_assignee_id", "sold_at", "id"),
         Index(
             "ix_sales_invoices_payment_due",
             "status",
@@ -502,6 +504,11 @@ class SalesInvoice(BaseModel):
     note = Column(Text)
     status = Column(Enum(InvoiceStatus), nullable=False, default=InvoiceStatus.DRAFT)
     warehouse_submitted_at = Column(DateTime, nullable=True)
+    current_assignee_id = Column(Integer, ForeignKey("employees.id", ondelete="RESTRICT"), nullable=True, index=True)
+    assignment_stage = Column(String(20), nullable=True)
+    assigned_at = Column(DateTime, nullable=True)
+    accepted_at = Column(DateTime, nullable=True)
+    accounting_handoff_at = Column(DateTime, nullable=True)
     delivered_at = Column(DateTime, nullable=True)
     delivery_recipient = Column(String(120), nullable=True)
     delivery_note = Column(Text, nullable=True)
@@ -546,6 +553,7 @@ class SalesInvoice(BaseModel):
         lazy=True,
     )
     delivery_employee = relationship("Employee", foreign_keys=[delivery_employee_id], lazy=True)
+    current_assignee = relationship("Employee", foreign_keys=[current_assignee_id], lazy=True)
     payments = relationship("CustomerPayment", backref="sales_invoice", lazy=True)
     workflow_events = relationship(
         "SalesInvoiceWorkflowEvent", backref="sales_invoice",
@@ -560,10 +568,12 @@ class SalesInvoiceWorkflowEvent(BaseModel):
 
     sales_invoice_id = Column(Integer, ForeignKey("sales_invoices.id", ondelete="CASCADE"), nullable=False)
     actor_id = Column(Integer, ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False)
+    recipient_id = Column(Integer, ForeignKey("employees.id", ondelete="RESTRICT"), nullable=True)
     action = Column(String(32), nullable=False)
     detail = Column(String(255), nullable=True)
     occurred_at = Column(DateTime, nullable=False, default=datetime.now)
     actor = relationship("Employee", foreign_keys=[actor_id], lazy=True)
+    recipient = relationship("Employee", foreign_keys=[recipient_id], lazy=True)
 
 
 class SalesInvoiceItem(BaseModel):

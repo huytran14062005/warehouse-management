@@ -68,7 +68,7 @@ def get_movements_report_service(from_date_value, to_date_value, warehouse_id_va
         if not warehouse:
             raise NotFoundError("Kho không tồn tại")
     
-    report_data = reports_dao.get_movements_report(
+    report_data = reports_dao.get_movements_report_aggregated(
         from_date=from_date,
         to_date=to_date,
         warehouse_id=warehouse_id

@@ -6,7 +6,7 @@ import re
 
 from openpyxl import Workbook
 from openpyxl.cell import WriteOnlyCell
-from openpyxl.styles import Font, PatternFill
+from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from web.services.exceptions import ValidationError
@@ -36,18 +36,37 @@ def _money_cell(sheet, value):
     return cell
 
 
-def build_company_fund_history_workbook(rows, method=None):
+def _summary_row(sheet, label, amount, background, foreground, size=13):
+    label_cell = _text_cell(sheet, label)
+    value_cell = _money_cell(sheet, amount)
+    for cell in (label_cell, value_cell):
+        cell.font = Font(bold=True, size=size, color=foreground)
+        cell.fill = PatternFill("solid", fgColor=background)
+        cell.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+    sheet.append([label_cell, value_cell])
+
+
+def build_company_fund_history_workbook(rows, method, summary):
     book = Workbook(write_only=True)
     book.properties.title = "Lịch sử thu chi"
     sheet = book.create_sheet("Lịch sử thu chi")
-    sheet.freeze_panes = "A5"
-    for column, width in enumerate((23, 48, 17, 18, 18, 24, 26), start=1):
+    sheet.freeze_panes = "A11"
+    for column, width in enumerate((30, 48, 17, 18, 18, 24, 26), start=1):
         sheet.column_dimensions[get_column_letter(column)].width = width
+    for row, height in ((4, 32), (5, 32), (6, 38), (7, 27)):
+        sheet.row_dimensions[row].height = height
 
     title = _text_cell(sheet, "Lịch sử thu chi")
     title.font = Font(bold=True, size=13)
     sheet.append([title])
     sheet.append([_text_cell(sheet, f"Quỹ: {_METHOD_LABELS.get(method, 'Tất cả')}")])
+    sheet.append([])
+
+    _summary_row(sheet, "TỔNG THU (đ)", summary.get("total_in", 0), "E5F4E9", "17603B")
+    _summary_row(sheet, "TỔNG CHI (đ)", summary.get("total_out", 0), "FFF0E8", "9B3F22")
+    _summary_row(sheet, "CÒN LẠI (đ)", summary.get("remaining", 0), "0B3158", "FFFFFF", size=16)
+    _summary_row(sheet, "Trong đó: số dư ban đầu", summary.get("opening_balance", 0), "F1F5F9", "334155", size=11)
+    sheet.append([_text_cell(sheet, "Tổng thu gồm số dư ban đầu; thu/chi gồm các khoản điều chỉnh.")])
     sheet.append([])
 
     header_cells = []
@@ -58,14 +77,17 @@ def build_company_fund_history_workbook(rows, method=None):
         header_cells.append(cell)
     sheet.append(header_cells)
 
-    for index, entry in enumerate(rows, start=5):
+    for index, entry in enumerate(rows, start=11):
         if index > 1_048_576:
             raise ValidationError("Số giao dịch vượt giới hạn một trang tính Excel")
         occurred_at = WriteOnlyCell(sheet, value=entry.occurred_at)
-        occurred_at.number_format = "dd/mm/yyyy hh:mm:ss"
+        occurred_at.number_format = 'dd/mm/yyyy"   "hh:mm:ss'
+        occurred_at.alignment = Alignment(horizontal="left", indent=1)
+        description = _text_cell(sheet, entry.description)
+        description.alignment = Alignment(horizontal="left", indent=1)
         sheet.append([
             occurred_at,
-            _text_cell(sheet, entry.description),
+            description,
             _text_cell(sheet, _METHOD_LABELS.get(entry.method, entry.method)),
             _money_cell(sheet, entry.amount if entry.direction == "in" else None),
             _money_cell(sheet, entry.amount if entry.direction == "out" else None),

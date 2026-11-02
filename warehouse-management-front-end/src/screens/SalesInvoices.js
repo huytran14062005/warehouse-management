@@ -5,6 +5,7 @@ import { authApis, endpoints } from "../configs/Apis";
 import { getApiError } from "../utils/apiError";
 import useNotificationState from "../utils/useNotificationState";
 import { notifyInventoryChanged } from "../utils/inventoryEvents";
+import { isSalesInvoiceRealtimeConnected } from "../utils/salesInvoiceRealtime";
 import ConfirmDialog from "../components/ConfirmDialog";
 import AutoDismissMessage from "../components/AutoDismissMessage";
 import MoneyInput from "../components/MoneyInput";
@@ -24,6 +25,7 @@ import "../css/SalesInvoices.css";
 const PER_PAGE = 10;
 const DISCOUNT_PER_PAGE = 10;
 const LIVE_REFRESH_INTERVAL_MS = 2000;
+const CONNECTED_POLL_EVERY_TICKS = 5;
 let cachedSalesAreas = null;
 let salesAreasRequest = null;
 
@@ -49,6 +51,7 @@ const STATUS_OPTIONS = [
   { value: "chờ kho", label: "Chờ kho" },
   { value: "đang xử lý", label: "Đang xử lý" },
   { value: "đang giao", label: "Đang giao" },
+  { value: "chờ kế toán", label: "Chờ kế toán" },
   { value: "hoàn thành", label: "Hoàn thành" },
   { value: "đã hủy", label: "Đã hủy" },
 ];
@@ -165,7 +168,7 @@ function getStatusClass(status) {
   if (value === "chờ kho") return "sales-status-processing";
   if (value === "đang xử lý" || value === "processing")
     return "sales-status-processing";
-  if (value === "đang giao" || value === "delivering")
+  if (value === "đang giao" || value === "delivering" || value === "chờ kế toán")
     return "sales-status-delivering";
   if (value === "hoàn thành" || value === "completed")
     return "sales-status-completed";
@@ -183,6 +186,7 @@ export function requiresSalesInvoiceAction(invoice, user) {
   const role = user?.role;
   const ownsInvoice =
     Number(user?.id) === Number(invoice.employee?.id) && user?.id != null;
+  const assigned = Number(user?.id) === Number(invoice.current_assignee?.id) && user?.id != null;
   if (invoice.cancel_requested) return ["kế toán", "quản lý"].includes(role);
   if (
     role === "quản lý" &&
@@ -192,18 +196,22 @@ export function requiresSalesInvoiceAction(invoice, user) {
     return true;
   if (invoice.status === "nháp") {
     if (invoice.warehouse_submitted_at)
-      return ["thủ kho", "quản lý"].includes(role);
+      return assigned && ["thủ kho", "quản lý"].includes(role);
     return role === "quản lý" || (role === "nhân viên bán hàng" && ownsInvoice);
   }
   if (invoice.status === "đang xử lý")
     return invoice.delivery_method === "third_party"
-      ? role === "quản lý"
-      : ["thủ kho", "quản lý"].includes(role);
-  if (invoice.status === "đang giao")
+      ? assigned && role === "quản lý"
+      : assigned && ["thủ kho", "quản lý"].includes(role);
+  if (invoice.status === "đang giao") {
+    if (role === "quản lý" && assigned && invoice.assignment_stage === "delivery" &&
+      (invoice.delivery_method === "third_party" || !invoice.delivery_method)) return true;
     return (
       role === "kế toán" &&
+      assigned && invoice.workflow_stage === "chờ kế toán" &&
       !["chờ duyệt", "từ chối"].includes(invoice.discount?.status)
     );
+  }
   return false;
 }
 
@@ -362,6 +370,9 @@ function DeliveryPlan({
   invoice,
   canManageStatus,
   isManager,
+  canDispatch,
+  deliveryManagers,
+  currentUserId,
   staff,
   staffLoading,
   actionLoading,
@@ -379,6 +390,13 @@ function DeliveryPlan({
   const [fundMethod, setFundMethod] = useState(
     invoice.shipping_fund_method || "",
   );
+  const [deliveryManagerId, setDeliveryManagerId] = useState("");
+  useEffect(() => {
+    if (!deliveryManagerId && deliveryManagers.length) {
+      const preferred = deliveryManagers.find((person) => isManager && Number(person.id) === Number(currentUserId));
+      setDeliveryManagerId(String((preferred || deliveryManagers[0]).id));
+    }
+  }, [deliveryManagerId, deliveryManagers, isManager, currentUserId]);
   useEffect(() => {
     setEditing(!invoice.delivery_method);
     setMethod(invoice.delivery_method || "internal");
@@ -397,9 +415,10 @@ function DeliveryPlan({
     invoice.shipping_fund_method,
   ]);
   const processing = invoice.status === "đang xử lý";
-  if (!processing && !invoice.delivery_method) return null;
+  const repairingLegacy = invoice.status === "đang giao" && !invoice.delivery_method && isManager;
+  if (!processing && !invoice.delivery_method && !repairingLegacy) return null;
   const canEdit =
-    processing &&
+    (processing || repairingLegacy) &&
     canManageStatus &&
     !invoice.cancel_requested;
   const canSave =
@@ -409,7 +428,7 @@ function DeliveryPlan({
           service.trim() &&
           tracking.trim() &&
           Number(fee) >= 500 &&
-          fundMethod,
+          fundMethod && deliveryManagerId,
         );
   const staffOptions = [
     {
@@ -428,7 +447,7 @@ function DeliveryPlan({
       <div className="sales-delivery-plan-head">
         <div>
           <h3>Phương án giao hàng</h3>
-          <p>Chọn cách giao trước khi chuyển đơn sang Đang giao.</p>
+          <p>{repairingLegacy ? "Đơn cũ chưa có phương án giao. Chọn lại để tiếp tục xác nhận giao hàng." : "Chọn cách giao trước khi chuyển đơn sang Đang giao."}</p>
         </div>
         {canEdit && invoice.delivery_method && !editing && (
           <button
@@ -457,6 +476,7 @@ function DeliveryPlan({
                     tracking_number: tracking.trim(),
                     shipping_fee: Number(fee),
                     shipping_fund_method: fundMethod,
+                    delivery_manager_id: Number(deliveryManagerId),
                   },
             );
           }}
@@ -542,6 +562,17 @@ function DeliveryPlan({
                   onChange={setFundMethod}
                 />
               </div>
+              <div className="sales-delivery-field">
+                <span>Quản lý nhận bàn giao</span>
+                <SharedSearchableDropdown
+                  value={deliveryManagerId}
+                  onChange={setDeliveryManagerId}
+                  options={[{ value: "", label: "Chọn quản lý" }, ...deliveryManagers.map((person) => ({
+                    value: String(person.id), label: person.full_name,
+                  }))]}
+                  placeholder="Chọn quản lý" ariaLabel="Quản lý nhận đơn giao ngoài"
+                />
+              </div>
             </div>
           )}
           <p className="sales-delivery-hint">
@@ -606,7 +637,7 @@ function DeliveryPlan({
           )}
           {processing &&
             invoice.delivery_method === "third_party" &&
-            isManager &&
+            isManager && canDispatch &&
             !invoice.cancel_requested && (
               <div className="sales-delivery-actions">
                 <button
@@ -640,6 +671,7 @@ export function SalesInvoiceDetail({
   canRecordPayment,
   canSubmitWarehouse,
   isManager,
+  currentUserId,
   deliveryStaff,
   deliveryStaffLoading,
   actionLoading,
@@ -654,11 +686,76 @@ export function SalesInvoiceDetail({
   onUpdateDueDate,
   onRecordPayment,
   onSubmitWarehouse,
+  onAcceptAssignment,
+  onReassign,
+  onConfirmDelivered,
   onPrepareDelivery,
   onLoadMorePayments,
   paymentHistoryLoading,
 }) {
   const [completionPayment, setCompletionPayment] = useState("");
+  const [warehouseCandidates, setWarehouseCandidates] = useState([]);
+  const [accountingCandidates, setAccountingCandidates] = useState([]);
+  const [warehouseRecipientId, setWarehouseRecipientId] = useState("");
+  const [accountantId, setAccountantId] = useState("");
+  const [deliveryAssigneeId, setDeliveryAssigneeId] = useState("");
+  const [deliveryRecipient, setDeliveryRecipient] = useState("");
+  const [deliveryNote, setDeliveryNote] = useState("");
+  const assignedToMe = Number(currentUserId) === Number(invoice.current_assignee?.id) && currentUserId != null;
+  const activeAssignmentStage = invoice.assignment_stage ||
+    (invoice.workflow_stage === "chờ kho" ? "warehouse" :
+      invoice.workflow_stage === "chờ kế toán" ? "accounting" :
+      ["đang xử lý", "đang giao"].includes(invoice.status)
+        ? (invoice.delivery_method ? "delivery" : "warehouse") : null);
+  useEffect(() => {
+    if (!invoice.current_assignee?.id) return;
+    const id = String(invoice.current_assignee.id);
+    if (activeAssignmentStage === "warehouse") setWarehouseRecipientId(id);
+    if (activeAssignmentStage === "delivery") setDeliveryAssigneeId(id);
+    if (activeAssignmentStage === "accounting") setAccountantId(id);
+  }, [invoice.id, invoice.current_assignee?.id, activeAssignmentStage]);
+  useEffect(() => {
+    let active = true;
+    const params = { warehouse_id: invoice.warehouse_id };
+    if (canSubmitWarehouse || canManageStatus || isManager) {
+      authApis().get(endpoints.salesInvoiceAssignees, { params: { ...params, stage: "warehouse" } })
+        .then(({ data }) => { if (active) setWarehouseCandidates(data.employees || []); })
+        .catch(() => { if (active) setWarehouseCandidates([]); });
+    }
+    if (isManager) {
+      authApis().get(endpoints.salesInvoiceAssignees, { params: { ...params, stage: "accounting" } })
+        .then(({ data }) => { if (active) setAccountingCandidates(data.employees || []); })
+        .catch(() => { if (active) setAccountingCandidates([]); });
+    }
+    return () => { active = false; };
+  }, [invoice.id, invoice.warehouse_id, canSubmitWarehouse, canManageStatus, isManager]);
+  useEffect(() => {
+    if (warehouseCandidates.length && !warehouseRecipientId) setWarehouseRecipientId(String(
+      activeAssignmentStage === "warehouse" && invoice.current_assignee?.id
+        ? invoice.current_assignee.id : warehouseCandidates[0].id,
+    ));
+  }, [warehouseCandidates, warehouseRecipientId, activeAssignmentStage, invoice.current_assignee?.id]);
+  useEffect(() => {
+    if (accountingCandidates.length && !accountantId) setAccountantId(String(
+      activeAssignmentStage === "accounting" && invoice.current_assignee?.id
+        ? invoice.current_assignee.id : accountingCandidates[0].id,
+    ));
+  }, [accountingCandidates, accountantId, activeAssignmentStage, invoice.current_assignee?.id]);
+  const deliveryCandidates = invoice.delivery_method === "internal"
+    ? deliveryStaff : warehouseCandidates.filter((person) => person.role === "quản lý");
+  useEffect(() => {
+    if (deliveryCandidates.length && !deliveryAssigneeId) setDeliveryAssigneeId(String(
+      activeAssignmentStage === "delivery" && invoice.current_assignee?.id
+        ? invoice.current_assignee.id : deliveryCandidates[0].id,
+    ));
+  }, [deliveryCandidates, deliveryAssigneeId, activeAssignmentStage, invoice.current_assignee?.id]);
+  const assigneeOptions = (staff, label) => [
+    { value: "", label },
+    ...staff.map((person) => ({
+      value: String(person.id),
+      label: person.active_count == null ? person.full_name : `${person.full_name} · ${person.active_count} đơn đang phụ trách`,
+    })),
+  ];
   const [completionPaymentMethod, setCompletionPaymentMethod] = useState("");
   const [paymentDueDate, setPaymentDueDate] = useState(
     invoice.payment_due_date || "",
@@ -677,7 +774,7 @@ export function SalesInvoiceDetail({
   const discountPending = invoice.discount?.status === "chờ duyệt";
   const awaitingAccounting =
     canComplete &&
-    invoice.status === "đang giao" &&
+    invoice.workflow_stage === "chờ kế toán" && assignedToMe && Boolean(invoice.accepted_at) &&
     !invoice.cancel_requested &&
     !["chờ duyệt", "từ chối"].includes(invoice.discount?.status);
   const showPaymentDetails =
@@ -730,6 +827,36 @@ export function SalesInvoiceDetail({
         </div>
         <div className="sales-detail-body">
           <AutoDismissMessage message={actionError} className="sales-alert" />
+          {invoice.current_assignee && !completed && !cancelled && (
+            <section className="sales-assignment-panel">
+              <strong>Người phụ trách: {invoice.current_assignee.full_name}</strong>
+              <span>{invoice.accepted_at ? "Đã nhận việc" : "Chờ nhận việc"}</span>
+            </section>
+          )}
+          {assignedToMe && !invoice.accepted_at && !invoice.cancel_requested &&
+            (["warehouse", "accounting"].includes(invoice.assignment_stage) ||
+              (isManager && invoice.assignment_stage === "delivery")) && (
+              <div className="sales-detail-actions">
+                <button type="button" onClick={onAcceptAssignment} disabled={actionLoading}>Nhận xử lý đơn này</button>
+              </div>
+            )}
+          {isManager && activeAssignmentStage && !completed && !cancelled && !invoice.cancel_requested && (
+            <section className="sales-assignment-panel">
+              <label>Đổi người phụ trách</label>
+              <SharedSearchableDropdown
+                value={activeAssignmentStage === "warehouse" ? warehouseRecipientId : activeAssignmentStage === "delivery" ? deliveryAssigneeId : accountantId}
+                onChange={activeAssignmentStage === "warehouse" ? setWarehouseRecipientId : activeAssignmentStage === "delivery" ? setDeliveryAssigneeId : setAccountantId}
+                options={assigneeOptions(activeAssignmentStage === "warehouse" ? warehouseCandidates : activeAssignmentStage === "delivery" ? deliveryCandidates : accountingCandidates, "Chọn người nhận")}
+                placeholder="Chọn người nhận"
+                ariaLabel="Đổi người phụ trách đơn"
+              />
+              <button type="button" disabled={actionLoading || !(activeAssignmentStage === "warehouse" ? warehouseRecipientId : activeAssignmentStage === "delivery" ? deliveryAssigneeId : accountantId) ||
+                Number(activeAssignmentStage === "warehouse" ? warehouseRecipientId : activeAssignmentStage === "delivery" ? deliveryAssigneeId : accountantId) === Number(invoice.current_assignee?.id)}
+                onClick={() => onReassign(activeAssignmentStage === "warehouse" ? warehouseRecipientId : activeAssignmentStage === "delivery" ? deliveryAssigneeId : accountantId)}>
+                Lưu phân công
+              </button>
+            </section>
+          )}
           <div className="sales-detail-overview">
             <section className="sales-detail-info-section">
               <h3>Thông tin đơn</h3>
@@ -1039,9 +1166,11 @@ export function SalesInvoiceDetail({
                           warehouse_processing: "Kho bắt đầu xử lý",
                           delivery_prepared: "Đã chọn phương án giao hàng",
                           dispatched: "Đã bắt đầu giao hàng",
-                          delivery_confirmed: "Đã xác nhận giao hàng",
-                          completed:
-                            "Kế toán xác nhận giao hàng và hoàn thành đơn",
+                          delivered_to_accounting: "Đã giao hàng, bàn giao kế toán",
+                          legacy_delivery_repaired: "Đã khôi phục phương án giao cho đơn cũ",
+                          assigned: "Đã phân công người xử lý",
+                          accepted: "Đã nhận xử lý",
+                          completed: "Kế toán hoàn thành đơn",
                           cancelled: "Đã hủy đơn",
                         }[event.action] || event.action}
                       </span>
@@ -1051,7 +1180,9 @@ export function SalesInvoiceDetail({
                     </div>
                     <small>
                       {event.actor || "Nhân viên"}
-                      {event.detail ? ` · ${event.detail}` : ""}
+                      {event.action === "assigned" && event.recipient
+                        ? ` → ${event.recipient}`
+                        : event.detail ? ` · ${event.detail}` : ""}
                     </small>
                   </li>
                 ))}
@@ -1116,16 +1247,26 @@ export function SalesInvoiceDetail({
             invoice.status === "nháp" &&
             !invoice.warehouse_submitted_at && (
               <div className="sales-detail-actions">
+                <div className="sales-assignment-picker">
+                  <label>Thủ kho nhận đơn</label>
+                  <SharedSearchableDropdown
+                    value={warehouseRecipientId}
+                    onChange={setWarehouseRecipientId}
+                    options={assigneeOptions(warehouseCandidates, "Chọn thủ kho")}
+                    placeholder="Chọn thủ kho"
+                    ariaLabel="Thủ kho nhận đơn"
+                  />
+                </div>
                 <button
                   type="button"
-                  onClick={onSubmitWarehouse}
-                  disabled={actionLoading}
+                  onClick={() => onSubmitWarehouse(warehouseRecipientId)}
+                  disabled={actionLoading || !warehouseRecipientId}
                 >
                   Gửi đơn cho kho
                 </button>
               </div>
             )}
-          {canManageStatus &&
+          {canManageStatus && assignedToMe && Boolean(invoice.accepted_at) && invoice.assignment_stage === "warehouse" &&
             invoice.status === "nháp" &&
             Boolean(invoice.warehouse_submitted_at) && (
               <div className="sales-detail-actions">
@@ -1140,19 +1281,40 @@ export function SalesInvoiceDetail({
             )}
           <DeliveryPlan
             invoice={invoice}
-            canManageStatus={canManageStatus}
+            canManageStatus={(canManageStatus && assignedToMe && Boolean(invoice.accepted_at) && invoice.assignment_stage === "warehouse") || (isManager && invoice.status === "đang xử lý" && invoice.assignment_stage === "delivery") || (isManager && invoice.status === "đang giao" && !invoice.delivery_method)}
             isManager={isManager}
+            canDispatch={isManager && assignedToMe && Boolean(invoice.accepted_at) && invoice.assignment_stage === "delivery"}
+            deliveryManagers={warehouseCandidates.filter((person) => person.role === "quản lý")}
+            currentUserId={currentUserId}
             staff={deliveryStaff}
             staffLoading={deliveryStaffLoading}
             actionLoading={actionLoading}
             onPrepare={onPrepareDelivery}
             onDispatch={() => onAdvanceStatus("đang giao")}
           />
+          {isManager && assignedToMe && invoice.assignment_stage === "delivery" &&
+            Boolean(invoice.accepted_at) && invoice.delivery_method === "third_party" && invoice.status === "đang giao" &&
+            !invoice.accounting_handoff_at && !invoice.cancel_requested && (
+              <section className="sales-assignment-panel">
+                <h3>Xác nhận đối tác đã giao hàng</h3>
+                <input value={deliveryRecipient} onChange={(event) => setDeliveryRecipient(event.target.value)}
+                  placeholder="Tên người nhận hàng" maxLength={120} />
+                <input value={deliveryNote} onChange={(event) => setDeliveryNote(event.target.value)}
+                  placeholder="Ghi chú giao hàng (nếu có)" maxLength={1000} />
+                <SharedSearchableDropdown value={accountantId} onChange={setAccountantId}
+                  options={assigneeOptions(accountingCandidates, "Chọn kế toán")}
+                  placeholder="Chọn kế toán tiếp nhận" ariaLabel="Kế toán tiếp nhận" />
+                <button type="button" disabled={actionLoading || !deliveryRecipient.trim() || !accountantId}
+                  onClick={() => onConfirmDelivered({ recipient: deliveryRecipient.trim(), note: deliveryNote.trim(), accountant_id: Number(accountantId) })}>
+                  Xác nhận đã giao và bàn giao kế toán
+                </button>
+              </section>
+            )}
           {invoice.delivered_at && (
             <p className="sales-delivery-proof">
               {invoice.delivery_recipient
                 ? `Đã giao cho ${invoice.delivery_recipient} lúc ${formatDateTime(invoice.delivered_at)}`
-                : `Kế toán xác nhận giao hàng lúc ${formatDateTime(invoice.delivered_at)}`}
+                : `Đã giao lúc ${formatDateTime(invoice.delivered_at)}`}
               {invoice.delivery_note ? ` · ${invoice.delivery_note}` : ""}
             </p>
           )}
@@ -2604,6 +2766,7 @@ function SalesInvoices() {
   const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
   const [status, setStatus] = useState("");
+  const [mineOnly, setMineOnly] = useState(false);
   const [cancelRequestFilter, setCancelRequestFilter] = useState(
     initialCancelRequestFilter,
   );
@@ -2680,7 +2843,9 @@ function SalesInvoices() {
   const canManageDueDate = canApproveCancel;
 
   useEffect(() => {
-    if (!canManageStatus || selectedInvoice?.status !== "đang xử lý") return;
+    if (!canManageStatus || !(selectedInvoice?.status === "đang xử lý" ||
+      (currentUser.role === "quản lý" && selectedInvoice?.status === "đang giao" &&
+        ["internal", null, undefined].includes(selectedInvoice?.delivery_method)))) return;
     let active = true;
     setDeliveryStaffLoading(true);
     authApis()
@@ -2701,6 +2866,8 @@ function SalesInvoices() {
     canManageStatus,
     selectedInvoice?.id,
     selectedInvoice?.status,
+    selectedInvoice?.delivery_method,
+    currentUser.role,
     setActionError,
   ]);
 
@@ -2778,12 +2945,13 @@ function SalesInvoices() {
             per_page: PER_PAGE,
             keyword: keyword || undefined,
             status: status || undefined,
+            mine: mineOnly ? 1 : undefined,
             from_date: fromDate || undefined,
             to_date: toDate || undefined,
             cancel_requested:
               cancelRequestFilter === "pending" ? "true" : undefined,
             debt_status: debtStatus || undefined,
-            fresh: 1,
+            fresh: force ? 1 : undefined,
           },
         });
         if (requestId !== invoiceRequestIdRef.current) return;
@@ -2807,6 +2975,7 @@ function SalesInvoices() {
       debtStatus,
       fromDate,
       keyword,
+      mineOnly,
       navigate,
       page,
       status,
@@ -2819,9 +2988,28 @@ function SalesInvoices() {
   }, [fetchInvoices]);
 
   useEffect(() => {
-    let refreshing = false;
     const refresh = async () => {
+      if (actionLoading) return;
+      fetchInvoices(true, true);
+      fetchStatusBoard(true);
+      if (selectedInvoice?.id) {
+        try {
+          const response = await authApis().get(endpoints.salesInvoiceDetail(selectedInvoice.id));
+          setSelectedInvoice((current) => current?.id === selectedInvoice.id ? response.data : current);
+        } catch (_) { /* The list refresh still reflects the committed change. */ }
+      }
+    };
+    window.addEventListener("sales-invoices:realtime-refresh", refresh);
+    return () => window.removeEventListener("sales-invoices:realtime-refresh", refresh);
+  }, [actionLoading, fetchInvoices, fetchStatusBoard, selectedInvoice?.id]);
+
+  useEffect(() => {
+    let refreshing = false;
+    let ticks = 0;
+    const refresh = async (force = false) => {
       if (document.visibilityState !== "visible" || refreshing || showEditor || actionLoading) return;
+      ticks += 1;
+      if (!force && isSalesInvoiceRealtimeConnected() && ticks % CONNECTED_POLL_EVERY_TICKS !== 0) return;
       refreshing = true;
       try {
         await Promise.all([fetchInvoices(true), fetchStatusBoard()]);
@@ -2829,11 +3017,12 @@ function SalesInvoices() {
         refreshing = false;
       }
     };
-    const timer = window.setInterval(refresh, LIVE_REFRESH_INTERVAL_MS);
-    document.addEventListener("visibilitychange", refresh);
+    const timer = window.setInterval(() => refresh(), LIVE_REFRESH_INTERVAL_MS);
+    const onVisibilityChange = () => refresh(true);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", refresh);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [actionLoading, fetchInvoices, fetchStatusBoard, showEditor]);
 
@@ -2842,8 +3031,11 @@ function SalesInvoices() {
     if (!invoiceId || detailLoading || showEditor || actionLoading || confirmAction) return undefined;
     let active = true;
     let refreshing = false;
-    const refreshDetail = async () => {
+    let ticks = 0;
+    const refreshDetail = async (force = false) => {
       if (!active || document.visibilityState !== "visible" || refreshing) return;
+      ticks += 1;
+      if (!force && isSalesInvoiceRealtimeConnected() && ticks % CONNECTED_POLL_EVERY_TICKS !== 0) return;
       refreshing = true;
       try {
         const response = await authApis().get(endpoints.salesInvoiceDetail(invoiceId));
@@ -2856,12 +3048,13 @@ function SalesInvoices() {
         refreshing = false;
       }
     };
-    const timer = window.setInterval(refreshDetail, LIVE_REFRESH_INTERVAL_MS);
-    document.addEventListener("visibilitychange", refreshDetail);
+    const timer = window.setInterval(() => refreshDetail(), LIVE_REFRESH_INTERVAL_MS);
+    const onVisibilityChange = () => refreshDetail(true);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       active = false;
       window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", refreshDetail);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [actionLoading, confirmAction, detailLoading, selectedInvoice?.id, showEditor]);
 
@@ -2986,6 +3179,10 @@ function SalesInvoices() {
             workflow_stage: nextStage,
             cancel_requested: invoice.cancel_requested,
             warehouse_submitted_at: invoice.warehouse_submitted_at,
+            current_assignee: invoice.current_assignee,
+            assignment_stage: invoice.assignment_stage,
+            accepted_at: invoice.accepted_at,
+            accounting_handoff_at: invoice.accounting_handoff_at,
           }
         : row,
     ));
@@ -3027,14 +3224,33 @@ function SalesInvoices() {
     }
   };
 
-  const submitInvoiceToWarehouse = async () => {
+  const submitInvoiceToWarehouse = async (recipientId) => {
     if (!selectedInvoice) return;
     try {
       setActionLoading(true);
       setActionError("");
       const response = await authApis().post(
         endpoints.submitSalesInvoiceToWarehouse(selectedInvoice.id),
+        { recipient_id: Number(recipientId) },
       );
+      setSelectedInvoice(response.data?.invoice || selectedInvoice);
+      showUpdatedInvoiceInList(response.data?.invoice, selectedInvoice.workflow_stage || selectedInvoice.status);
+      fetchInvoices(true, true);
+      fetchStatusBoard(true);
+      notifySalesActionCountChanged();
+    } catch (requestError) {
+      setActionError(getApiError(requestError));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const runAssignmentAction = async (method, endpoint, data) => {
+    if (!selectedInvoice) return;
+    try {
+      setActionLoading(true);
+      setActionError("");
+      const response = await authApis()[method](endpoint(selectedInvoice.id), data);
       setSelectedInvoice(response.data?.invoice || selectedInvoice);
       showUpdatedInvoiceInList(response.data?.invoice, selectedInvoice.workflow_stage || selectedInvoice.status);
       fetchInvoices(true, true);
@@ -3421,6 +3637,12 @@ function SalesInvoices() {
             placeholder="Tìm theo mã đơn, tên hoặc số điện thoại khách hàng"
             aria-label="Tìm kiếm đơn bán hàng"
           />
+          {["thủ kho", "kế toán", "quản lý"].includes(currentUser.role) && (
+            <label className="sales-mine-filter">
+              <input type="checkbox" checked={mineOnly} onChange={(event) => { setPage(1); setMineOnly(event.target.checked); }} />
+              Việc của tôi
+            </label>
+          )}
           <div className="sales-status-dropdown">
             <SharedSearchableDropdown
               value={status}
@@ -3658,6 +3880,7 @@ function SalesInvoices() {
             canCancelDirect={canCancelDirect}
             canManageStatus={canManageStatus}
             canComplete={canCompleteSales}
+            currentUserId={currentUser.id}
             canRecordPayment={canRecordPayment}
             canSubmitWarehouse={
               canSubmitWarehouse &&
@@ -3690,6 +3913,9 @@ function SalesInvoices() {
             onLoadMorePayments={loadMoreInvoicePayments}
             paymentHistoryLoading={paymentHistoryLoading}
             onSubmitWarehouse={submitInvoiceToWarehouse}
+            onAcceptAssignment={() => runAssignmentAction("post", endpoints.acceptSalesInvoice)}
+            onReassign={(recipientId) => runAssignmentAction("put", endpoints.reassignSalesInvoice, { recipient_id: Number(recipientId) })}
+            onConfirmDelivered={(data) => runAssignmentAction("post", endpoints.deliveredSalesInvoice, data)}
             onPrepareDelivery={prepareInvoiceDelivery}
             onUpdateDueDate={updatePaymentDueDate}
             onApproveCancel={(approved) =>
