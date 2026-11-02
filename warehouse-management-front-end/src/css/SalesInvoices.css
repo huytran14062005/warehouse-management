@@ -98,7 +98,7 @@
 .sales-delivery-choice input { accent-color: #12385f; }
 .sales-delivery-fields, .sales-delivery-summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .sales-delivery-fields label, .sales-delivery-field { display: flex; flex-direction: column; gap: 7px; color: #52657a; font-size: 13px; font-weight: 600; }
-.sales-delivery-fields input { box-sizing: border-box; width: 100%; min-width: 0; padding: 11px 12px; border: 1px solid #cbd7e2; border-radius: 6px; font: inherit; background: #fff; }
+.sales-delivery-fields > label > input { box-sizing: border-box; width: 100%; min-width: 0; padding: 11px 12px; border: 1px solid #cbd7e2; border-radius: 6px; font: inherit; background: #fff; }
 .sales-delivery-fields label:has(.money-input) .money-input input { width: 100%; }
 .sales-delivery-hint { margin-top: 14px; }
 .sales-delivery-summary-grid { margin-top: 16px; }

@@ -625,12 +625,7 @@ function Products() {
         className="products-validation-warning"
       />
       <AutoDismissMessage message={error} className="products-alert" />
-      <p className="products-stock-note">
-        Đã cấp đi là số hàng nhân viên còn giữ. Khi nhân viên bán hàng đi tỉnh,
-        số lượng bán chuyển từ “Đã cấp đi” sang “Đã bán”; tồn kho trong kho
-        không bị trừ lần nữa. Tồn kho hiện tại = đã nhập − đã bán − đã hư − đã
-        cấp đi.
-      </p>
+
       {lowStockPercentage != null && (
         <p className="products-stock-note">
           Sắp hết hàng: tồn kho còn lại không quá {lowStockPercentage}% tổng số

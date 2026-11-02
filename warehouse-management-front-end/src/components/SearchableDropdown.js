@@ -12,6 +12,7 @@ function SearchableDropdown({
   options,
   placeholder,
   onChange,
+  onOpen,
   ariaLabel,
   searchValue,
   onSearchChange,
@@ -73,15 +74,17 @@ function SearchableDropdown({
     // Selecting the current label lets the user start a new search immediately.
     event.currentTarget.select();
     if (!controlledSearch) setLocalSearch("");
+    if (!open) onOpen?.();
     setOpen(true);
   };
 
   const handleToggle = () => {
     if (disabled) return;
-    setOpen((current) => {
-      if (!current && !controlledSearch) setLocalSearch("");
-      return !current;
-    });
+    if (!open) {
+      if (!controlledSearch) setLocalSearch("");
+      onOpen?.();
+    }
+    setOpen((current) => !current);
   };
 
   const handleOptionChange = (option) => {

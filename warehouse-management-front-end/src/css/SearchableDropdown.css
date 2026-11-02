@@ -2,6 +2,7 @@
 .searchable-dropdown-trigger { box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 40px; padding: 0 6px 0 10px; border: 1px solid #cbd7e2; border-radius: 5px; background: #fff; }
 .searchable-dropdown-trigger:focus-within, .searchable-dropdown-trigger[aria-expanded="true"] { border-color: #0b3158; box-shadow: 0 0 0 2px rgba(11,49,88,.1); }
 .searchable-dropdown-input { box-sizing: border-box; flex: 1; width: auto; min-width: 0; min-height: 38px; margin: 0; padding: 8px 0; color: #1b2d40; border: 0; border-radius: 0; outline: none; background: transparent; font: inherit; font-size: 13px; }
+.searchable-dropdown .searchable-dropdown-input { box-sizing: border-box; min-height: 38px; margin: 0; padding: 8px 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 .searchable-dropdown-input:focus { border: 0; outline: none; box-shadow: none; }
 .searchable-dropdown-input::-webkit-search-cancel-button { cursor: pointer; }
 .searchable-dropdown-arrow-button { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; color: #1b2d40; border: 0; background: transparent; cursor: pointer; }

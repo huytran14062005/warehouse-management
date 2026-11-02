@@ -1350,8 +1350,6 @@ def prepare_sales_invoice_delivery_service(invoice_id, employee_id, data):
     ensure_warehouse_access(employee_id, invoice.warehouse_id)
     if invoice.status != InvoiceStatus.PROCESSING or invoice.cancel_requested:
         raise ValidationError("Chỉ được chọn phương án giao cho đơn đang xử lý và không chờ hủy")
-    if invoice.delivery_method == "third_party" and actor.role != EmployeeRole.QUAN_LY:
-        raise ForbiddenError("Chỉ quản lý được thay đổi phương án giao qua dịch vụ bên ngoài")
     method = str(data.get("delivery_method") or "").strip()
     if method not in {"internal", "third_party"}:
         raise ValidationError("Vui lòng chọn nhân viên công ty hoặc dịch vụ giao hàng")
@@ -1368,8 +1366,6 @@ def prepare_sales_invoice_delivery_service(invoice_id, employee_id, data):
         invoice.shipping_fund_method = None
         detail = f"Nhân viên công ty: {courier.full_name}"
     else:
-        if actor.role != EmployeeRole.QUAN_LY:
-            raise ForbiddenError("Chỉ quản lý được duyệt phí giao hàng qua dịch vụ bên ngoài")
         service = require_text(data.get("delivery_service"), "Dịch vụ giao hàng", max_length=120)
         tracking = require_text(data.get("tracking_number"), "Mã vận đơn", max_length=120)
         fee = validate_money_amount(data.get("shipping_fee"), "Phí vận chuyển", allow_zero=False)

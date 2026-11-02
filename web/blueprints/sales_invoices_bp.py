@@ -132,6 +132,9 @@ def get_sales_invoices_list():
             'current_page': page,
         }
 
+    if request.args.get('fresh') == '1':
+        return jsonify(load()), 200
+
     return jsonify(cached_query(
         'sales-invoices-list',
         {'employee_id': request.employee_id, 'role': request.employee_role,

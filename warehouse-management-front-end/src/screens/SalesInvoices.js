@@ -23,6 +23,7 @@ import "../css/SalesInvoices.css";
 
 const PER_PAGE = 10;
 const DISCOUNT_PER_PAGE = 10;
+const LIVE_REFRESH_INTERVAL_MS = 2000;
 let cachedSalesAreas = null;
 let salesAreasRequest = null;
 
@@ -58,6 +59,18 @@ const DEBT_STATUS_OPTIONS = [
   { value: "due_today", label: "Đến hạn hôm nay" },
   { value: "due_soon", label: "Sắp đến hạn (7 ngày)" },
 ];
+
+function getRandomItems(items, count = 6) {
+  const shuffled = [...items];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[randomIndex]] = [
+      shuffled[randomIndex],
+      shuffled[index],
+    ];
+  }
+  return shuffled.slice(0, count);
+}
 
 function formatCurrency(value) {
   return new Intl.NumberFormat("vi-VN", {
@@ -116,24 +129,32 @@ export function SalesInvoiceDueCell({ invoice }) {
   if (isCancelledStatus(invoice.status)) {
     return <span className="sales-due-empty">—</span>;
   }
-  if (isCompletedStatus(invoice.status) && Number(invoice.remaining_amount || 0) <= 0) {
+  if (
+    isCompletedStatus(invoice.status) &&
+    Number(invoice.remaining_amount || 0) <= 0
+  ) {
     return <span className="sales-due-empty">Đã thanh toán</span>;
   }
   if (!invoice.payment_due_date) {
-    return <span className="sales-due-empty">{isCompletedStatus(invoice.status) ? "Chưa đặt hạn" : "—"}</span>;
+    return (
+      <span className="sales-due-empty">
+        {isCompletedStatus(invoice.status) ? "Chưa đặt hạn" : "—"}
+      </span>
+    );
   }
   return (
     <div className="sales-due-cell">
       <span>{formatDate(invoice.payment_due_date)}</span>
-      {isCompletedStatus(invoice.status) && ["overdue", "due_today", "due_soon", "not_due"].includes(
-        invoice.payment_due_status,
-      ) && (
-        <span
-          className={`sales-due-badge ${getPaymentDueUrgencyClass(invoice)}`}
-        >
-          {getPaymentDueLabel(invoice)}
-        </span>
-      )}
+      {isCompletedStatus(invoice.status) &&
+        ["overdue", "due_today", "due_soon", "not_due"].includes(
+          invoice.payment_due_status,
+        ) && (
+          <span
+            className={`sales-due-badge ${getPaymentDueUrgencyClass(invoice)}`}
+          >
+            {getPaymentDueLabel(invoice)}
+          </span>
+        )}
     </div>
   );
 }
@@ -179,8 +200,10 @@ export function requiresSalesInvoiceAction(invoice, user) {
       ? role === "quản lý"
       : ["thủ kho", "quản lý"].includes(role);
   if (invoice.status === "đang giao")
-    return role === "kế toán" &&
-      !["chờ duyệt", "từ chối"].includes(invoice.discount?.status);
+    return (
+      role === "kế toán" &&
+      !["chờ duyệt", "từ chối"].includes(invoice.discount?.status)
+    );
   return false;
 }
 
@@ -335,14 +358,27 @@ function SalesPaymentFields({
   );
 }
 
-function DeliveryPlan({ invoice, canManageStatus, isManager, staff, staffLoading, actionLoading, onPrepare, onDispatch }) {
+function DeliveryPlan({
+  invoice,
+  canManageStatus,
+  isManager,
+  staff,
+  staffLoading,
+  actionLoading,
+  onPrepare,
+  onDispatch,
+}) {
   const [editing, setEditing] = useState(!invoice.delivery_method);
   const [method, setMethod] = useState(invoice.delivery_method || "internal");
-  const [courierId, setCourierId] = useState(String(invoice.delivery_employee?.id || ""));
+  const [courierId, setCourierId] = useState(
+    String(invoice.delivery_employee?.id || ""),
+  );
   const [service, setService] = useState(invoice.delivery_service || "");
   const [tracking, setTracking] = useState(invoice.tracking_number || "");
   const [fee, setFee] = useState(String(invoice.shipping_fee || ""));
-  const [fundMethod, setFundMethod] = useState(invoice.shipping_fund_method || "");
+  const [fundMethod, setFundMethod] = useState(
+    invoice.shipping_fund_method || "",
+  );
   useEffect(() => {
     setEditing(!invoice.delivery_method);
     setMethod(invoice.delivery_method || "internal");
@@ -351,17 +387,41 @@ function DeliveryPlan({ invoice, canManageStatus, isManager, staff, staffLoading
     setTracking(invoice.tracking_number || "");
     setFee(String(invoice.shipping_fee || ""));
     setFundMethod(invoice.shipping_fund_method || "");
-  }, [invoice.id, invoice.delivery_method, invoice.delivery_employee?.id, invoice.delivery_service, invoice.tracking_number, invoice.shipping_fee, invoice.shipping_fund_method]);
+  }, [
+    invoice.id,
+    invoice.delivery_method,
+    invoice.delivery_employee?.id,
+    invoice.delivery_service,
+    invoice.tracking_number,
+    invoice.shipping_fee,
+    invoice.shipping_fund_method,
+  ]);
   const processing = invoice.status === "đang xử lý";
   if (!processing && !invoice.delivery_method) return null;
-  const canEdit = processing && canManageStatus && !invoice.cancel_requested &&
-    (invoice.delivery_method !== "third_party" || isManager);
-  const canSave = method === "internal"
-    ? Boolean(courierId)
-    : Boolean(isManager && service.trim() && tracking.trim() && Number(fee) >= 500 && fundMethod);
+  const canEdit =
+    processing &&
+    canManageStatus &&
+    !invoice.cancel_requested;
+  const canSave =
+    method === "internal"
+      ? Boolean(courierId)
+      : Boolean(
+          service.trim() &&
+          tracking.trim() &&
+          Number(fee) >= 500 &&
+          fundMethod,
+        );
   const staffOptions = [
-    { value: "", label: staffLoading ? "Đang tải nhân viên..." : "Chọn nhân viên giao hàng" },
-    ...staff.map((employee) => ({ value: String(employee.id), label: employee.full_name })),
+    {
+      value: "",
+      label: staffLoading
+        ? "Đang tải nhân viên..."
+        : "Chọn nhân viên giao hàng",
+    },
+    ...staff.map((employee) => ({
+      value: String(employee.id),
+      label: employee.full_name,
+    })),
   ];
   return (
     <section className="sales-delivery-plan">
@@ -371,57 +431,197 @@ function DeliveryPlan({ invoice, canManageStatus, isManager, staff, staffLoading
           <p>Chọn cách giao trước khi chuyển đơn sang Đang giao.</p>
         </div>
         {canEdit && invoice.delivery_method && !editing && (
-          <button type="button" className="sales-delivery-edit" onClick={() => setEditing(true)}>Thay đổi</button>
+          <button
+            type="button"
+            className="sales-delivery-edit"
+            onClick={() => setEditing(true)}
+          >
+            Thay đổi
+          </button>
         )}
       </div>
       {canEdit && editing ? (
-        <form onSubmit={(event) => {
-          event.preventDefault();
-          if (!canSave) return;
-          onPrepare(method === "internal"
-            ? { delivery_method: method, delivery_employee_id: Number(courierId) }
-            : { delivery_method: method, delivery_service: service.trim(), tracking_number: tracking.trim(), shipping_fee: Number(fee), shipping_fund_method: fundMethod });
-        }}>
-          <div className="sales-delivery-choice" role="group" aria-label="Hình thức giao hàng">
-            <label><input type="radio" name={`delivery-method-${invoice.id}`} value="internal" checked={method === "internal"} onChange={() => setMethod("internal")} /> Nhân viên công ty</label>
-            {isManager && <label><input type="radio" name={`delivery-method-${invoice.id}`} value="third_party" checked={method === "third_party"} onChange={() => setMethod("third_party")} /> Dịch vụ vận chuyển</label>}
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!canSave) return;
+            onPrepare(
+              method === "internal"
+                ? {
+                    delivery_method: method,
+                    delivery_employee_id: Number(courierId),
+                  }
+                : {
+                    delivery_method: method,
+                    delivery_service: service.trim(),
+                    tracking_number: tracking.trim(),
+                    shipping_fee: Number(fee),
+                    shipping_fund_method: fundMethod,
+                  },
+            );
+          }}
+        >
+          <div
+            className="sales-delivery-choice"
+            role="group"
+            aria-label="Hình thức giao hàng"
+          >
+            <label>
+              <input
+                type="radio"
+                name={`delivery-method-${invoice.id}`}
+                value="internal"
+                checked={method === "internal"}
+                onChange={() => setMethod("internal")}
+              />{" "}
+              Nhân viên công ty
+            </label>
+            {canManageStatus && (
+              <label>
+                <input
+                  type="radio"
+                  name={`delivery-method-${invoice.id}`}
+                  value="third_party"
+                  checked={method === "third_party"}
+                  onChange={() => setMethod("third_party")}
+                />{" "}
+                Dịch vụ vận chuyển
+              </label>
+            )}
           </div>
           {method === "internal" ? (
-            <div className="sales-delivery-fields"><div className="sales-delivery-field"><span>Nhân viên giao hàng</span><SharedSearchableDropdown value={courierId} onChange={setCourierId} options={staffOptions} placeholder="Chọn nhân viên giao hàng" ariaLabel="Nhân viên giao hàng" disabled={staffLoading} /></div></div>
+            <div className="sales-delivery-fields">
+              <div className="sales-delivery-field">
+                <span>Nhân viên giao hàng</span>
+                <SharedSearchableDropdown
+                  value={courierId}
+                  onChange={setCourierId}
+                  options={staffOptions}
+                  placeholder="Chọn nhân viên giao hàng"
+                  ariaLabel="Nhân viên giao hàng"
+                  disabled={staffLoading}
+                />
+              </div>
+            </div>
           ) : (
             <div className="sales-delivery-fields">
-              <label>Dịch vụ giao hàng<input value={service} onChange={(event) => setService(event.target.value)} maxLength={120} placeholder="Ví dụ: Giao Hàng Nhanh" required /></label>
-              <label>Mã vận đơn<input value={tracking} onChange={(event) => setTracking(event.target.value)} maxLength={120} placeholder="Nhập mã theo dõi" required /></label>
-              <label>Phí vận chuyển<MoneyInput value={fee} onChange={setFee} label="Phí vận chuyển" placeholder="Ví dụ: 35.000" required /></label>
-              <div className="sales-delivery-field"><span>Chi từ quỹ</span><PaymentMethodDropdown value={fundMethod} onChange={setFundMethod} /></div>
+              <label>
+                Dịch vụ giao hàng
+                <input
+                  value={service}
+                  onChange={(event) => setService(event.target.value)}
+                  maxLength={120}
+                  placeholder="Ví dụ: Giao Hàng Nhanh"
+                  required
+                />
+              </label>
+              <label>
+                Mã vận đơn
+                <input
+                  value={tracking}
+                  onChange={(event) => setTracking(event.target.value)}
+                  maxLength={120}
+                  placeholder="Nhập mã theo dõi"
+                  required
+                />
+              </label>
+              <label>
+                Phí vận chuyển
+                <MoneyInput
+                  value={fee}
+                  onChange={setFee}
+                  label="Phí vận chuyển"
+                  placeholder="Ví dụ: 35.000"
+                  required
+                />
+              </label>
+              <div className="sales-delivery-field">
+                <span>Chi từ quỹ</span>
+                <PaymentMethodDropdown
+                  value={fundMethod}
+                  onChange={setFundMethod}
+                />
+              </div>
             </div>
           )}
-          <p className="sales-delivery-hint">{method === "internal"
-            ? (!staffLoading && staff.length === 0 ? "Chưa có nhân viên giao hàng đã được duyệt. Quản lý cần tạo và duyệt tài khoản trước." : "Chỉ nhân viên được chọn mới có thể bắt đầu giao đơn.")
-            : "Phí vận chuyển sẽ trừ khỏi quỹ khi bàn giao đơn cho dịch vụ."}</p>
+          <p className="sales-delivery-hint">
+            {method === "internal"
+              ? !staffLoading && staff.length === 0
+                ? "Chưa có nhân viên giao hàng đã được duyệt. Quản lý cần tạo và duyệt tài khoản trước."
+                : "Chỉ nhân viên được chọn mới có thể bắt đầu giao đơn."
+              : "Quản lý xác nhận bàn giao trước khi trừ phí vận chuyển khỏi quỹ."}
+          </p>
           <div className="sales-delivery-actions">
-            {invoice.delivery_method && <button type="button" className="sales-delivery-edit" onClick={() => setEditing(false)}>Hủy sửa</button>}
-            <button type="submit" disabled={actionLoading || !canSave}>Lưu phương án</button>
+            {invoice.delivery_method && (
+              <button
+                type="button"
+                className="sales-delivery-edit"
+                onClick={() => setEditing(false)}
+              >
+                Hủy sửa
+              </button>
+            )}
+            <button type="submit" disabled={actionLoading || !canSave}>
+              Lưu phương án
+            </button>
           </div>
         </form>
       ) : invoice.delivery_method ? (
         <>
           {invoice.delivery_method === "internal" ? (
-            <div className="sales-delivery-summary"><span>Nhân viên công ty</span><strong>{invoice.delivery_employee?.full_name || "—"}</strong></div>
+            <div className="sales-delivery-summary">
+              <span>Nhân viên công ty</span>
+              <strong>{invoice.delivery_employee?.full_name || "—"}</strong>
+            </div>
           ) : (
             <div className="sales-delivery-summary-grid">
-              <div className="sales-delivery-summary"><span>Dịch vụ</span><strong>{invoice.delivery_service}</strong></div>
-              <div className="sales-delivery-summary"><span>Mã vận đơn</span><strong>{invoice.tracking_number}</strong></div>
-              <div className="sales-delivery-summary"><span>Phí vận chuyển</span><strong>{formatCurrency(invoice.shipping_fee)}</strong></div>
-              <div className="sales-delivery-summary"><span>Quỹ chi</span><strong>{invoice.shipping_fund_method === "cash" ? "Tiền mặt" : "Chuyển khoản"}</strong></div>
+              <div className="sales-delivery-summary">
+                <span>Dịch vụ</span>
+                <strong>{invoice.delivery_service}</strong>
+              </div>
+              <div className="sales-delivery-summary">
+                <span>Mã vận đơn</span>
+                <strong>{invoice.tracking_number}</strong>
+              </div>
+              <div className="sales-delivery-summary">
+                <span>Phí vận chuyển</span>
+                <strong>{formatCurrency(invoice.shipping_fee)}</strong>
+              </div>
+              <div className="sales-delivery-summary">
+                <span>Quỹ chi</span>
+                <strong>
+                  {invoice.shipping_fund_method === "cash"
+                    ? "Tiền mặt"
+                    : "Chuyển khoản"}
+                </strong>
+              </div>
             </div>
           )}
-          {processing && <p className="sales-delivery-hint">{invoice.delivery_method === "internal" ? "Đang chờ nhân viên được phân công bắt đầu giao hàng." : "Quỹ sẽ được trừ khi quản lý xác nhận bàn giao."}</p>}
-          {processing && invoice.delivery_method === "third_party" && isManager && !invoice.cancel_requested && (
-            <div className="sales-delivery-actions"><button type="button" disabled={actionLoading} onClick={onDispatch}>Xác nhận bàn giao cho dịch vụ</button></div>
+          {processing && (
+            <p className="sales-delivery-hint">
+              {invoice.delivery_method === "internal"
+                ? "Đang chờ nhân viên được phân công bắt đầu giao hàng."
+                : "Quỹ sẽ được trừ khi quản lý xác nhận bàn giao."}
+            </p>
           )}
+          {processing &&
+            invoice.delivery_method === "third_party" &&
+            isManager &&
+            !invoice.cancel_requested && (
+              <div className="sales-delivery-actions">
+                <button
+                  type="button"
+                  disabled={actionLoading}
+                  onClick={onDispatch}
+                >
+                  Xác nhận bàn giao cho dịch vụ
+                </button>
+              </div>
+            )}
         </>
-      ) : <p className="sales-delivery-hint">Chưa chọn phương án giao hàng.</p>}
+      ) : (
+        <p className="sales-delivery-hint">Chưa chọn phương án giao hàng.</p>
+      )}
     </section>
   );
 }
@@ -669,12 +869,17 @@ export function SalesInvoiceDetail({
           </section>
           {canManageDueDate &&
             (completed || awaitingAccounting) &&
-            remainingAmount > 0 &&
-            (
-              <section className="sales-due-date-editor" aria-label="Hạn thanh toán">
+            remainingAmount > 0 && (
+              <section
+                className="sales-due-date-editor"
+                aria-label="Hạn thanh toán"
+              >
                 <div className="sales-due-date-copy">
                   <strong>Hạn thanh toán</strong>
-                  <p>Ngày khách hẹn trả số tiền còn nợ. Không cần thu tiền để đặt hạn.</p>
+                  <p>
+                    Ngày khách hẹn trả số tiền còn nợ. Không cần thu tiền để đặt
+                    hạn.
+                  </p>
                 </div>
                 <div className="sales-due-date-controls">
                   <label>
@@ -682,7 +887,9 @@ export function SalesInvoiceDetail({
                     <input
                       type="date"
                       value={paymentDueDate}
-                      onChange={(event) => setPaymentDueDate(event.target.value)}
+                      onChange={(event) =>
+                        setPaymentDueDate(event.target.value)
+                      }
                     />
                   </label>
                   {completed && (
@@ -699,18 +906,29 @@ export function SalesInvoiceDetail({
                     </button>
                   )}
                 </div>
-                {awaitingAccounting && unpaidAfterEntry > 0 && !paymentDueDate && (
-                  <small>Chọn ngày hẹn để hoàn thành đơn khi khách chưa trả đủ.</small>
-                )}
+                {awaitingAccounting &&
+                  unpaidAfterEntry > 0 &&
+                  !paymentDueDate && (
+                    <small>
+                      Chọn ngày hẹn để hoàn thành đơn khi khách chưa trả đủ.
+                    </small>
+                  )}
               </section>
             )}
           {((canRecordPayment && completed && remainingAmount > 0) ||
             awaitingAccounting) && (
             <div className="sales-detail-actions sales-complete-actions">
               <div className="sales-completion-heading">
-                <strong>{awaitingAccounting ? "Thu tiền ngay (không bắt buộc)" : "Ghi nhận thanh toán"}</strong>
+                <strong>
+                  {awaitingAccounting
+                    ? "Thu tiền ngay (không bắt buộc)"
+                    : "Ghi nhận thanh toán"}
+                </strong>
                 {awaitingAccounting && (
-                  <p>Khi hoàn thành đơn, kế toán xác nhận đã giao. Nếu khách hẹn trả sau, để trống số tiền.</p>
+                  <p>
+                    Khi hoàn thành đơn, kế toán xác nhận đã giao. Nếu khách hẹn
+                    trả sau, để trống số tiền.
+                  </p>
                 )}
               </div>
               <SalesPaymentFields
@@ -731,10 +949,7 @@ export function SalesInvoiceDetail({
                           completionPaymentMethod || null,
                           paymentDueDate,
                         )
-                      : onRecordPayment(
-                          enteredPayment,
-                          completionPaymentMethod,
-                        )
+                      : onRecordPayment(enteredPayment, completionPaymentMethod)
                   }
                   disabled={invalidPaymentEntry}
                 >
@@ -825,7 +1040,8 @@ export function SalesInvoiceDetail({
                           delivery_prepared: "Đã chọn phương án giao hàng",
                           dispatched: "Đã bắt đầu giao hàng",
                           delivery_confirmed: "Đã xác nhận giao hàng",
-                          completed: "Kế toán xác nhận giao hàng và hoàn thành đơn",
+                          completed:
+                            "Kế toán xác nhận giao hàng và hoàn thành đơn",
                           cancelled: "Đã hủy đơn",
                         }[event.action] || event.action}
                       </span>
@@ -1049,6 +1265,7 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
   const [applyingCombo, setApplyingCombo] = useState(false);
   const [formSuccess, setFormSuccess] = useState("");
   const customerSearchTimerRef = useRef(null);
+  const customerSearchRequestRef = useRef(0);
   const customerSearchTouchedRef = useRef(false);
   const productSearchTimerRefs = useRef({});
   const productSearchRequestRefs = useRef({});
@@ -1175,11 +1392,36 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
 
   const handleCustomerSearchChange = (value) => {
     customerSearchTouchedRef.current = true;
+    customerSearchRequestRef.current += 1;
     setCustomerSearchInput(value);
     setCustomerId("");
     setSelectedCustomer(null);
     setCustomers([]);
     setCustomerSearchLoading(true);
+  };
+
+  const handleCustomerDropdownOpen = async () => {
+    if (customerSearchInput.trim() || customerSearchLoading) return;
+
+    const requestId = customerSearchRequestRef.current + 1;
+    customerSearchRequestRef.current = requestId;
+    setCustomerSearchLoading(true);
+    try {
+      const response = await authApis().get(endpoints.customers, {
+        params: { page: 1, per_page: 100 },
+      });
+      if (customerSearchRequestRef.current === requestId) {
+        setCustomers(getRandomItems(response.data?.customers || []));
+      }
+    } catch (requestError) {
+      if (customerSearchRequestRef.current === requestId) {
+        setFormError(getApiError(requestError));
+      }
+    } finally {
+      if (customerSearchRequestRef.current === requestId) {
+        setCustomerSearchLoading(false);
+      }
+    }
   };
 
   const handleCustomerSelect = (value) => {
@@ -1303,6 +1545,48 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
         }
       }
     }, 750);
+  };
+
+  const handleProductDropdownOpen = async (index) => {
+    const item = items[index];
+    if (item?.productSearch?.trim() || productSearchLoading[index]) return;
+
+    if (saleSource === "employee_stock") {
+      setProductSearchResults((current) => ({
+        ...current,
+        [index]: getRandomItems(saleProducts),
+      }));
+      return;
+    }
+
+    const requestId = (productSearchRequestRefs.current[index] || 0) + 1;
+    productSearchRequestRefs.current[index] = requestId;
+    setProductSearchLoading((current) => ({ ...current, [index]: true }));
+    try {
+      const response = await authApis().get(endpoints.productsInventory, {
+        params: {
+          warehouse_id: warehouseId || undefined,
+          page: 1,
+          per_page: 100,
+        },
+      });
+      if (productSearchRequestRefs.current[index] !== requestId) return;
+      setProductSearchResults((current) => ({
+        ...current,
+        [index]: getRandomItems(response.data?.products || []),
+      }));
+    } catch (requestError) {
+      if (productSearchRequestRefs.current[index] === requestId) {
+        setFormError(getApiError(requestError));
+      }
+    } finally {
+      if (productSearchRequestRefs.current[index] === requestId) {
+        setProductSearchLoading((current) => ({
+          ...current,
+          [index]: false,
+        }));
+      }
+    }
   };
 
   const updateItem = (index, field, value) => {
@@ -1746,6 +2030,7 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                   value={customerId}
                   placeholder="Chọn khách hàng"
                   ariaLabel="Chọn khách hàng"
+                  onOpen={handleCustomerDropdownOpen}
                   searchValue={customerSearchInput}
                   onSearchChange={handleCustomerSearchChange}
                   searching={customerSearchLoading}
@@ -1947,6 +2232,7 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                         value={item.productId}
                         placeholder="Chọn sản phẩm"
                         ariaLabel="Chọn sản phẩm"
+                        onOpen={() => handleProductDropdownOpen(index)}
                         searchValue={
                           item.productSearch || selectedProduct?.name || ""
                         }
@@ -2197,7 +2483,6 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                 value={paymentDueDate}
                 onChange={(event) => setPaymentDueDate(event.target.value)}
               />
-              <small>Đặt ngày khách hẹn trả; có thể thu tiền sau.</small>
             </label>
             <div className="sales-editor-totals">
               <div className="sales-editor-total">
@@ -2320,6 +2605,9 @@ function SalesInvoices() {
   const [discountActionError, setDiscountActionError] = useNotificationState();
   const debounceTimerRef = useRef(null);
   const invoiceRequestIdRef = useRef(0);
+  const invoiceFetchInFlightRef = useRef(null);
+  const statusBoardRequestIdRef = useRef(0);
+  const statusBoardInFlightRef = useRef(null);
   const currentUser = (() => {
     try {
       return JSON.parse(localStorage.getItem("user")) || {};
@@ -2354,19 +2642,36 @@ function SalesInvoices() {
     if (!canManageStatus || selectedInvoice?.status !== "đang xử lý") return;
     let active = true;
     setDeliveryStaffLoading(true);
-    authApis().get(endpoints.deliveryStaff)
-      .then((response) => { if (active) setDeliveryStaff(response.data?.employees || []); })
-      .catch((requestError) => { if (active) setActionError(getApiError(requestError)); })
-      .finally(() => { if (active) setDeliveryStaffLoading(false); });
-    return () => { active = false; };
-  }, [canManageStatus, selectedInvoice?.id, selectedInvoice?.status, setActionError]);
+    authApis()
+      .get(endpoints.deliveryStaff)
+      .then((response) => {
+        if (active) setDeliveryStaff(response.data?.employees || []);
+      })
+      .catch((requestError) => {
+        if (active) setActionError(getApiError(requestError));
+      })
+      .finally(() => {
+        if (active) setDeliveryStaffLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [
+    canManageStatus,
+    selectedInvoice?.id,
+    selectedInvoice?.status,
+    setActionError,
+  ]);
 
-  const fetchStatusBoard = useCallback(async () => {
-    if (!canViewStatusBoard) return;
+  const fetchStatusBoard = useCallback(async (force = false) => {
+    if (!canViewStatusBoard || (statusBoardInFlightRef.current !== null && !force)) return;
+    const requestId = ++statusBoardRequestIdRef.current;
+    statusBoardInFlightRef.current = requestId;
     try {
       setStatusBoardLoading(true);
       setStatusBoardError("");
       const response = await authApis().get(endpoints.salesInvoiceStatusBoard);
+      if (requestId !== statusBoardRequestIdRef.current) return;
       const groups = response.data?.statuses || [];
       setStatusBoard(groups);
       setStatusBoardTotal(
@@ -2379,9 +2684,12 @@ function SalesInvoices() {
         ),
       );
     } catch (requestError) {
-      setStatusBoardError(getApiError(requestError));
+      if (requestId === statusBoardRequestIdRef.current) setStatusBoardError(getApiError(requestError));
     } finally {
-      setStatusBoardLoading(false);
+      if (statusBoardInFlightRef.current === requestId) {
+        statusBoardInFlightRef.current = null;
+        setStatusBoardLoading(false);
+      }
     }
   }, [canViewStatusBoard, setStatusBoardError]);
 
@@ -2407,7 +2715,8 @@ function SalesInvoices() {
   }, [canViewStatusBoard, pendingDiscountPage, setPendingDiscountError]);
 
   const fetchInvoices = useCallback(
-    async (silent = false) => {
+    async (silent = false, force = false) => {
+      if (silent && !force && invoiceFetchInFlightRef.current !== null) return;
       if (!localStorage.getItem("token")) {
         navigate("/login", {
           replace: true,
@@ -2417,10 +2726,11 @@ function SalesInvoices() {
       }
 
       const requestId = ++invoiceRequestIdRef.current;
+      invoiceFetchInFlightRef.current = requestId;
 
       try {
         if (!silent) setLoading(true);
-        setError("");
+        if (!silent) setError("");
         const response = await authApis().get(endpoints.salesInvoices, {
           params: {
             page,
@@ -2432,10 +2742,12 @@ function SalesInvoices() {
             cancel_requested:
               cancelRequestFilter === "pending" ? "true" : undefined,
             debt_status: debtStatus || undefined,
+            fresh: 1,
           },
         });
         if (requestId !== invoiceRequestIdRef.current) return;
         const data = response.data || {};
+        setError("");
         setInvoices(data.invoices || []);
         setPagination({
           total: Number(data.total || 0),
@@ -2445,6 +2757,7 @@ function SalesInvoices() {
         if (requestId === invoiceRequestIdRef.current)
           setError(getApiError(requestError));
       } finally {
+        if (invoiceFetchInFlightRef.current === requestId) invoiceFetchInFlightRef.current = null;
         if (requestId === invoiceRequestIdRef.current) setLoading(false);
       }
     },
@@ -2465,16 +2778,51 @@ function SalesInvoices() {
   }, [fetchInvoices]);
 
   useEffect(() => {
-    const refresh = () => {
-      if (document.visibilityState === "visible") fetchInvoices(true);
+    let refreshing = false;
+    const refresh = async () => {
+      if (document.visibilityState !== "visible" || refreshing || showEditor || actionLoading) return;
+      refreshing = true;
+      try {
+        await Promise.all([fetchInvoices(true), fetchStatusBoard()]);
+      } finally {
+        refreshing = false;
+      }
     };
-    const timer = window.setInterval(refresh, 60000);
+    const timer = window.setInterval(refresh, LIVE_REFRESH_INTERVAL_MS);
     document.addEventListener("visibilitychange", refresh);
     return () => {
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", refresh);
     };
-  }, [fetchInvoices]);
+  }, [actionLoading, fetchInvoices, fetchStatusBoard, showEditor]);
+
+  useEffect(() => {
+    const invoiceId = selectedInvoice?.id;
+    if (!invoiceId || detailLoading || showEditor || actionLoading || confirmAction) return undefined;
+    let active = true;
+    let refreshing = false;
+    const refreshDetail = async () => {
+      if (!active || document.visibilityState !== "visible" || refreshing) return;
+      refreshing = true;
+      try {
+        const response = await authApis().get(endpoints.salesInvoiceDetail(invoiceId));
+        if (active && response.data?.id === invoiceId) {
+          setSelectedInvoice((current) => current?.id === invoiceId ? response.data : current);
+        }
+      } catch {
+        // The next refresh will retry; keep the current detail visible.
+      } finally {
+        refreshing = false;
+      }
+    };
+    const timer = window.setInterval(refreshDetail, LIVE_REFRESH_INTERVAL_MS);
+    document.addEventListener("visibilitychange", refreshDetail);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshDetail);
+    };
+  }, [actionLoading, confirmAction, detailLoading, selectedInvoice?.id, showEditor]);
 
   useEffect(() => {
     fetchStatusBoard();
@@ -2584,6 +2932,36 @@ function SalesInvoices() {
     setConfirmAction("cancel-manager");
   };
 
+  const showUpdatedInvoiceInList = (invoice, previousStage) => {
+    if (!invoice) return;
+    // Discard a list request started before this successful status change.
+    invoiceRequestIdRef.current += 1;
+    const nextStage = invoice.workflow_stage || invoice.status;
+    setInvoices((current) => current.map((row) =>
+      row.id === invoice.id
+        ? {
+            ...row,
+            status: invoice.status,
+            workflow_stage: nextStage,
+            cancel_requested: invoice.cancel_requested,
+            warehouse_submitted_at: invoice.warehouse_submitted_at,
+          }
+        : row,
+    ));
+    if (previousStage && previousStage !== nextStage) {
+      statusBoardRequestIdRef.current += 1;
+      setStatusBoard((current) => current.map((group) => {
+        if (group.status === previousStage) {
+          return { ...group, total: Math.max(0, Number(group.total) - 1) };
+        }
+        if (group.status === nextStage) {
+          return { ...group, total: Number(group.total) + 1 };
+        }
+        return group;
+      }));
+    }
+  };
+
   const advanceInvoiceStatus = async (nextStatus) => {
     if (!selectedInvoice) return;
     try {
@@ -2597,8 +2975,9 @@ function SalesInvoices() {
         ...current,
         ...(response.data?.invoice || {}),
       }));
-      await fetchInvoices();
-      await fetchStatusBoard();
+      showUpdatedInvoiceInList(response.data?.invoice, selectedInvoice.workflow_stage || selectedInvoice.status);
+      fetchInvoices(true, true);
+      fetchStatusBoard(true);
       notifySalesActionCountChanged();
     } catch (requestError) {
       setActionError(getApiError(requestError));
@@ -2616,7 +2995,9 @@ function SalesInvoices() {
         endpoints.submitSalesInvoiceToWarehouse(selectedInvoice.id),
       );
       setSelectedInvoice(response.data?.invoice || selectedInvoice);
-      await Promise.all([fetchInvoices(), fetchStatusBoard()]);
+      showUpdatedInvoiceInList(response.data?.invoice, selectedInvoice.workflow_stage || selectedInvoice.status);
+      fetchInvoices(true, true);
+      fetchStatusBoard(true);
       notifySalesActionCountChanged();
     } catch (requestError) {
       setActionError(getApiError(requestError));
@@ -2658,8 +3039,9 @@ function SalesInvoices() {
       );
       notifyInventoryChanged();
       setSelectedInvoice(response.data?.invoice || selectedInvoice);
-      await fetchInvoices();
-      await fetchStatusBoard();
+      showUpdatedInvoiceInList(response.data?.invoice, selectedInvoice.workflow_stage || selectedInvoice.status);
+      fetchInvoices(true, true);
+      fetchStatusBoard(true);
       notifySalesActionCountChanged();
       window.dispatchEvent(new Event("pending-requests:refresh"));
     } catch (requestError) {
@@ -3253,7 +3635,10 @@ function SalesInvoices() {
             onCancelRequest={handleCancelRequest}
             onCancelDirect={handleCancelDirect}
             onAdvanceStatus={(nextStatus) => {
-              if (nextStatus === "đang giao" && selectedInvoice.delivery_method === "third_party") {
+              if (
+                nextStatus === "đang giao" &&
+                selectedInvoice.delivery_method === "third_party"
+              ) {
                 setConfirmAction("dispatch-third-party");
               } else {
                 advanceInvoiceStatus(nextStatus);
@@ -3277,40 +3662,40 @@ function SalesInvoices() {
           confirmAction === "dispatch-third-party"
             ? "Bàn giao cho dịch vụ vận chuyển?"
             : confirmAction === "cancel-draft"
-            ? "Hủy đơn nháp?"
-            : isManagerCancel
-              ? "Hủy đơn trực tiếp?"
-              : isCancelApproval
-                ? "Duyệt hủy đơn?"
-                : isCancelRejection
-                  ? "Từ chối hủy đơn?"
-                  : "Gửi yêu cầu hủy đơn?"
+              ? "Hủy đơn nháp?"
+              : isManagerCancel
+                ? "Hủy đơn trực tiếp?"
+                : isCancelApproval
+                  ? "Duyệt hủy đơn?"
+                  : isCancelRejection
+                    ? "Từ chối hủy đơn?"
+                    : "Gửi yêu cầu hủy đơn?"
         }
         message={
           confirmAction === "dispatch-third-party"
             ? `Đơn #${selectedInvoice?.id || ""} sẽ chuyển sang Đang giao. Phí ${formatCurrency(selectedInvoice?.shipping_fee)} sẽ được trừ từ quỹ ${selectedInvoice?.shipping_fund_method === "cash" ? "tiền mặt" : "chuyển khoản"}.`
             : confirmAction === "cancel-draft"
-            ? "Bạn có chắc muốn hủy đơn nháp này không?"
-            : isManagerCancel
-              ? "Bạn có chắc muốn hủy đơn này với quyền quản lý không?"
-              : isCancelApproval
-                ? "Bạn có chắc muốn duyệt hủy đơn này không?"
-                : isCancelRejection
-                  ? "Bạn có chắc muốn từ chối yêu cầu hủy đơn này không?"
-                  : "Bạn có chắc muốn gửi yêu cầu hủy đơn này không?"
+              ? "Bạn có chắc muốn hủy đơn nháp này không?"
+              : isManagerCancel
+                ? "Bạn có chắc muốn hủy đơn này với quyền quản lý không?"
+                : isCancelApproval
+                  ? "Bạn có chắc muốn duyệt hủy đơn này không?"
+                  : isCancelRejection
+                    ? "Bạn có chắc muốn từ chối yêu cầu hủy đơn này không?"
+                    : "Bạn có chắc muốn gửi yêu cầu hủy đơn này không?"
         }
         confirmLabel={
           confirmAction === "dispatch-third-party"
             ? "Xác nhận bàn giao"
             : confirmAction === "cancel-draft"
-            ? "Hủy đơn"
-            : isManagerCancel
               ? "Hủy đơn"
-              : isCancelApproval
-                ? "Duyệt hủy"
-                : isCancelRejection
-                  ? "Từ chối"
-                  : "Gửi yêu cầu"
+              : isManagerCancel
+                ? "Hủy đơn"
+                : isCancelApproval
+                  ? "Duyệt hủy"
+                  : isCancelRejection
+                    ? "Từ chối"
+                    : "Gửi yêu cầu"
         }
         cancelLabel="Quay lại"
         danger={!isCancelApproval && confirmAction !== "dispatch-third-party"}
