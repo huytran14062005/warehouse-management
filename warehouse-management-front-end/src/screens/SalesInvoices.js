@@ -1257,6 +1257,7 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
   const [note, setNote] = useState(invoice?.note || "");
   const [productSearchResults, setProductSearchResults] = useState({});
   const [productSearchLoading, setProductSearchLoading] = useState({});
+  const [comboDropdownSamples, setComboDropdownSamples] = useState({});
   const [productRequestName, setProductRequestName] = useState("");
   const [productRequestOpen, setProductRequestOpen] = useState(false);
   const [combos, setCombos] = useState([]);
@@ -1484,6 +1485,7 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
   };
 
   const handleProductSearchChange = (index, value) => {
+    setComboSuggestion(null);
     setItems((current) =>
       current.map((item, itemIndex) =>
         itemIndex === index
@@ -1551,6 +1553,12 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
     const item = items[index];
     if (item?.productSearch?.trim() || productSearchLoading[index]) return;
 
+    const sampledCombos = getRandomItems(combos, 2);
+    setComboDropdownSamples((current) => ({
+      ...current,
+      [index]: sampledCombos,
+    }));
+
     if (saleSource === "employee_stock") {
       setProductSearchResults((current) => ({
         ...current,
@@ -1616,6 +1624,15 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
   };
 
   const handleProductSelect = (index, value) => {
+    if (String(value).startsWith("combo:")) {
+      const combo = combos.find(
+        (entry) => `combo:${entry.id}` === String(value),
+      );
+      setComboSuggestion(null);
+      setFormSuccess("");
+      if (combo) applyCombo(combo, index);
+      return;
+    }
     const productId = String(value);
     updateItem(index, "productId", productId);
     setFormSuccess("");
@@ -1623,14 +1640,18 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
     setComboSuggestion(productId ? { index, productId } : null);
   };
 
-  const applyCombo = async (combo) => {
-    if (!comboSuggestion) return;
-    const { index, productId } = comboSuggestion;
-    if (String(items[index]?.productId) !== productId) {
+  const applyCombo = async (combo, targetIndex = null) => {
+    if (targetIndex === null && !comboSuggestion) return;
+    const index = targetIndex ?? comboSuggestion.index;
+    if (!items[index]) return;
+    if (
+      targetIndex === null &&
+      String(items[index].productId) !== comboSuggestion.productId
+    ) {
       setComboSuggestion(null);
       return;
     }
-    const numberOfSets = Number(comboSets);
+    const numberOfSets = targetIndex === null ? Number(comboSets) : 1;
     if (
       !Number.isInteger(numberOfSets) ||
       numberOfSets < 1 ||
@@ -1639,14 +1660,20 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
       setFormError("Số bộ combo phải là số nguyên từ 1 đến 1.000.");
       return;
     }
-    if (
-      items.some(
-        (item, itemIndex) =>
-          itemIndex !== index && String(item.productId) === productId,
-      )
-    ) {
+    const comboProductIds = new Set(
+      combo.items.map((part) => String(part.product_id)),
+    );
+    if (items.some((item, itemIndex) => {
+      if (itemIndex === index) return false;
+      if (item.type === "combo") {
+        return item.comboProducts?.some((part) =>
+          comboProductIds.has(String(part.product_id)),
+        );
+      }
+      return comboProductIds.has(String(item.productId));
+    })) {
       setFormError(
-        "Sản phẩm đang chọn đã có ở dòng khác. Hãy gộp về một dòng trước khi dùng combo.",
+        "Combo có sản phẩm đã nằm ở dòng khác. Hãy gộp về một dòng trước khi dùng combo.",
       );
       return;
     }
@@ -1753,6 +1780,7 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
     ]);
     setProductSearchResults({});
     setProductSearchLoading({});
+    setComboDropdownSamples({});
   };
 
   const handleWarehouseChange = (value) => {
@@ -1768,6 +1796,7 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
     ]);
     setProductSearchResults({});
     setProductSearchLoading({});
+    setComboDropdownSamples({});
   };
 
   const removeItem = (index) => {
@@ -2087,13 +2116,13 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
           </div>
 
           <div className="sales-editor-section-heading">
-            <h3>Sản phẩm</h3>
+            <h3>Sản phẩm và combo</h3>
             <button
               type="button"
               className="sales-editor-add"
               onClick={addItem}
             >
-              + Thêm sản phẩm
+              + Thêm sản phẩm / combo
             </button>
           </div>
           <div className="sales-editor-items">
@@ -2115,7 +2144,7 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                     key={`combo-${item.comboId}-${index}`}
                   >
                     <div className="sales-editor-product-field">
-                      <ProductEntryField label="Sản phẩm">
+                      <ProductEntryField label="Sản phẩm / combo">
                         <div className="sales-combo-display">
                           <strong>
                             {item.comboName} ({item.quantity} bộ)
@@ -2215,6 +2244,12 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                 )
                   ? [selectedProduct, ...searchedProducts]
                   : searchedProducts;
+              const comboQuery = item.productSearch.trim().toLocaleLowerCase();
+              const comboOptions = comboQuery
+                ? combos.filter((combo) =>
+                    combo.name.toLocaleLowerCase().includes(comboQuery),
+                  )
+                : comboDropdownSamples[index] || [];
               const priceBounds = getSalePriceBounds(
                 selectedProduct?.default_sale_price ?? item.defaultPrice,
               );
@@ -2227,11 +2262,11 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                   key={`${item.productId || "new"}-${index}`}
                 >
                   <div className="sales-editor-product-field">
-                    <ProductEntryField label="Sản phẩm">
+                    <ProductEntryField label="Sản phẩm / combo">
                       <SharedSearchableDropdown
                         value={item.productId}
-                        placeholder="Chọn sản phẩm"
-                        ariaLabel="Chọn sản phẩm"
+                        placeholder="Chọn sản phẩm hoặc combo"
+                        ariaLabel="Chọn sản phẩm hoặc combo"
                         onOpen={() => handleProductDropdownOpen(index)}
                         searchValue={
                           item.productSearch || selectedProduct?.name || ""
@@ -2239,9 +2274,10 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                         onSearchChange={(value) =>
                           handleProductSearchChange(index, value)
                         }
-                        searching={Boolean(productSearchLoading[index])}
-                        searchingLabel="Đang tìm sản phẩm..."
-                        emptyLabel="Không tìm thấy sản phẩm."
+                        searching={Boolean(productSearchLoading[index] && !comboOptions.length)}
+                        searchingLabel="Đang tìm sản phẩm và combo..."
+                        emptyLabel="Không tìm thấy sản phẩm hoặc combo."
+                        filterLocally
                         emptyAction={
                           activeUser.role === "nhân viên bán hàng" &&
                           item.productSearch.trim() ? (
@@ -2260,8 +2296,13 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                           ) : null
                         }
                         onChange={(value) => handleProductSelect(index, value)}
+                        disabled={applyingCombo}
                         options={[
-                          { value: "", label: "Chọn sản phẩm" },
+                          { value: "", label: "Chọn sản phẩm hoặc combo" },
+                          ...comboOptions.map((combo) => ({
+                            value: `combo:${combo.id}`,
+                            label: `Combo: ${combo.name}`,
+                          })),
                           ...productOptions.map((product) => ({
                             value: product.id,
                             label: product.name,
