@@ -12,6 +12,7 @@ function ConfirmDialog({
   onCancel,
   loading = false,
   danger = false,
+  confirmDisabled = false,
   children,
 }) {
   useEffect(() => {
@@ -48,7 +49,7 @@ function ConfirmDialog({
           <button type="button" className="confirm-dialog-cancel" onClick={onCancel} disabled={loading}>
             {cancelLabel}
           </button>
-          <button type="button" className={`confirm-dialog-confirm${danger ? " is-danger" : ""}`} onClick={onConfirm} disabled={loading} autoFocus>
+          <button type="button" className={`confirm-dialog-confirm${danger ? " is-danger" : ""}`} onClick={onConfirm} disabled={loading || confirmDisabled} autoFocus>
             {loading ? "Đang xử lý..." : confirmLabel}
           </button>
         </div>

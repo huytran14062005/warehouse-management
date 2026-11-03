@@ -18,6 +18,10 @@ function deliveryStatus(status, accountingHandoffAt) {
   }[status] || status;
 }
 
+function deliveryStatusClass(status) {
+  return `courier-order-status${status === "hoàn thành" ? " is-completed" : ""}`;
+}
+
 export default function CourierOrders() {
   const user = (() => {
     try { return JSON.parse(localStorage.getItem("user")) || {}; } catch { return {}; }
@@ -154,7 +158,7 @@ export default function CourierOrders() {
           {orders.map((order) => (
             <button type="button" className="courier-order" key={order.id} onClick={() => openDetail(order.id)} disabled={detailLoading}>
               <span className="courier-order-main"><strong>Đơn #{order.id} · {order.customer.full_name}</strong><small>{order.customer.address}</small></span>
-              <span className="courier-order-status">{deliveryStatus(order.status, order.accounting_handoff_at)}</span>
+              <span className={deliveryStatusClass(order.status)}>{deliveryStatus(order.status, order.accounting_handoff_at)}</span>
             </button>
           ))}
         </div>
@@ -166,7 +170,7 @@ export default function CourierOrders() {
           <div className="courier-modal" role="dialog" aria-modal="true" aria-labelledby="courier-detail-title">
             <div className="courier-modal-header"><h2 id="courier-detail-title">Đơn giao hàng #{detail.id}</h2><button type="button" onClick={() => setDetail(null)} aria-label="Đóng">×</button></div>
             <div className="courier-modal-body">
-              <span className="courier-order-status">{deliveryStatus(detail.status, detail.accounting_handoff_at)}</span>
+              <span className={deliveryStatusClass(detail.status)}>{deliveryStatus(detail.status, detail.accounting_handoff_at)}</span>
               {detail.accounting_handoff_at && <p>Đã giao cho {detail.delivery_recipient || "khách hàng"} và bàn giao kế toán.</p>}
               <dl>
                 <div><dt>Người nhận</dt><dd>{detail.customer.full_name}</dd></div>

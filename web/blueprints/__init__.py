@@ -12,6 +12,7 @@ from .sales_areas_bp import sales_areas_bp
 from .employee_accounts_bp import employee_accounts_bp
 from .promotions_bp import promotions_bp
 from .company_funds_bp import company_funds_bp
+from .pricing_bp import pricing_bp
 
 __all__ = [
     "auth_bp",
@@ -28,4 +29,5 @@ __all__ = [
     "employee_accounts_bp",
     "promotions_bp",
     "company_funds_bp",
+    "pricing_bp",
 ]

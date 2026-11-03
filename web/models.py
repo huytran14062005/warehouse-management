@@ -88,6 +88,43 @@ class Product(BaseModel):
     sales_invoice_items = relationship("SalesInvoiceItem", backref="product", lazy=True)
 
 
+class PricingPolicy(db.Model):
+    __tablename__ = "pricing_policies"
+    __table_args__ = (
+        CheckConstraint("planned_quantity > 0", name="ck_pricing_planned_quantity"),
+        CheckConstraint("target_margin >= 0 AND target_margin < 100", name="ck_pricing_target_margin"),
+    )
+
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), primary_key=True)
+    planned_quantity = Column(Integer, nullable=False, default=100)
+    target_margin = Column(Numeric(5, 2), nullable=False, default=20)
+    updated_at = Column(DateTime, nullable=False, default=vietnam_payment_time)
+    updated_by_id = Column(Integer, ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False)
+
+
+class OperatingExpense(BaseModel):
+    __tablename__ = "operating_expenses"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="ck_operating_expense_amount"),
+        CheckConstraint("category IN ('fuel', 'vehicle_repair', 'lodging', 'sales_salary', 'other')", name="ck_operating_expense_category"),
+        Index("ix_operating_expenses_date_id", "occurred_on", "id"),
+        Index("ix_operating_expenses_invoice_date", "invoice_id", "occurred_on"),
+        Index("ix_operating_expenses_category_date", "category", "occurred_on"),
+    )
+
+    category = Column(String(24), nullable=False)
+    amount = Column(Numeric(14, 2), nullable=False)
+    occurred_on = Column(Date, nullable=False)
+    invoice_id = Column(Integer, ForeignKey("sales_invoices.id", ondelete="RESTRICT"), nullable=True)
+    description = Column(String(500), nullable=False)
+    payment_method = Column(String(20), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=vietnam_payment_time)
+    created_by_id = Column(Integer, ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False)
+    voided_at = Column(DateTime, nullable=True)
+    voided_by_id = Column(Integer, ForeignKey("employees.id", ondelete="RESTRICT"), nullable=True)
+    void_reason = Column(String(500), nullable=True)
+
+
 class ProductCombo(BaseModel):
     __tablename__ = "product_combos"
 

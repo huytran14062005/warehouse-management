@@ -269,6 +269,17 @@ function Sidebar({ user, pendingRequests, isMobileOpen = false, onMobileClose = 
             )}
             {canViewManagerSalesAnalytics && (
               <NavLink
+                to="/pricing-management"
+                onClick={onMobileClose}
+                className={({ isActive }) =>
+                  `internal-sidebar-link${isActive ? " is-active" : ""}`
+                }
+              >
+                <span>Chi phí &amp; giá bán</span>
+              </NavLink>
+            )}
+            {canViewManagerSalesAnalytics && (
+              <NavLink
                 to="/manager-sales-analytics"
                 onClick={onMobileClose}
                 className={({ isActive }) =>

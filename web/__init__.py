@@ -78,6 +78,7 @@ from web.blueprints import (
     employee_accounts_bp,
     promotions_bp,
     company_funds_bp,
+    pricing_bp,
 )
 
 app.register_blueprint(auth_bp)
@@ -94,6 +95,7 @@ app.register_blueprint(sales_areas_bp)
 app.register_blueprint(employee_accounts_bp)
 app.register_blueprint(promotions_bp)
 app.register_blueprint(company_funds_bp)
+app.register_blueprint(pricing_bp)
 
 from web.realtime import init_realtime
 init_realtime(app)

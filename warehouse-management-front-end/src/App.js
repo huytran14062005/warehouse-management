@@ -20,6 +20,7 @@ import DamageReports from "./screens/DamageReports";
 import Suppliers from "./screens/Suppliers";
 import WarehouseReports from "./screens/WarehouseReports";
 import ManagerSalesAnalytics from "./screens/ManagerSalesAnalytics";
+import PricingManagement from "./screens/PricingManagement";
 import Register from "./screens/User/Register";
 import EmployeeAccounts from "./screens/EmployeeAccounts";
 import PendingRequests from "./screens/PendingRequests";
@@ -271,6 +272,7 @@ function AppFrame() {
   const canViewSidebar = [
     "kế toán",
     "nhân viên bán hàng",
+    "nhân viên giao hàng",
     "thủ kho",
     "quản lý",
   ].includes(currentUser?.role);
@@ -346,6 +348,7 @@ function AppFrame() {
                   <Route path="/suppliers" element={requireAuth(<Suppliers />)} />
                   <Route path="/warehouse-reports" element={requireAuth(<WarehouseReports />)} />
                   <Route path="/manager-sales-analytics" element={requireAuth(<ManagerSalesAnalytics />)} />
+                  <Route path="/pricing-management" element={requireAuth(<PricingManagement />)} />
                   <Route path="/employee-accounts" element={requireAuth(<EmployeeAccounts />)} />
                   <Route path="/manager-pending-requests" element={requireAuth(<PendingRequests pendingRequests={pendingRequests} />)} />
                   <Route path="*" element={currentUser?.role === "nhân viên giao hàng" ? <Navigate to="/my-deliveries" replace /> : <Home />} />
