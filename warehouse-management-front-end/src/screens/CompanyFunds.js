@@ -6,6 +6,7 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import MoneyInput from "../components/MoneyInput";
 import Pagination from "../components/Pagination";
 import SharedSearchableDropdown from "../components/SearchableDropdown";
+import Skeleton from "../components/Skeleton";
 import { getApiError } from "../utils/apiError";
 import "../css/CompanyFunds.css";
 
@@ -225,7 +226,18 @@ export default function CompanyFunds() {
       </div>
       <AutoDismissMessage message={error} className="warehouse-error" />
       {success && <p className="company-funds-success" role="status">{success}</p>}
-      {loading ? <div className="warehouse-state">Đang tải sổ quỹ...</div> : initialized ? (
+      {loading ? (
+        <div className="company-funds-loading" aria-busy="true">
+          <Skeleton variant="cards" columns={3} />
+          <div className="company-funds-loading-head" aria-hidden="true">
+            <span className="skeleton-line skeleton-line--short" />
+            <span className="skeleton-line skeleton-line--short" />
+          </div>
+          <div className="warehouse-card warehouse-table-wrap">
+            <Skeleton rows={6} columns={7} />
+          </div>
+        </div>
+      ) : initialized ? (
         <>
           <div className="company-funds-balances">
             <div className="company-funds-balance company-funds-balance-total">

@@ -1,4 +1,10 @@
 .company-funds-page { max-width: 1200px; }
+.company-funds-loading .skeleton-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0; margin-bottom: 24px; }
+.company-funds-loading .skeleton-card:first-child { grid-column: 1 / -1; }
+.company-funds-loading-head { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 12px; }
+.company-funds-loading-head .skeleton-line:first-child { max-width: 180px; height: 18px; }
+.company-funds-loading-head .skeleton-line:last-child { max-width: 240px; height: 36px; }
+.company-funds-loading .skeleton-table { min-width: 760px; border: 0; border-radius: 0; }
 .company-funds-page-header { align-items: flex-start; }
 .company-funds-page-header > div { min-width: 0; }
 .company-funds-adjust-button { flex: 0 0 auto; min-height: 40px; padding: 9px 14px; color: #fff; border: 1px solid #0b3158; border-radius: 5px; background: #0b3158; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
@@ -66,5 +72,5 @@
 .company-funds-setup-fields input { box-sizing: border-box; width: 100%; min-height: 42px; padding: 9px 11px; border: 1px solid #cbd7e2; border-radius: 5px; color: #1b2d40; font: inherit; }
 .company-funds-notice { padding: 20px; color: #52657a; }
 .company-funds-success { padding: 11px 13px; border: 1px solid #a9d5bd; border-radius: 5px; background: #eef9f2; color: #26704b; }
-@media (max-width: 700px) { .company-funds-balances, .company-funds-setup-fields, .company-funds-adjust-fields { grid-template-columns: 1fr; } .company-funds-list-head { align-items: flex-start; flex-direction: column; } .company-funds-page-header { gap: 14px; } .company-funds-adjust-button { width: 100%; } .company-funds-modal-overlay { padding: 12px; } .company-funds-modal { max-height: calc(100dvh - 24px); padding: 0 16px 18px; } .company-funds-modal-header { margin: 0 -16px 18px; padding: 16px; } }
+@media (max-width: 700px) { .company-funds-balances, .company-funds-setup-fields, .company-funds-adjust-fields, .company-funds-loading .skeleton-cards { grid-template-columns: 1fr; } .company-funds-list-head { align-items: flex-start; flex-direction: column; } .company-funds-page-header { gap: 14px; } .company-funds-adjust-button { width: 100%; } .company-funds-modal-overlay { padding: 12px; } .company-funds-modal { max-height: calc(100dvh - 24px); padding: 0 16px 18px; } .company-funds-modal-header { margin: 0 -16px 18px; padding: 16px; } }
 @media (max-width: 700px) { .company-funds-entry-details > div { grid-template-columns: 1fr; gap: 4px; } .company-funds-list-actions { width: 100%; justify-content: space-between; } }

@@ -64,6 +64,11 @@ INSERT INTO tmp_demo_product_request_encoding_2026 (request_no, name, unit) VALU
   (99, 'Bộ phụ kiện lắp rèm cuốn ống phi 45 mm màu kem', 'Bộ'),
   (100, 'Bộ phụ kiện lắp rèm cuốn ống phi 45 mm màu bạc', 'Bộ');
 
+-- Workbench Safe Updates rejects this joined UPDATE because the predicate is
+-- based on the demo note marker. Disable it for this session only and restore it.
+SET @previous_sql_safe_updates = @@SESSION.sql_safe_updates;
+SET SESSION sql_safe_updates = 0;
+
 START TRANSACTION;
 
 UPDATE product_requests AS request
@@ -72,14 +77,19 @@ JOIN tmp_demo_product_request_encoding_2026 AS repair
                               LPAD(repair.request_no, 3, '0'), ']%')
 SET request.name = repair.name,
     request.unit = repair.unit
-WHERE request.status = 'pending';
+WHERE request.status = 'pending'
+  AND (request.name LIKE '%?%' OR request.unit LIKE '%?%');
 
-SELECT COUNT(*) AS repaired_demo_product_requests
+SELECT ROW_COUNT() AS updated_demo_product_requests;
+
+SELECT COUNT(*) AS remaining_broken_demo_product_requests
 FROM product_requests AS request
 WHERE request.status = 'pending'
   AND request.note LIKE '[DEMO-CURTAIN-REQUEST-%]%'
-  AND request.name NOT LIKE '%?%';
+  AND (request.name LIKE '%?%' OR request.unit LIKE '%?%');
 
 COMMIT;
+
+SET SESSION sql_safe_updates = @previous_sql_safe_updates;
 
 DROP TEMPORARY TABLE tmp_demo_product_request_encoding_2026;

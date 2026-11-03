@@ -200,7 +200,7 @@ export default function CourierOrders() {
               {detail.status === "đang xử lý" && !detail.cancel_requested && (
                 <button type="button" className="courier-primary" onClick={() => setStartConfirm(true)}>Bắt đầu giao hàng</button>
               )}
-              {detail.status === "đang giao" && !detail.accepted_at && !detail.cancel_requested && (
+              {detail.status === "đang giao" && !detail.accounting_handoff_at && !detail.accepted_at && !detail.cancel_requested && (
                 <button type="button" className="courier-primary" onClick={acceptDelivery} disabled={saving}>Nhận đơn được phân lại</button>
               )}
               {detail.status === "đang giao" && !detail.accounting_handoff_at && !detail.cancel_requested && (

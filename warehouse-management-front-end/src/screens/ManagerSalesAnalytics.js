@@ -37,11 +37,12 @@ Chart.register(
   Tooltip,
 );
 
-const localDate = (value) => [
-  value.getFullYear(),
-  String(value.getMonth() + 1).padStart(2, "0"),
-  String(value.getDate()).padStart(2, "0"),
-].join("-");
+const localDate = (value) =>
+  [
+    value.getFullYear(),
+    String(value.getMonth() + 1).padStart(2, "0"),
+    String(value.getDate()).padStart(2, "0"),
+  ].join("-");
 const today = () => localDate(new Date());
 const twelveMonthsAgo = () => {
   const value = new Date();
@@ -135,11 +136,8 @@ function compactQuantityRows(rows) {
 
 const percentage = (value, total) =>
   total ? `${((value / total) * 100).toFixed(1)}%` : "0%";
-const formatPeriodLabel = (value, granularity = "month") => {
-  const [year, month, day] = String(value || "").split("-");
-  if (granularity === "day") {
-    return year && month && day ? `${day}/${month}/${year}` : value || "—";
-  }
+const formatMonthLabel = (value) => {
+  const [year, month] = String(value || "").split("-");
   return year && month ? `T${Number(month)}/${year}` : value || "—";
 };
 
@@ -275,151 +273,6 @@ function QuantityPieChartCard({
   );
 }
 
-function ProductProfitCard({ report, onTablePageChange, tableLoading }) {
-  const canvasRef = useRef(null);
-  const chartRef = useRef(null);
-  const chartRows = useMemo(() => report?.profit_chart || [], [report?.profit_chart]);
-  const summary = report?.profit_summary || {};
-  const tableRows = report?.profit_table || [];
-
-  useEffect(() => {
-    if (!canvasRef.current || !chartRows.length) return undefined;
-    chartRef.current?.destroy();
-    chartRef.current = new Chart(canvasRef.current, {
-      type: "bar",
-      data: {
-        labels: chartRows.map((row) => shortChartLabel(row.product_name, 22)),
-        datasets: [{
-          label: "Lãi sau chi phí ghi nhận",
-          data: chartRows.map((row) => row.estimated_profit),
-          backgroundColor: chartRows.map((row) =>
-            row.estimated_profit < 0 ? "#bd6a62" : "#4d8c72",
-          ),
-          borderRadius: 4,
-        }],
-      },
-      options: {
-        indexAxis: "y",
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              title: (items) => chartRows[items[0]?.dataIndex]?.product_name || "",
-              label: (context) => ` Lãi sau chi phí: ${money(context.parsed.x)}`,
-            },
-          },
-        },
-        scales: {
-          x: { ticks: { callback: (value) => chartMoney(value) } },
-          y: { ticks: { autoSkip: false } },
-        },
-      },
-    });
-    return () => {
-      chartRef.current?.destroy();
-      chartRef.current = null;
-    };
-  }, [chartRows]);
-
-  return (
-    <section id="manager-sold-chart" className="manager-analytics-chart-card manager-profit-card">
-      <div className="manager-analytics-card-heading">
-        <div>
-          <h2>Lãi sau chi phí theo sản phẩm</h2>
-          <small>Đơn hoàn thành trong kỳ đã chọn · giá vốn ước tính từ giá nhập trước ngày bán</small>
-        </div>
-        <span>{summary.total_products ? `${quantity(summary.total_products)} sản phẩm` : "Chưa có dữ liệu"}</span>
-      </div>
-      {summary.total_products ? (
-        <>
-          <div className="manager-profit-overview">
-            <div><span>Doanh thu thuần đã tính lãi</span><strong>{summary.priced_products ? money(summary.net_revenue_priced) : "—"}</strong></div>
-            <div><span>Giá vốn ước tính</span><strong>{summary.priced_products ? money(summary.estimated_cogs_priced) : "—"}</strong></div>
-            <div><span>Phí giao đã ghi nhận</span><strong>{summary.priced_products ? money(summary.shipping_cost_priced) : "—"}</strong></div>
-            <div className="manager-profit-total">
-              <span>Lãi sau chi phí ghi nhận</span>
-              <strong className={summary.estimated_profit_priced < 0 ? "is-negative" : "is-positive"}>
-                {summary.priced_products ? money(summary.estimated_profit_priced) : "—"}
-              </strong>
-            </div>
-          </div>
-          <p className="manager-profit-method">
-            Doanh thu thuần = tiền bán − giảm giá. Lãi ước tính = doanh thu thuần − giá nhập bình quân − phí giao bên thứ ba đã ghi nhận.
-            Giảm giá và phí giao được chia cho từng sản phẩm theo tỷ lệ tiền bán trên đơn.
-            Chưa phân bổ hao hụt kho; lương, quảng cáo, đóng gói và chi phí khác chưa được lưu theo sản phẩm.
-          </p>
-          {summary.missing_cost_products > 0 && (
-            <p className="manager-profit-warning">
-              {quantity(summary.missing_cost_products)} sản phẩm thiếu giá nhập trước ngày bán.
-              Tổng lãi phía trên chỉ tính {quantity(summary.priced_products)}/{quantity(summary.total_products)} sản phẩm đủ dữ liệu.
-            </p>
-          )}
-          <div className="manager-profit-content">
-            {chartRows.length > 0 && (
-              <div className="manager-profit-chart">
-                <h3>Sản phẩm có lãi/lỗ nổi bật</h3>
-                <div className="manager-chart-box manager-profit-chart-box">
-                  <canvas ref={canvasRef} />
-                </div>
-              </div>
-            )}
-            <div className="manager-analytics-split-table">
-              <div className="manager-chart-table-wrap">
-                <table className="manager-chart-table manager-profit-table">
-                  <thead>
-                    <tr>
-                      <th>Sản phẩm</th>
-                      <th>Lãi sau chi phí</th>
-                      <th>Đã bán</th>
-                      <th>Doanh thu thuần</th>
-                      <th>Giá vốn ước tính</th>
-                      <th>Phí giao</th>
-                      <th>Biên lãi</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tableRows.map((row) => (
-                      <tr key={`profit-${row.product_id}`}>
-                        <td><strong>{row.product_name}</strong></td>
-                        <td className={row.estimated_profit == null ? "is-missing" : row.estimated_profit < 0 ? "is-negative" : "is-positive"}>
-                          {row.estimated_profit == null ? "Chưa đủ dữ liệu" : money(row.estimated_profit)}
-                          {row.missing_cost_quantity > 0 && <small>Thiếu giá nhập cho {quantity(row.missing_cost_quantity)} đơn vị</small>}
-                        </td>
-                        <td>{quantity(row.quantity)} {row.unit}</td>
-                        <td>
-                          {money(row.net_revenue)}
-                          {row.discount > 0 && <small>Đã trừ giảm giá {money(row.discount)}</small>}
-                        </td>
-                        <td>{row.estimated_cogs == null ? "Chưa đủ dữ liệu" : money(row.estimated_cogs)}</td>
-                        <td>{money(row.shipping_cost)}</td>
-                        <td>{row.margin_percent == null ? "—" : `${Number(row.margin_percent).toFixed(1)}%`}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {Number(report?.profit_pagination?.total_pages || 1) > 1 && (
-                <div className="manager-chart-pagination">
-                  <Pagination
-                    page={Number(report?.profit_pagination?.page || 1)}
-                    totalPages={Number(report?.profit_pagination?.total_pages || 1)}
-                    onPageChange={onTablePageChange}
-                    disabled={tableLoading}
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-        </>
-      ) : (
-        <div className="manager-chart-empty">Chưa có sản phẩm được bán trong kỳ đã chọn.</div>
-      )}
-    </section>
-  );
-}
-
 function ManagerAnalyticsCharts({
   report,
   debtPagination,
@@ -427,7 +280,6 @@ function ManagerAnalyticsCharts({
   onTablePageChange,
   tableLoading,
 }) {
-  const isDaily = report?.trend_granularity === "day";
   const debtCanvasRef = useRef(null);
   const revenueCanvasRef = useRef(null);
   const debtChartRef = useRef(null);
@@ -442,26 +294,25 @@ function ManagerAnalyticsCharts({
     () => compactRevenueRows(report?.revenue_by_area),
     [report?.revenue_by_area],
   );
-  const trendRows = useMemo(
+  const monthlyRows = useMemo(
     () => report?.monthly_trend || [],
     [report?.monthly_trend],
   );
 
   useEffect(() => {
-    if (!monthlyCanvasRef.current || trendRows.length === 0) return undefined;
+    if (!monthlyCanvasRef.current || monthlyRows.length === 0) return undefined;
     monthlyChartRef.current?.destroy();
     monthlyChartRef.current = new Chart(monthlyCanvasRef.current, {
       type: "bar",
       data: {
-        labels: trendRows.map((row) => formatPeriodLabel(row.period || row.month, report?.trend_granularity)),
+        labels: monthlyRows.map((row) => formatMonthLabel(row.month)),
         datasets: [
           {
             label: "Doanh thu",
-            data: trendRows.map((row) => row.revenue),
-            backgroundColor: trendRows.map(
+            data: monthlyRows.map((row) => row.revenue),
+            backgroundColor: monthlyRows.map(
               (_, index) => CHART_COLORS[index % CHART_COLORS.length],
             ),
-            ...(isDaily ? { barThickness: 22 } : {}),
             borderRadius: 5,
             borderSkipped: false,
           },
@@ -471,10 +322,7 @@ function ManagerAnalyticsCharts({
         responsive: true,
         maintainAspectRatio: false,
         scales: {
-          x: {
-            grid: { display: false },
-            ticks: isDaily ? { autoSkip: false, minRotation: 50, maxRotation: 50 } : {},
-          },
+          x: { grid: { display: false } },
           y: {
             beginAtZero: true,
             grid: { color: "#e8eef5" },
@@ -486,10 +334,10 @@ function ManagerAnalyticsCharts({
           tooltip: {
             callbacks: {
               title: (items) =>
-                formatPeriodLabel(trendRows[items[0]?.dataIndex]?.period, report?.trend_granularity),
+                formatMonthLabel(monthlyRows[items[0]?.dataIndex]?.month),
               label: (context) => ` ${chartMoney(context.parsed.y)}`,
               afterLabel: (context) => {
-                const row = trendRows[context.dataIndex];
+                const row = monthlyRows[context.dataIndex];
                 return ` ${quantity(row.orders)} đơn · ${quantity(row.sold_quantity)} sản phẩm`;
               },
             },
@@ -501,7 +349,7 @@ function ManagerAnalyticsCharts({
       monthlyChartRef.current?.destroy();
       monthlyChartRef.current = null;
     };
-  }, [isDaily, report?.trend_granularity, trendRows]);
+  }, [monthlyRows]);
 
   useEffect(() => {
     if (!debtCanvasRef.current || debtRows.length === 0) return undefined;
@@ -512,8 +360,8 @@ function ManagerAnalyticsCharts({
         labels: debtRows.map((row) => row.customer_name),
         datasets: [
           {
-            label: "Còn nợ từ đơn trong kỳ",
-            data: debtRows.map((row) => row.period_debt),
+            label: "Công nợ hiện tại",
+            data: debtRows.map((row) => row.current_debt),
             backgroundColor: debtRows.map(
               (_, index) => CHART_COLORS[index % CHART_COLORS.length],
             ),
@@ -616,29 +464,22 @@ function ManagerAnalyticsCharts({
       >
         <div className="manager-analytics-card-heading">
           <div>
-            <h2>{isDaily ? "Doanh thu theo ngày" : "Doanh thu theo tháng"}</h2>
+            <h2>Doanh thu theo tháng</h2>
             <small>
-              {isDaily
-                ? "So sánh doanh thu từng ngày trong khoảng đã chọn"
-                : "So sánh doanh thu từng tháng để nhận diện giai đoạn cao điểm"}
+              So sánh doanh thu từng tháng để nhận diện giai đoạn cao điểm
             </small>
           </div>
           <span>
             {report?.monthly_peak
-              ? `Cao nhất: ${formatPeriodLabel(report.monthly_peak.period || report.monthly_peak.month, report.trend_granularity)}`
+              ? `Cao nhất: ${formatMonthLabel(report.monthly_peak.month)}`
               : "Chưa có dữ liệu"}
           </span>
         </div>
-        {trendRows.length ? (
+        {monthlyRows.length ? (
           <div className="manager-analytics-split">
             <div className="manager-analytics-split-chart">
-              <div className="manager-trend-chart-scroll">
-                <div
-                  className="manager-chart-box manager-monthly-chart-box"
-                  style={isDaily ? { minWidth: `${trendRows.length * 52 + 90}px` } : undefined}
-                >
-                  <canvas ref={monthlyCanvasRef} />
-                </div>
+              <div className="manager-chart-box manager-monthly-chart-box">
+                <canvas ref={monthlyCanvasRef} />
               </div>
             </div>
             <div className="manager-analytics-split-table">
@@ -646,7 +487,7 @@ function ManagerAnalyticsCharts({
                 <table className="manager-chart-table">
                   <thead>
                     <tr>
-                      <th>{isDaily ? "Ngày" : "Tháng"}</th>
+                      <th>Tháng</th>
                       <th>Số đơn</th>
                       <th>Số lượng bán</th>
                       <th>Doanh thu</th>
@@ -656,10 +497,10 @@ function ManagerAnalyticsCharts({
                     </tr>
                   </thead>
                   <tbody>
-                    {(report.monthly_table || trendRows).map((row) => (
-                      <tr key={`period-${row.period || row.month}`}>
+                    {(report.monthly_table || monthlyRows).map((row) => (
+                      <tr key={`monthly-${row.month}`}>
                         <td>
-                          <strong>{formatPeriodLabel(row.period || row.month, report.trend_granularity)}</strong>
+                          <strong>{formatMonthLabel(row.month)}</strong>
                         </td>
                         <td>{quantity(row.orders)}</td>
                         <td>{quantity(row.sold_quantity)}</td>
@@ -698,20 +539,16 @@ function ManagerAnalyticsCharts({
         <div className="manager-analytics-card-heading">
           <div>
             <h2>Công nợ theo khách hàng</h2>
-            <small>Còn nợ từ các đơn hoàn thành trong kỳ đã chọn, tính đến cuối kỳ</small>
+            <small>Những khách hàng có số dư công nợ cao nhất</small>
           </div>
-          <span>{report?.debts?.length ? "Đơn vị: VND" : "Chưa có dữ liệu"}</span>
+          <span>{debtRows.length ? "Đơn vị: VND" : "Chưa có dữ liệu"}</span>
         </div>
-        {report?.debts?.length ? (
+        {debtRows.length ? (
           <div className="manager-analytics-split">
             <div className="manager-analytics-split-chart">
-              {debtRows.length ? (
-                <div className="manager-chart-box manager-debt-chart-box">
-                  <canvas ref={debtCanvasRef} />
-                </div>
-              ) : (
-                <div className="manager-chart-empty">Các đơn trong kỳ đã được thanh toán hết.</div>
-              )}
+              <div className="manager-chart-box manager-debt-chart-box">
+                <canvas ref={debtCanvasRef} />
+              </div>
             </div>
             <div className="manager-analytics-split-table">
               <div className="manager-chart-table-wrap">
@@ -720,8 +557,9 @@ function ManagerAnalyticsCharts({
                     <tr>
                       <th>Khách hàng</th>
                       <th>Khu vực</th>
-                      <th>Đã thu trong kỳ</th>
-                      <th>Còn nợ trong kỳ</th>
+                      <th>Doanh số</th>
+                      <th>Đã thu</th>
+                      <th>Công nợ hiện tại</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -732,8 +570,9 @@ function ManagerAnalyticsCharts({
                           <small>{row.phone}</small>
                         </td>
                         <td>{row.area}</td>
+                        <td>{money(row.period_sales)}</td>
                         <td>{money(row.period_paid)}</td>
-                        <td>{money(row.period_debt)}</td>
+                        <td>{money(row.current_debt)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -864,10 +703,16 @@ function ManagerAnalyticsCharts({
         emptyMessage="Chưa có sản phẩm còn tồn kho."
         showChart={false}
       />
-      <ProductProfitCard
-        report={report}
-        onTablePageChange={(nextPage) => onTablePageChange("profit", nextPage)}
-        tableLoading={tableLoading.profit}
+      <QuantityPieChartCard
+        id="manager-sold-chart"
+        title="Số lượng bán theo sản phẩm"
+        subtitle="Số lượng hàng đã bán trong khoảng thời gian đã chọn"
+        rows={report?.sold_chart}
+        tableRows={report?.sold_table}
+        tablePagination={report?.sold_pagination}
+        onTablePageChange={(nextPage) => onTablePageChange("sold", nextPage)}
+        tableLoading={tableLoading.sold}
+        emptyMessage="Chưa có sản phẩm được bán trong kỳ đã chọn."
       />
     </div>
   );
@@ -877,60 +722,58 @@ function ManagerSalesAnalytics() {
   const navigate = useNavigate();
   const [fromDate, setFromDate] = useState(twelveMonthsAgo);
   const [toDate, setToDate] = useState(today);
-  const [selectedYear, setSelectedYear] = useState(() => String(new Date().getFullYear()));
-  const [appliedRange, setAppliedRange] = useState(() => {
-    const year = new Date().getFullYear();
-    return {
-      fromDate: `${year}-01-01`,
-      toDate: `${year}-12-31`,
-      granularity: "month",
-      revision: 0,
-    };
-  });
+  const [selectedYear, setSelectedYear] = useState("");
+  const [appliedRange, setAppliedRange] = useState(() => ({
+    fromDate: twelveMonthsAgo(),
+    toDate: today(),
+    revision: 0,
+  }));
   const filterRevision = useRef(0);
   const yearOptions = useMemo(() => getReportYearOptions(), []);
   const [tablePages, setTablePages] = useState({
     debt: 1,
     revenue: 1,
     inventory: 1,
-    profit: 1,
+    sold: 1,
     monthly: 1,
   });
   const [tableLoading, setTableLoading] = useState({
     debt: false,
     revenue: false,
     inventory: false,
-    profit: false,
+    sold: false,
     monthly: false,
   });
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useNotificationState();
 
-  const loadReport = useCallback(
-    async () => {
-      const revision = appliedRange.revision;
-      try {
-        setLoading(true);
-        setError("");
-        const response = await authApis().get(endpoints.managerSalesReport, {
-          params: {
-            from_date: appliedRange.fromDate || undefined,
-            to_date: appliedRange.toDate || undefined,
-            granularity: appliedRange.granularity,
-            page: 1,
-            per_page: 10,
-          },
-        });
-        if (revision === filterRevision.current) setReport(response.data || null);
-      } catch (requestError) {
-        if (revision === filterRevision.current) setError(getApiError(requestError));
-      } finally {
-        if (revision === filterRevision.current) setLoading(false);
-      }
-    },
-    [appliedRange.fromDate, appliedRange.toDate, appliedRange.granularity, appliedRange.revision, setError],
-  );
+  const loadReport = useCallback(async () => {
+    const revision = appliedRange.revision;
+    try {
+      setLoading(true);
+      setError("");
+      const response = await authApis().get(endpoints.managerSalesReport, {
+        params: {
+          from_date: appliedRange.fromDate || undefined,
+          to_date: appliedRange.toDate || undefined,
+          page: 1,
+          per_page: 10,
+        },
+      });
+      if (revision === filterRevision.current) setReport(response.data || null);
+    } catch (requestError) {
+      if (revision === filterRevision.current)
+        setError(getApiError(requestError));
+    } finally {
+      if (revision === filterRevision.current) setLoading(false);
+    }
+  }, [
+    appliedRange.fromDate,
+    appliedRange.toDate,
+    appliedRange.revision,
+    setError,
+  ]);
 
   const loadTablePage = useCallback(
     async (table, nextPage) => {
@@ -941,7 +784,6 @@ function ManagerSalesAnalytics() {
           params: {
             from_date: appliedRange.fromDate || undefined,
             to_date: appliedRange.toDate || undefined,
-            granularity: appliedRange.granularity,
             table,
             table_page: nextPage,
             table_per_page: 10,
@@ -955,33 +797,42 @@ function ManagerSalesAnalytics() {
           setTablePages((current) => ({ ...current, [table]: nextPage }));
         }
       } catch (requestError) {
-        if (revision === filterRevision.current) setError(getApiError(requestError));
+        if (revision === filterRevision.current)
+          setError(getApiError(requestError));
       } finally {
         if (revision === filterRevision.current) {
           setTableLoading((current) => ({ ...current, [table]: false }));
         }
       }
     },
-    [appliedRange.fromDate, appliedRange.toDate, appliedRange.granularity, setError],
+    [appliedRange.fromDate, appliedRange.toDate, setError],
   );
 
   const applyFilter = (event) => {
     event.preventDefault();
-    if (!selectedYear && (!fromDate || !toDate)) {
-      setError("Cần chọn từ ngày và đến ngày.");
-      return;
-    }
-    if (!selectedYear && fromDate > toDate) {
+    if (!selectedYear && fromDate && toDate && fromDate > toDate) {
       setError("Từ ngày không được lớn hơn đến ngày.");
       return;
     }
     filterRevision.current += 1;
     setLoading(true);
-    setTablePages({ debt: 1, revenue: 1, inventory: 1, profit: 1, monthly: 1 });
-    setTableLoading({ debt: false, revenue: false, inventory: false, profit: false, monthly: false });
-    setAppliedRange(selectedYear
-      ? { fromDate: `${selectedYear}-01-01`, toDate: `${selectedYear}-12-31`, granularity: "month", revision: filterRevision.current }
-      : { fromDate, toDate, granularity: "day", revision: filterRevision.current });
+    setTablePages({ debt: 1, revenue: 1, inventory: 1, sold: 1, monthly: 1 });
+    setTableLoading({
+      debt: false,
+      revenue: false,
+      inventory: false,
+      sold: false,
+      monthly: false,
+    });
+    setAppliedRange(
+      selectedYear
+        ? {
+            fromDate: `${selectedYear}-01-01`,
+            toDate: `${selectedYear}-12-31`,
+            revision: filterRevision.current,
+          }
+        : { fromDate, toDate, revision: filterRevision.current },
+    );
   };
 
   useEffect(() => {
@@ -996,7 +847,7 @@ function ManagerSalesAnalytics() {
   }, [loadReport, navigate]);
 
   const summary = report?.debt_summary || {};
-  const collectedVsRevenue =
+  const collectedVsSales =
     Number(summary.period_paid_total || 0) -
     Number(summary.period_sales_total || 0);
   const debtPagination = report?.debt_pagination || { total_pages: 1 };
@@ -1015,7 +866,7 @@ function ManagerSalesAnalytics() {
             value={selectedYear}
             options={yearOptions}
             onChange={(value) => setSelectedYear(String(value))}
-            placeholder="Không chọn năm"
+            placeholder="Không chọn năm (theo ngày)"
             ariaLabel="Thống kê theo năm"
           />
         </label>
@@ -1025,7 +876,6 @@ function ManagerSalesAnalytics() {
             type="date"
             value={fromDate}
             disabled={Boolean(selectedYear)}
-            required={!selectedYear}
             onChange={(event) => setFromDate(event.target.value)}
           />
         </label>
@@ -1035,7 +885,6 @@ function ManagerSalesAnalytics() {
             type="date"
             value={toDate}
             disabled={Boolean(selectedYear)}
-            required={!selectedYear}
             onChange={(event) => setToDate(event.target.value)}
           />
         </label>
@@ -1057,7 +906,7 @@ function ManagerSalesAnalytics() {
                 onClick={() => scrollToSection("manager-debt-chart")}
               />
               <SummaryCard
-                label="Doanh thu"
+                label="Doanh số"
                 value={money(summary.period_sales_total)}
                 onClick={() => scrollToSection("manager-revenue-chart")}
               />
@@ -1106,15 +955,15 @@ function ManagerSalesAnalytics() {
                 }
               />
               <SummaryCard
-                label="Đã thu so với doanh thu"
-                formula="Đã thu − doanh thu"
+                label="Đã thu so với doanh số"
+                formula="Đã thu − doanh số"
                 value={
-                  collectedVsRevenue === 0
+                  collectedVsSales === 0
                     ? "Bằng nhau"
-                    : `${collectedVsRevenue > 0 ? " Thu vượt" : " Thu thấp hơn"} ${money(Math.abs(collectedVsRevenue))}`
+                    : `${collectedVsSales > 0 ? " Thu vượt" : " Thu thấp hơn"} ${money(Math.abs(collectedVsSales))}`
                 }
                 onClick={() => scrollToSection("manager-revenue-chart")}
-                tone={collectedVsRevenue >= 0 ? "positive" : "warning"}
+                tone={collectedVsSales >= 0 ? "positive" : "warning"}
               />
               <SummaryCard
                 label="Tồn kho hiện tại"
@@ -1129,10 +978,10 @@ function ManagerSalesAnalytics() {
                 onClick={() => scrollToSection("manager-sold-chart")}
               />
               <SummaryCard
-                label={report.trend_granularity === "day" ? "Ngày doanh thu cao nhất" : "Tháng doanh thu cao nhất"}
+                label="Tháng doanh thu cao nhất"
                 value={
                   report.monthly_peak
-                    ? formatPeriodLabel(report.monthly_peak.period || report.monthly_peak.month, report.trend_granularity)
+                    ? formatMonthLabel(report.monthly_peak.month)
                     : "—"
                 }
                 suffix={
