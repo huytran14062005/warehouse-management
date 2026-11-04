@@ -7,12 +7,14 @@ weighted import estimate, not a perpetual inventory valuation.
 
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_HALF_UP
+from uuid import uuid4
 
 from sqlalchemy import case, func
+from sqlalchemy.exc import IntegrityError
 
 from web import db
 from web.models import (
-    ImportInvoice, ImportInvoiceItem, InvoiceStatus, OperatingExpense,
+    ExpenseCategory, ImportInvoice, ImportInvoiceItem, InvoiceStatus, OperatingExpense,
     PaymentMethod, PricingPolicy, Product, SalesInvoice, SalesInvoiceItem,
     vietnam_payment_time,
 )
@@ -28,9 +30,44 @@ CATEGORIES = {
     "sales_salary": "Lương nhân viên bán hàng",
     "other": "Chi phí bán hàng khác",
 }
+
+
+def list_expense_categories():
+    custom = ExpenseCategory.query.order_by(ExpenseCategory.name.asc()).all()
+    return [
+        {"value": code, "label": label} for code, label in CATEGORIES.items()
+    ] + [{"value": row.code, "label": row.name} for row in custom]
+
+
+def create_expense_category(employee_id, payload):
+    name = str(payload.get("name") or "").strip()
+    if not name or len(name) > 120:
+        raise ValidationError("Tên loại chi phí cần từ 1 đến 120 ký tự")
+    if name.casefold() in {label.casefold() for label in CATEGORIES.values()}:
+        raise ValidationError("Loại chi phí đã tồn tại", status_code=409)
+    if ExpenseCategory.query.filter(func.lower(ExpenseCategory.name) == name.lower()).first():
+        raise ValidationError("Loại chi phí đã tồn tại", status_code=409)
+    category = ExpenseCategory(code=f"custom_{uuid4().hex[:17]}", name=name, created_by_id=employee_id)
+    try:
+        db.session.add(category)
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        raise ValidationError("Loại chi phí đã tồn tại", status_code=409)
+    return {"value": category.code, "label": category.name}
+
+
+def _category_label(code, custom_labels=None):
+    if code in CATEGORIES:
+        return CATEGORIES[code]
+    if custom_labels is not None:
+        return custom_labels.get(code)
+    category = db.session.get(ExpenseCategory, code)
+    return category.name if category else None
+
+
 CENT = Decimal("0.01")
-DEFAULT_MARGIN = Decimal("20")
-DEFAULT_QUANTITY = 100
+DEFAULT_MARKUP = Decimal("20")
 
 
 def money(value):
@@ -75,7 +112,8 @@ def parse_page(value):
 
 def create_expense(employee_id, payload):
     category = str(payload.get("category") or "").strip()
-    if category not in CATEGORIES:
+    category_label = _category_label(category)
+    if category_label is None:
         raise ValidationError("Loại chi phí không hợp lệ")
     amount = positive_amount(payload.get("amount"))
     try:
@@ -84,7 +122,7 @@ def create_expense(employee_id, payload):
         raise ValidationError("Ngày phát sinh không hợp lệ")
     description = str(payload.get("description") or "").strip()
     if not description or len(description) > 500:
-        raise ValidationError("Diễn giải cần từ 1 đến 500 ký tự")
+        raise ValidationError("Nội dung chi phí cần từ 1 đến 500 ký tự")
     invoice_id = payload.get("invoice_id") or None
     if invoice_id is not None:
         try:
@@ -109,7 +147,7 @@ def create_expense(employee_id, payload):
         if payment_method:
             record_fund_movement(
                 payment_method, "out", amount, "operating_expense", expense.id,
-                employee_id, f"{CATEGORIES[category]} #{expense.id}", description,
+                employee_id, f"{category_label} #{expense.id}", description,
                 occurred_at=vietnam_payment_time(),
             )
         db.session.commit()
@@ -119,9 +157,10 @@ def create_expense(employee_id, payload):
     return serialize_expense(expense)
 
 
-def serialize_expense(row):
+def serialize_expense(row, category_labels=None):
     return {
-        "id": row.id, "category": row.category, "category_label": CATEGORIES[row.category],
+        "id": row.id, "category": row.category,
+        "category_label": _category_label(row.category, category_labels) or row.category,
         "amount": float(row.amount), "occurred_on": row.occurred_on.isoformat(),
         "invoice_id": row.invoice_id, "description": row.description,
         "payment_method": row.payment_method, "created_at": row.created_at.isoformat(),
@@ -169,7 +208,7 @@ def pay_expense(employee_id, expense_id, payment_method):
             raise ValidationError("Khoản chi đã được thanh toán hoặc đã hủy", status_code=409)
         record_fund_movement(
             payment_method, "out", expense.amount, "operating_expense",
-            expense.id, employee_id, f"{CATEGORIES[expense.category]} #{expense.id}",
+            expense.id, employee_id, f"{_category_label(expense.category) or expense.category} #{expense.id}",
             expense.description, occurred_at=vietnam_payment_time(),
         )
         expense.payment_method = payment_method
@@ -188,8 +227,12 @@ def list_expenses(from_value=None, to_value=None, page_value=None):
     )
     total = query.count()
     rows = query.order_by(OperatingExpense.occurred_on.desc(), OperatingExpense.id.desc()).offset((page - 1) * 20).limit(20).all()
+    custom_codes = {row.category for row in rows if row.category not in CATEGORIES}
+    custom_labels = {
+        row.code: row.name for row in ExpenseCategory.query.filter(ExpenseCategory.code.in_(custom_codes)).all()
+    } if custom_codes else {}
     return {
-        "expenses": [serialize_expense(row) for row in rows],
+        "expenses": [serialize_expense(row, custom_labels) for row in rows],
         "pagination": build_pagination(page, 20, total),
         "period": {"from": start.isoformat(), "to": end.isoformat()},
     }
@@ -214,19 +257,24 @@ def _shipping_total(start, end):
     ).scalar())
 
 
-def _monthly_pricing_pool():
-    today = vietnam_payment_time().date()
-    by_category, recent_total = _expense_totals(today - timedelta(days=29), today)
-    annual_repair = money(db.session.query(func.sum(OperatingExpense.amount)).filter(
-        OperatingExpense.voided_at.is_(None),
-        OperatingExpense.category == "vehicle_repair",
-        OperatingExpense.occurred_on >= today - timedelta(days=364),
-        OperatingExpense.occurred_on <= today,
-    ).scalar())
-    repair_allowance = rounded(annual_repair / 12)
-    shipping = _shipping_total(today - timedelta(days=29), today)
-    pool = recent_total - by_category.get("vehicle_repair", Decimal("0")) + repair_allowance + shipping
-    return pool, by_category, repair_allowance, shipping
+def _recent_expense_per_unit():
+    end = vietnam_payment_time().date()
+    start = end - timedelta(days=29)
+    _, operating_expenses = _expense_totals(start, end)
+    shipping = _shipping_total(start, end)
+    units_sold = int(db.session.query(func.sum(SalesInvoiceItem.quantity)).join(
+        SalesInvoice, SalesInvoiceItem.sales_invoice_id == SalesInvoice.id,
+    ).filter(
+        SalesInvoice.status == InvoiceStatus.COMPLETED,
+        SalesInvoice.sold_at >= datetime.combine(start, datetime.min.time()),
+        SalesInvoice.sold_at < datetime.combine(end + timedelta(days=1), datetime.min.time()),
+    ).scalar() or 0)
+    total_expenses = operating_expenses + shipping
+    per_unit = (
+        (total_expenses / units_sold).quantize(CENT, rounding=ROUND_CEILING)
+        if units_sold else (Decimal("0") if total_expenses == 0 else None)
+    )
+    return operating_expenses, shipping, units_sold, per_unit
 
 
 def _purchase_costs(product_ids, start=None, end=None):
@@ -246,22 +294,18 @@ def _purchase_costs(product_ids, start=None, end=None):
     return {pid: rounded(money(total) / money(qty)) for pid, qty, total in query.group_by(ImportInvoiceItem.product_id).all() if qty}
 
 
-def _pricing_row(product, policy, unit_cost, monthly_pool, forecast_revenue):
-    planned = policy.planned_quantity if policy else DEFAULT_QUANTITY
-    margin = money(policy.target_margin) if policy else DEFAULT_MARGIN
+def _pricing_row(product, policy, unit_cost, expense_per_unit):
+    markup = money(policy.markup_percent) if policy else DEFAULT_MARKUP
     current_price = money(product.default_sale_price)
-    # Revenue share at current prices apportions monthly shared selling costs.
-    allocated_month = monthly_pool * current_price * planned / forecast_revenue if forecast_revenue else Decimal("0")
-    overhead_per_unit = rounded(allocated_month / planned)
     suggested = None
-    if unit_cost is not None:
-        raw_price = (unit_cost + overhead_per_unit) / (Decimal("1") - margin / 100)
+    if unit_cost is not None and expense_per_unit is not None:
+        raw_price = unit_cost * (Decimal("1") + markup / 100) + expense_per_unit
         suggested = int((raw_price / 1000).to_integral_value(rounding=ROUND_CEILING) * 1000)
     return {
         "product_id": product.id, "name": product.name, "unit": product.unit,
         "current_price": float(current_price), "estimated_unit_cost": float(unit_cost) if unit_cost is not None else None,
-        "overhead_per_unit": float(overhead_per_unit), "planned_quantity": planned,
-        "target_margin": float(margin), "suggested_price": suggested,
+        "expense_per_unit": float(expense_per_unit) if expense_per_unit is not None else None,
+        "markup_percent": float(markup), "suggested_price": suggested,
     }
 
 
@@ -279,18 +323,14 @@ def pricing_catalog(page_value=None, keyword=None):
     recent_costs = _purchase_costs(ids, start=recent_start)
     missing_ids = [pid for pid in ids if pid not in recent_costs]
     fallback_costs = _purchase_costs(missing_ids)
-    forecast_revenue = money(db.session.query(func.sum(
-        Product.default_sale_price * func.coalesce(PricingPolicy.planned_quantity, DEFAULT_QUANTITY)
-    )).outerjoin(PricingPolicy, PricingPolicy.product_id == Product.id).scalar())
-    pool, expense_by_category, repair_allowance, shipping = _monthly_pricing_pool()
+    operating_expenses, shipping, units_sold, expense_per_unit = _recent_expense_per_unit()
     return {
-        "products": [_pricing_row(product, policies.get(product.id), recent_costs.get(product.id, fallback_costs.get(product.id)), pool, forecast_revenue) for product in products],
+        "products": [_pricing_row(product, policies.get(product.id), recent_costs.get(product.id, fallback_costs.get(product.id)), expense_per_unit) for product in products],
         "pagination": build_pagination(page, 20, total),
-        "monthly_expense_pool": float(pool),
-        "monthly_expenses_by_category": {key: float(value) for key, value in expense_by_category.items()},
-        "monthly_repair_allowance": float(repair_allowance),
-        "monthly_external_shipping": float(shipping),
-        "basis_days": 30,
+        "pricing_operating_expenses": float(operating_expenses),
+        "pricing_shipping": float(shipping),
+        "pricing_units_sold": units_sold,
+        "pricing_expense_per_unit": float(expense_per_unit) if expense_per_unit is not None else None,
     }
 
 
@@ -298,25 +338,20 @@ def save_pricing_policy(employee_id, product_id, payload):
     if not db.session.get(Product, product_id):
         raise NotFoundError("Sản phẩm không tồn tại")
     try:
-        quantity_value = Decimal(str(payload.get("planned_quantity")))
-        if not quantity_value.is_finite() or quantity_value != quantity_value.to_integral_value():
-            raise ValueError
-        quantity = int(quantity_value)
-        margin = Decimal(str(payload.get("target_margin")))
+        markup = Decimal(str(payload.get("markup_percent")))
     except (TypeError, ValueError, InvalidOperation):
-        raise ValidationError("Sản lượng hoặc biên lợi nhuận không hợp lệ")
-    if quantity < 1 or quantity > 10000000 or not margin.is_finite() or margin < 0 or margin > 90 or margin.as_tuple().exponent < -2:
-        raise ValidationError("Sản lượng phải từ 1 đến 10 triệu; biên lợi nhuận từ 0% đến 90%")
+        raise ValidationError("Tỷ lệ lãi trên giá nhập không hợp lệ")
+    if not markup.is_finite() or markup < 0 or markup > 90 or markup.as_tuple().exponent < -2:
+        raise ValidationError("Tỷ lệ lãi trên giá nhập phải từ 0% đến 90%")
     policy = db.session.get(PricingPolicy, product_id)
     if policy is None:
         policy = PricingPolicy(product_id=product_id, updated_by_id=employee_id)
         db.session.add(policy)
-    policy.planned_quantity = quantity
-    policy.target_margin = margin
+    policy.markup_percent = markup
     policy.updated_by_id = employee_id
     policy.updated_at = vietnam_payment_time()
     db.session.commit()
-    return {"product_id": product_id, "planned_quantity": quantity, "target_margin": float(margin)}
+    return {"product_id": product_id, "markup_percent": float(markup)}
 
 
 def apply_suggested_price(product_id, expected_price, expected_suggested_price):
@@ -335,15 +370,16 @@ def apply_suggested_price(product_id, expected_price, expected_suggested_price):
     if unit_cost is None:
         raise ValidationError("Chưa có giá nhập để đề xuất giá bán")
     policy = db.session.get(PricingPolicy, product_id)
-    forecast = money(db.session.query(func.sum(Product.default_sale_price * func.coalesce(PricingPolicy.planned_quantity, DEFAULT_QUANTITY))).outerjoin(PricingPolicy, PricingPolicy.product_id == Product.id).scalar())
-    pool, _, _, _ = _monthly_pricing_pool()
-    proposal = _pricing_row(product, policy, unit_cost, pool, forecast)
+    _, _, _, expense_per_unit = _recent_expense_per_unit()
+    if expense_per_unit is None:
+        raise ValidationError("Chưa có sản phẩm bán trong 30 ngày để phân bổ chi phí")
+    proposal = _pricing_row(product, policy, unit_cost, expense_per_unit)
     try:
         expected_suggestion = int(expected_suggested_price)
     except (TypeError, ValueError):
         raise ValidationError("Giá đề xuất cần được tải lại")
     if expected_suggestion != proposal["suggested_price"]:
-        raise ValidationError("Chi phí hoặc mục tiêu đã thay đổi; hãy tải lại giá đề xuất", status_code=409)
+        raise ValidationError("Giá nhập, chi phí hoặc tỷ lệ lãi đã thay đổi; hãy tải lại giá đề xuất", status_code=409)
     if proposal["suggested_price"] < 500:
         raise ValidationError("Giá đề xuất thấp hơn mức tối thiểu 500 đồng")
     product.default_sale_price = Decimal(proposal["suggested_price"])
@@ -357,7 +393,6 @@ def profitability_report(from_value=None, to_value=None, page_value=None):
     from_dt = datetime.combine(start, datetime.min.time())
     until_dt = datetime.combine(end + timedelta(days=1), datetime.min.time())
     by_category, expense_total = _expense_totals(start, end)
-    # One grouped SQL query per data source. No per-invoice or per-product reads.
     invoice_totals = db.session.query(
         SalesInvoiceItem.sales_invoice_id.label("invoice_id"),
         func.sum(SalesInvoiceItem.quantity * SalesInvoiceItem.unit_price).label("gross"),

@@ -67,18 +67,18 @@ export function getReportYearOptions(currentYear = new Date().getFullYear()) {
   ];
 }
 const CHART_COLORS = [
-  "#557A95", // Muted blue
-  "#6B8E7B", // Sage green
-  "#B9786A", // Dusty terracotta
-  "#8176A5", // Muted purple
-  "#B89A55", // Soft ochre
-  "#4F8884", // Deep pastel teal
-  "#9A7488", // Dusty mauve
-  "#718096", // Slate
-  "#A47C5B", // Warm tan
-  "#78864D", // Olive sage
-  "#6D7FA3", // Periwinkle
-  "#9A6E76", // Dusty rose
+  "#557A95",
+  "#6B8E7B",
+  "#B9786A",
+  "#8176A5",
+  "#B89A55",
+  "#4F8884",
+  "#9A7488",
+  "#718096",
+  "#A47C5B",
+  "#78864D",
+  "#6D7FA3",
+  "#9A6E76",
 ];
 const shortChartLabel = (value, maxLength = 16) => {
   const label = String(value || "");

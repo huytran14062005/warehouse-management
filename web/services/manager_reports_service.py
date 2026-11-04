@@ -561,7 +561,6 @@ def get_manager_sales_analytics_service(
     totals = _invoice_total_subquery()
     invoice_filters = _completed_invoice_filters(from_date, to_date)
 
-    # The chart and table show unpaid amounts from invoices sold in the filter period.
     debt_rows = _build_customer_period_debts(from_date, to_date)
     debt_total = len(debt_rows)
     debt_chart_rows = [
@@ -581,7 +580,6 @@ def get_manager_sales_analytics_service(
     start = (page - 1) * per_page
     paged_debts = debt_rows[start:start + per_page]
 
-    # Revenue by area uses the area snapshot stored on each completed invoice.
     area_id_expr = func.coalesce(SalesInvoice.sales_area_id, Customer.sales_area_id)
     area_expr = func.coalesce(SalesArea.name, literal("Chưa xác định"))
     revenue_rows = (
@@ -633,8 +631,6 @@ def get_manager_sales_analytics_service(
         for row in revenue_rows
     ]
 
-    # Tồn kho hiện tại lấy theo cùng một công thức với màn hình quản lý kho:
-    # nhập - bán trực tiếp - hư hỏng - đã cấp cho nhân viên.
     products = Product.query.order_by(Product.name.asc()).all()
     central_warehouse_id = get_central_warehouse().id
     inventory_by_product = product_dao.calculate_inventory_for_products(

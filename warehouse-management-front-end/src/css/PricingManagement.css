@@ -14,25 +14,31 @@
 .pricing-page .searchable-dropdown-option:hover, .pricing-page .searchable-dropdown-option.is-selected { color: #fff; background: #1d68c9; }
 .pricing-page button:disabled { opacity: .55; cursor: not-allowed; }
 .pricing-page button.pricing-primary { border-color: #0b3158; background: #0b3158; color: #fff; }
-.pricing-cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
-.pricing-cards > div { display: grid; gap: 7px; padding: 16px; border: 1px solid #e1e8ef; border-radius: 6px; background: #f8fafc; }
-.pricing-cards span { color: #62768a; font-size: 12px; }
-.pricing-cards strong { color: #0b3158; font-size: 18px; overflow-wrap: anywhere; }
-.pricing-cards .pricing-profit { border-color: #a9d5bd; background: #eef9f2; }
-.pricing-cards .pricing-profit strong { color: #26704b; }
-.pricing-cards .pricing-profit.is-negative { border-color: #e5b4b4; background: #fff1f1; }
-.pricing-cards .pricing-profit.is-negative strong { color: #9f3d3d; }
 .pricing-expense-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: end; }
 .pricing-expense-form .pricing-description { grid-column: span 2; }
 .pricing-expense-form label > input, .pricing-expense-form label > select, .pricing-expense-form .money-input { width: 100%; }
+.pricing-expense-dialog { max-width: 720px; text-align: left; }
+.pricing-expense-dialog .confirm-dialog-actions { justify-content: flex-end; }
+.pricing-expense-dialog .pricing-expense-form { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 20px; }
+.pricing-expense-dialog .pricing-expense-form label { display: grid; gap: 5px; color: #52657a; font-size: 12px; font-weight: 600; }
+.pricing-expense-dialog .pricing-expense-form input { box-sizing: border-box; min-height: 39px; padding: 8px 10px; border: 1px solid #cbd7e2; border-radius: 5px; color: #1b2d40; }
+.pricing-expense-dialog .pricing-expense-form textarea { box-sizing: border-box; width: 100%; min-height: 80px; padding: 10px; border: 1px solid #cbd7e2; border-radius: 5px; color: #1b2d40; font: inherit; resize: vertical; }
+.pricing-expense-dialog .pricing-expense-form .searchable-dropdown-input { border: 0; padding: 8px 0; }
+.pricing-expense-dialog .pricing-expense-form button { min-height: 39px; padding: 8px 12px; border: 1px solid #b7c8d8; border-radius: 5px; background: #fff; color: #0b3158; font-weight: 600; cursor: pointer; }
+.pricing-expense-dialog .pricing-expense-form .searchable-dropdown-arrow-button { min-height: 30px; padding: 0; border: 0; background: transparent; }
+.pricing-expense-dialog .pricing-expense-form .searchable-dropdown-option { min-height: 0; width: 100%; padding: 9px 10px; border: 0; border-radius: 0; text-align: left; font-weight: 400; }
+.pricing-expense-dialog .pricing-expense-form .searchable-dropdown-option:hover, .pricing-expense-dialog .pricing-expense-form .searchable-dropdown-option.is-selected { color: #fff; background: #1d68c9; }
+.pricing-category-field, .pricing-new-category { display: flex; align-items: end; gap: 10px; grid-column: 1 / -1; }
+.pricing-category-field label, .pricing-new-category label { flex: 1; min-width: 0; }
+.pricing-new-category { padding: 12px; border: 1px solid #d9e2ec; border-radius: 6px; background: #f8fafc; }
+.pricing-expense-dialog .pricing-form-error, .pricing-expense-dialog .pricing-form-success { grid-column: 1 / -1; margin: 0; font-size: 13px; }
+.pricing-expense-dialog .pricing-form-error { color: #9f3d3d; }
+.pricing-expense-dialog .pricing-form-success { color: #26704b; }
 .pricing-hint { margin: 14px 0; color: #647a90; font-size: 12px; line-height: 1.5; }
 .pricing-warning { color: #946018; font-size: 12px; }
-.pricing-loading { color: #52657a; font-size: 13px; }
 .pricing-error, .pricing-success { margin-bottom: 15px; padding: 11px 13px; border-radius: 5px; font-size: 13px; }
 .pricing-error { color: #9f3d3d; border: 1px solid #e5b4b4; background: #fff1f1; }
 .pricing-success { color: #26704b; border: 1px solid #a9d5bd; background: #eef9f2; }
-.pricing-details { margin-top: 17px; }
-.pricing-details summary { color: #0b3158; font-weight: 600; cursor: pointer; }
 .pricing-table-wrap { width: 100%; margin-top: 14px; overflow-x: auto; }
 .pricing-table-wrap table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .pricing-table-wrap th, .pricing-table-wrap td { padding: 11px 10px; border-bottom: 1px solid #edf1f5; text-align: left; vertical-align: middle; }
@@ -46,5 +52,5 @@
 .pricing-voided-row { color: #8997a5; background: #fafbfc; }
 .pricing-void-dialog label { display: grid; gap: 7px; color: #52657a; font-size: 13px; font-weight: 600; }
 .pricing-void-dialog input { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid #cbd7e2; border-radius: 5px; }
-@media (max-width: 1050px) { .pricing-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 768px) { .pricing-page { width: calc(100% - 24px); padding-top: 24px; } .pricing-panel { padding: 15px; } .pricing-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .pricing-expense-form { grid-template-columns: 1fr; } .pricing-expense-form .pricing-description { grid-column: auto; } .pricing-period, .pricing-search { width: 100%; } .pricing-period label { flex: 1 1 130px; } .pricing-search input { flex: 1; min-width: 0; } }
+@media (max-width: 768px) { .pricing-page { width: calc(100% - 24px); padding-top: 24px; } .pricing-panel { padding: 15px; } .pricing-expense-form { grid-template-columns: 1fr; } .pricing-expense-form .pricing-description { grid-column: auto; } .pricing-period, .pricing-search { width: 100%; } .pricing-period label { flex: 1 1 130px; } .pricing-search input { flex: 1; min-width: 0; } }
+@media (max-width: 600px) { .pricing-expense-dialog .pricing-expense-form { grid-template-columns: 1fr; } .pricing-expense-dialog .pricing-description { grid-column: 1; } .pricing-category-field, .pricing-new-category { flex-direction: column; align-items: stretch; } }

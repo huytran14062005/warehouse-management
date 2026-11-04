@@ -71,7 +71,6 @@ function SearchableDropdown({
   };
 
   const handleFocus = (event) => {
-    // Selecting the current label lets the user start a new search immediately.
     event.currentTarget.select();
     if (!controlledSearch) setLocalSearch("");
     if (!open) onOpen?.();

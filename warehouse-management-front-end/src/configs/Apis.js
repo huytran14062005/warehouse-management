@@ -72,6 +72,7 @@ export const endpoints = {
   reportsInventory: "/reports/inventory",
   managerSalesReport: "/reports/manager-sales",
   pricingExpenses: "/pricing/expenses",
+  pricingExpenseCategories: "/pricing/expense-categories",
   pricingExpenseVoid: (expenseId) => `/pricing/expenses/${expenseId}/void`,
   pricingExpensePay: (expenseId) => `/pricing/expenses/${expenseId}/pay`,
   pricingCatalog: "/pricing/catalog",

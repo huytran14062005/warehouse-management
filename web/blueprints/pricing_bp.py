@@ -4,13 +4,31 @@ from web.blueprints.api_errors import handle_api_errors
 from web.middleware.auth_middleware import verify_role, verify_token
 from web.models import EmployeeRole
 from web.services.pricing_service import (
-    apply_suggested_price, create_expense, list_expenses, pricing_catalog,
+    apply_suggested_price, create_expense, create_expense_category,
+    list_expense_categories, list_expenses, pricing_catalog,
     pay_expense, profitability_report, save_pricing_policy, void_expense,
 )
 from web.utils.query_cache import cached_query
 
 
 pricing_bp = Blueprint("pricing", __name__, url_prefix="/api/pricing")
+
+
+@pricing_bp.route("/expense-categories", methods=["GET"])
+@verify_token
+@verify_role(EmployeeRole.QUAN_LY)
+@handle_api_errors
+def expense_categories():
+    return jsonify({"categories": list_expense_categories()}), 200
+
+
+@pricing_bp.route("/expense-categories", methods=["POST"])
+@verify_token
+@verify_role(EmployeeRole.QUAN_LY)
+@handle_api_errors
+def add_expense_category():
+    category = create_expense_category(request.employee_id, request.get_json(silent=True) or {})
+    return jsonify({"category": category}), 201
 
 
 @pricing_bp.route("/expenses", methods=["GET"])

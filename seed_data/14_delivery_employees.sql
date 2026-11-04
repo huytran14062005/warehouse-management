@@ -1,5 +1,5 @@
 -- 5 tai khoan nhan vien giao hang mau cho MySQL.
--- Chay schema_changes/2026_11_sales_delivery_workflow.sql truoc khi import file nay.
+-- Dam bao schema da co cac cot va gia tri enum phuc vu luong giao hang truoc khi import file nay.
 -- Database local hien duoc cau hinh la managewarehouse (DB_NAME trong .env).
 -- Neu ban import vao database khac, sua lenh USE ben duoi truoc khi chay.
 -- File co the chay lai: khong ghi de nhan vien da co, khong tu dat id.

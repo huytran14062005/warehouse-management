@@ -13,6 +13,7 @@ function ConfirmDialog({
   loading = false,
   danger = false,
   confirmDisabled = false,
+  className = "",
   children,
 }) {
   useEffect(() => {
@@ -36,7 +37,7 @@ function ConfirmDialog({
   return createPortal(
     <div className="confirm-dialog-overlay">
       <div
-        className="confirm-dialog"
+        className={`confirm-dialog${className ? ` ${className}` : ""}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"

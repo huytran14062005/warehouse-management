@@ -1874,7 +1874,6 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
         return;
       }
 
-      // Kiểm tra tồn kho và tính tổng giá combo
       const next = [...items];
       let totalComboPrice = 0;
       const comboProducts = [];
@@ -1902,7 +1901,6 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
         });
       }
 
-      // Tạo 1 item duy nhất đại diện cho combo
       next[index] = {
         type: "combo",
         comboId: String(combo.id),
@@ -1998,7 +1996,6 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
     }
     const productIds = new Set();
     for (const item of items) {
-      // Skip validation checks for combo items (already validated when combo was added)
       if (item.type === "combo") {
         if (Number(item.quantity) <= 0) {
           setFormError("Số bộ combo phải lớn hơn 0.");
@@ -2007,7 +2004,6 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
         continue;
       }
 
-      // Validation for regular products
       if (
         !item.productId ||
         Number(item.quantity) <= 0 ||
@@ -2068,7 +2064,6 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
         sale_source: saleSource,
         payment_due_date: paymentDueDate || null,
         items: items.flatMap((item) => {
-          // Nếu là combo, expand thành các sản phẩm riêng lẻ
           if (item.type === "combo" && item.comboProducts) {
             const numberOfSets = Number(item.quantity);
             return item.comboProducts.map((comboProduct) => ({
@@ -2077,7 +2072,6 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
               unit_price: Number(comboProduct.unit_price),
             }));
           }
-          // Sản phẩm thường
           return [
             {
               product_id: Number(item.productId),
@@ -2289,7 +2283,6 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
           </div>
           <div className="sales-editor-items">
             {items.map((item, index) => {
-              // Render cho COMBO
               if (item.type === "combo") {
                 const comboProductsList =
                   item.comboProducts
@@ -2297,7 +2290,6 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                     .join(", ") || "";
                 const totalPrice =
                   Number(item.unitPrice) * Number(item.quantity);
-                // Tính priceBounds cho combo (±10% giá gốc của combo)
                 const comboPriceBounds = getSalePriceBounds(item.unitPrice);
 
                 return (
@@ -2335,7 +2327,6 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                       <MoneyInput
                         value={String(totalPrice)}
                         onChange={(value) => {
-                          // Tính lại unitPrice khi thay đổi tổng giá
                           const newTotalPrice = Number(value);
                           const quantity = Number(item.quantity) || 1;
                           const newUnitPrice = newTotalPrice / quantity;
@@ -2382,7 +2373,6 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                 );
               }
 
-              // Render cho SẢN PHẨM THƯỜNG
               const searchedProducts =
                 productSearchResults[index] || saleProducts;
               const selectedProduct =

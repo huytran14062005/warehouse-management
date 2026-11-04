@@ -2,8 +2,8 @@
 -- Giong cac file seed_data khac: ket noi dung MySQL va chon schema deploy
 -- lam default schema trong Workbench (double-click ten schema) truoc khi chay.
 -- KHONG dung USE managewarehouse: ten do chi thuoc database local.
--- Chay schema_changes/2026_11_sales_delivery_workflow.sql tren schema deploy
--- truoc neu employees.role chua co NHAN_VIEN_GIAO_HANG.
+-- Dam bao schema deploy da co NHAN_VIEN_GIAO_HANG trong employees.role
+-- va cac cot phuc vu luong giao hang truoc khi import file nay.
 -- Chay lai khong tao trung hoac sua tai khoan da ton tai.
 -- Password hash duoc tao bang bcrypt 12 rounds cua project; mat khau goc
 -- duoc cung cap rieng cho nguoi import, khong luu trong file SQL.

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-// Keeps notification messages retriggerable even when the same text is shown twice.
 export default function useNotificationState(initialMessage = "") {
   const [message, setMessage] = useState(initialMessage);
   const nextMessageTimer = useRef(null);

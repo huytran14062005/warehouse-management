@@ -97,7 +97,7 @@ class PricingPolicy(db.Model):
 
     product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), primary_key=True)
     planned_quantity = Column(Integer, nullable=False, default=100)
-    target_margin = Column(Numeric(5, 2), nullable=False, default=20)
+    markup_percent = Column("target_margin", Numeric(5, 2), nullable=False, default=20)
     updated_at = Column(DateTime, nullable=False, default=vietnam_payment_time)
     updated_by_id = Column(Integer, ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False)
 
@@ -106,7 +106,6 @@ class OperatingExpense(BaseModel):
     __tablename__ = "operating_expenses"
     __table_args__ = (
         CheckConstraint("amount > 0", name="ck_operating_expense_amount"),
-        CheckConstraint("category IN ('fuel', 'vehicle_repair', 'lodging', 'sales_salary', 'other')", name="ck_operating_expense_category"),
         Index("ix_operating_expenses_date_id", "occurred_on", "id"),
         Index("ix_operating_expenses_invoice_date", "invoice_id", "occurred_on"),
         Index("ix_operating_expenses_category_date", "category", "occurred_on"),
@@ -123,6 +122,15 @@ class OperatingExpense(BaseModel):
     voided_at = Column(DateTime, nullable=True)
     voided_by_id = Column(Integer, ForeignKey("employees.id", ondelete="RESTRICT"), nullable=True)
     void_reason = Column(String(500), nullable=True)
+
+
+class ExpenseCategory(db.Model):
+    __tablename__ = "expense_categories"
+
+    code = Column(String(24), primary_key=True)
+    name = Column(String(120), nullable=False, unique=True)
+    created_at = Column(DateTime, nullable=False, default=vietnam_payment_time)
+    created_by_id = Column(Integer, ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False)
 
 
 class ProductCombo(BaseModel):
@@ -296,7 +304,6 @@ class Customer(BaseModel):
     full_name = Column(String(150), nullable=False)
     phone = Column(String(20), nullable=False, unique=True, index=True)
     address = Column(Text, nullable=False)
-    # Khu vực kinh doanh được chuẩn hóa để phục vụ báo cáo; không tạo bảng khu vực riêng.
     sales_area_id = Column(Integer, ForeignKey("sales_areas.id", ondelete="RESTRICT"), nullable=True, index=True)
     debt_amount = Column(Numeric(14, 2), nullable=False, default=0)
 
@@ -573,7 +580,6 @@ class SalesInvoice(BaseModel):
     warehouse_id = Column(Integer, ForeignKey("warehouses.id", ondelete="RESTRICT"), nullable=False, index=True)
     customer_id = Column(Integer, ForeignKey("customers.id", ondelete="RESTRICT"), nullable=False, index=True)
     employee_id = Column(Integer, ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False, index=True)
-    # Lưu snapshot khu vực tại thời điểm lập đơn, tránh thay đổi lịch sử khi khách đổi địa chỉ/khu vực.
     sales_area_id = Column(Integer, ForeignKey("sales_areas.id", ondelete="RESTRICT"), nullable=True, index=True)
 
     items = relationship(
@@ -647,7 +653,6 @@ class CustomerPayment(BaseModel):
     payment_type = Column(Enum(PaymentType), nullable=False)
     payment_method = Column(
         Enum(PaymentMethod, values_callable=lambda enum_cls: [item.value for item in enum_cls]),
-        # Legacy payments predate this field; their method is unknown.
         nullable=True,
     )
     paid_at = Column(DateTime, nullable=False, default=vietnam_payment_time)

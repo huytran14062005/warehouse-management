@@ -243,7 +243,8 @@ def get_sales_invoices_list(
             or_(
                 Customer.full_name.ilike(kw),
                 Customer.phone.ilike(kw),
-                SalesInvoice.id.cast(db.String).ilike(kw)
+                SalesInvoice.id.cast(db.String).ilike(kw),
+                SalesInvoice.note.ilike(kw),
             )
         )
     
