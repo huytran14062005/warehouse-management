@@ -3,17 +3,13 @@ import { useNavigate } from "react-router-dom";
 import { authApis, endpoints } from "../configs/Apis";
 import { getApiError } from "../utils/apiError";
 import useNotificationState from "../utils/useNotificationState";
+import { formatLocalDateInput as formatLocalDate } from "../utils/date";
 import { getInventoryStatus } from "../utils/inventoryStatus";
 import { INVENTORY_CHANGED_EVENT } from "../utils/inventoryEvents";
 import AutoDismissMessage from "../components/AutoDismissMessage";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import "../css/WarehouseOperations.css";
-
-function formatLocalDate(date) {
-  const pad = (value) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
 
 function getDateBefore(days) {
   const date = new Date();

@@ -283,7 +283,7 @@ def _purchase_costs(product_ids, start=None, end=None):
     query = db.session.query(
         ImportInvoiceItem.product_id,
         func.sum(ImportInvoiceItem.quantity),
-        func.sum(ImportInvoiceItem.quantity * ImportInvoiceItem.unit_price),
+        func.sum(func.coalesce(ImportInvoiceItem.line_total, ImportInvoiceItem.quantity * ImportInvoiceItem.unit_price)),
     ).join(ImportInvoice, ImportInvoiceItem.import_invoice_id == ImportInvoice.id).filter(
         ImportInvoiceItem.product_id.in_(product_ids),
     )

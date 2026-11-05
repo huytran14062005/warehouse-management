@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { authApis, endpoints } from "../configs/Apis";
 import { getApiError } from "../utils/apiError";
 import AutoDismissMessage from "./AutoDismissMessage";
+import WarehouseModalCloseButton from "./WarehouseModalCloseButton";
+import ProductIdentityFields from "./ProductIdentityFields";
 import "../css/WarehouseOperations.css";
 
 function ProductRequestModal({ initialName = "", onClose, onSaved }) {
@@ -39,19 +41,12 @@ function ProductRequestModal({ initialName = "", onClose, onSaved }) {
       <div className="warehouse-modal warehouse-editor-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
         <div className="warehouse-modal-header">
           <h2>Yêu cầu thêm sản phẩm</h2>
-          <button type="button" className="warehouse-modal-close" onClick={onClose} aria-label="Đóng">×</button>
+          <WarehouseModalCloseButton onClick={onClose} ariaLabel="Đóng" />
         </div>
         <form className="warehouse-modal-body" onSubmit={submit}>
           <AutoDismissMessage message={error} className="warehouse-error" />
           <p>Yêu cầu sẽ được gửi đến quản lý để kiểm tra và thêm vào danh mục.</p>
-          <label className="warehouse-field">
-            <span>Tên sản phẩm</span>
-            <input value={name} onChange={(event) => setName(event.target.value)} required autoFocus />
-          </label>
-          <label className="warehouse-field">
-            <span>Đơn vị tính</span>
-            <input value={unit} onChange={(event) => setUnit(event.target.value)} placeholder="Ví dụ: Cái, Hộp, Kg" required />
-          </label>
+          <ProductIdentityFields name={name} onNameChange={setName} unit={unit} onUnitChange={setUnit} />
           <label className="warehouse-field">
             <span>Ghi chú</span>
             <textarea rows="3" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Thông tin thêm nếu có" />

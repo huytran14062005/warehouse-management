@@ -3,8 +3,9 @@ from datetime import datetime
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload, selectinload
-from web import app, db
+from web import db
 from web.models import ImportInvoice, ImportInvoiceItem, Supplier, SupplierPayment
+from web.utils.pagination import apply_pagination
 
 
 def _invoice_load_options(for_list=False):
@@ -18,23 +19,6 @@ def _invoice_load_options(for_list=False):
         joinedload(ImportInvoice.created_by_employee),
         selectinload(ImportInvoice.payments),
     )
-
-
-def apply_pagination(query, page, page_size=None):
-                                        
-    total = query.order_by(None).count()
-
-    if not page or page < 1:
-        page = 1
-
-    if page_size is None:
-        page_size = app.config.get("APPLICATION_SIZE", 10)
-
-    start = (page - 1) * page_size
-    end = start + page_size
-    query = query.slice(start, end)
-
-    return query, total
 
 
 def get_all_import_invoices(page=1, per_page=None, warehouse_id=None, supplier_id=None, from_date=None, to_date=None, keyword=None):
@@ -85,7 +69,7 @@ def get_import_invoice_by_id(invoice_id):
     )
 
 
-def create_import_invoice(warehouse_id, supplier_id, employee_id, note, items, imported_at=None, payment=None):
+def create_import_invoice(warehouse_id, supplier_id, employee_id, note, items, imported_at=None, payment=None, combo_groups=None):
        
     try:
                      
@@ -94,7 +78,8 @@ def create_import_invoice(warehouse_id, supplier_id, employee_id, note, items, i
             supplier_id=supplier_id,
             employee_id=employee_id,
             imported_at=imported_at or datetime.now(),
-            note=note
+            note=note,
+            combo_groups=combo_groups or None,
         )
         db.session.add(invoice)
         db.session.flush()                    
@@ -105,7 +90,8 @@ def create_import_invoice(warehouse_id, supplier_id, employee_id, note, items, i
                 import_invoice_id=invoice.id,
                 product_id=item_data["product_id"],
                 quantity=item_data["quantity"],
-                unit_price=item_data["unit_price"]
+                unit_price=item_data["unit_price"],
+                line_total=item_data["line_total"],
             )
             db.session.add(item)
 
@@ -131,7 +117,7 @@ def create_import_invoice(warehouse_id, supplier_id, employee_id, note, items, i
         raise Exception(f"Lỗi tạo phiếu nhập kho: {str(ex)}")
 
 
-def update_import_invoice(invoice_id, warehouse_id, supplier_id, note, items, imported_at=None):
+def update_import_invoice(invoice_id, warehouse_id, supplier_id, note, items, imported_at=None, combo_groups=None):
        
     try:
         invoice = ImportInvoice.query.get(invoice_id)
@@ -147,6 +133,7 @@ def update_import_invoice(invoice_id, warehouse_id, supplier_id, note, items, im
         if imported_at is not None:
             invoice.imported_at = imported_at
         invoice.note = note
+        invoice.combo_groups = combo_groups or None
 
                        
         for item_data in items:
@@ -154,7 +141,8 @@ def update_import_invoice(invoice_id, warehouse_id, supplier_id, note, items, im
                 import_invoice_id=invoice.id,
                 product_id=item_data["product_id"],
                 quantity=item_data["quantity"],
-                unit_price=item_data["unit_price"]
+                unit_price=item_data["unit_price"],
+                line_total=item_data["line_total"],
             )
             db.session.add(item)
 

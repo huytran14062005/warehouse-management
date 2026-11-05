@@ -14,30 +14,10 @@ from web.services.authorization import (
     ensure_warehouse_access,
     resolve_document_warehouse,
 )
-
-
-def _positive_integer(value, field_name):
-    try:
-        if isinstance(value, bool):
-            raise ValueError
-        parsed = int(value)
-    except (TypeError, ValueError):
-        raise ValidationError(f"{field_name} không hợp lệ")
-    if parsed <= 0:
-        raise ValidationError(f"{field_name} phải lớn hơn 0")
-    return parsed
-
-
-def _positive_number(value, field_name):
-    try:
-        if isinstance(value, bool):
-            raise ValueError
-        parsed = int(value)
-    except (TypeError, ValueError):
-        raise ValidationError(f"{field_name} không hợp lệ")
-    if float(value) != parsed or parsed <= 0:
-        raise ValidationError(f"{field_name} phải lớn hơn 0")
-    return parsed
+from web.services.validators import (
+    validate_coercible_positive_integer as _positive_integer,
+    validate_strict_positive_integer as _positive_number,
+)
 
 
 def _parse_page(value, default):

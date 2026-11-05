@@ -1,4 +1,6 @@
 import re
+import math
+from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from web.services.exceptions import ValidationError
@@ -16,6 +18,44 @@ class Limits:
 
 
 MIN_MONEY_AMOUNT = Decimal("500")
+
+
+def parse_iso_date(value):
+    if not value:
+        return None
+    try:
+        return datetime.strptime(str(value).strip(), "%Y-%m-%d")
+    except (ValueError, TypeError):
+        raise ValidationError(f"Ngày không hợp lệ: {value}. Định dạng đúng: YYYY-MM-DD")
+
+
+def validate_positive_number(value, field_name):
+    try:
+        number = float(value)
+        if not math.isfinite(number) or number <= 0:
+            raise ValidationError(f"{field_name} phải lớn hơn 0")
+        return number
+    except (ValueError, TypeError):
+        raise ValidationError(f"{field_name} không hợp lệ")
+
+
+def validate_coercible_positive_integer(value, field_name):
+    try:
+        if isinstance(value, bool):
+            raise ValueError
+        number = int(value)
+    except (ValueError, TypeError):
+        raise ValidationError(f"{field_name} không hợp lệ")
+    if number <= 0:
+        raise ValidationError(f"{field_name} phải lớn hơn 0")
+    return number
+
+
+def validate_strict_positive_integer(value, field_name):
+    number = validate_coercible_positive_integer(value, field_name)
+    if float(value) != number:
+        raise ValidationError(f"{field_name} phải lớn hơn 0")
+    return number
 
 
 def validate_money_amount(value, field_name="Số tiền", allow_zero=True, minimum=MIN_MONEY_AMOUNT):

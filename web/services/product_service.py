@@ -4,32 +4,11 @@ from datetime import datetime
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 
-from web import app, dao, db
+from web import dao, db
 from web.models import Employee, EmployeeRole, Product, ProductRequest, ProductRequestStatus
 from web.services.exceptions import NotFoundError, ValidationError
 from web.services.validators import require_text, validate_money_amount
-
-
-def parse_page(value):
-                                        
-    if value is None:
-        return 1
-    try:
-        page = int(value)
-        return page if page > 0 else 1
-    except (ValueError, TypeError):
-        return 1
-
-
-def parse_per_page(value, default):
-                                     
-    if value is None:
-        return default
-    try:
-        per_page = int(value)
-        return min(per_page, app.config.get("MAX_PAGE_SIZE", 100)) if per_page > 0 else default
-    except (ValueError, TypeError):
-        return default
+from web.utils.pagination import parse_page, parse_per_page, parse_paging_args
 
 
 def parse_warehouse_id(value):
@@ -79,12 +58,6 @@ def parse_inventory_status(value):
     if status not in allowed_statuses:
         raise ValidationError("Trạng thái tồn kho không hợp lệ")
     return status
-
-
-def parse_paging_args(page_value, per_page_value):
-                                                 
-    default_size = app.config.get("APPLICATION_SIZE", 10)
-    return parse_page(page_value), parse_per_page(per_page_value, default_size)
 
 
 def serialize_product_inventory(product, inventory):

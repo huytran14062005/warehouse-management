@@ -2,16 +2,7 @@ from datetime import datetime, time, timedelta
 from web.dao import reports_dao
 from web.models import Warehouse
 from web.services.exceptions import NotFoundError, ValidationError
-
-
-def parse_date(value):
-                                         
-    if not value:
-        return None
-    try:
-        return datetime.strptime(str(value).strip(), "%Y-%m-%d")
-    except (ValueError, TypeError):
-        raise ValidationError(f"Ngày không hợp lệ: {value}. Định dạng đúng: YYYY-MM-DD")
+from web.services.validators import parse_iso_date as parse_date
 
 
 def validate_positive_integer(value, field_name):

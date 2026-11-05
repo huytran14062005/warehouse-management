@@ -11,23 +11,7 @@ from web.models import (
     SalesInvoice,
     SalesInvoiceItem,
 )
-
-
-def apply_pagination(query, page, page_size=None):
-                                        
-    total = query.order_by(None).count()
-
-    if not page or page < 1:
-        page = 1
-
-    if page_size is None:
-        page_size = app.config.get("APPLICATION_SIZE", 10)
-
-    start = (page - 1) * page_size
-    end = start + page_size
-    query = query.slice(start, end)
-
-    return query, total
+from web.utils.pagination import apply_pagination
 
 
 def get_customer_by_phone(phone):

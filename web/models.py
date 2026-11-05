@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from enum import Enum as UserEnum
 
-from sqlalchemy import Boolean, CheckConstraint, Column, Date, DateTime, Enum, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Column, Date, DateTime, Enum, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from web import db
@@ -320,6 +320,7 @@ class ImportInvoice(BaseModel):
 
     imported_at = Column(DateTime, nullable=False, default=datetime.now)
     note = Column(Text)
+    combo_groups = Column(JSON, nullable=True)
 
     warehouse_id = Column(Integer, ForeignKey("warehouses.id", ondelete="RESTRICT"), nullable=False, index=True)
     supplier_id = Column(Integer, ForeignKey("suppliers.id", ondelete="RESTRICT"), nullable=False, index=True)
@@ -422,6 +423,7 @@ class ImportInvoiceItem(BaseModel):
 
     quantity = Column(Integer, nullable=False)
     unit_price = Column(Numeric(14, 2), nullable=False)
+    line_total = Column(Numeric(14, 2), nullable=True)
 
     import_invoice_id = Column(
         Integer,

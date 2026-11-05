@@ -8,6 +8,8 @@ import Pagination from "../components/Pagination";
 import SharedSearchableDropdown from "../components/SearchableDropdown";
 import Skeleton from "../components/Skeleton";
 import { getApiError } from "../utils/apiError";
+import { formatCurrency as money } from "../utils/money";
+import { formatDateTime as dateTime } from "../utils/date";
 import "../css/CompanyFunds.css";
 
 const METHOD_LABELS = { cash: "Tiền mặt", bank_transfer: "Ngân hàng" };
@@ -18,20 +20,6 @@ const ENTRY_TYPE_LABELS = {
   delivery_shipping: "Phí giao hàng",
   balance_adjustment: "Điều chỉnh số dư",
 };
-
-function money(value) {
-  return new Intl.NumberFormat("vi-VN", {
-    style: "currency", currency: "VND", maximumFractionDigits: 0,
-  }).format(Number(value || 0));
-}
-
-function dateTime(value) {
-  if (!value) return "—";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString("vi-VN", {
-    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
-  });
-}
 
 export default function CompanyFunds() {
   const [funds, setFunds] = useState([]);

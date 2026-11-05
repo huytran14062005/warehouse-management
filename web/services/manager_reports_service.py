@@ -19,7 +19,7 @@ from web.models import (
 )
 from web.services.exceptions import ValidationError
 from web.services.authorization import get_central_warehouse
-from web.services.reports_service import parse_date
+from web.services.validators import parse_iso_date as parse_date
 from web.services.product_profit import calculate_product_profit_rows, summarize_product_profit
 from web.utils.pagination import build_pagination
 
@@ -73,7 +73,7 @@ def _current_financial_totals():
         db.session.query(
             ImportInvoice.id.label("invoice_id"),
             func.coalesce(
-                func.sum(ImportInvoiceItem.quantity * ImportInvoiceItem.unit_price),
+                func.sum(func.coalesce(ImportInvoiceItem.line_total, ImportInvoiceItem.quantity * ImportInvoiceItem.unit_price)),
                 0,
             ).label("invoice_total"),
         )
@@ -370,6 +370,7 @@ def _build_product_profit_rows(from_date, to_date):
             ImportInvoiceItem.product_id,
             ImportInvoiceItem.quantity,
             ImportInvoiceItem.unit_price,
+            ImportInvoiceItem.line_total,
         )
         .join(ImportInvoice, ImportInvoice.id == ImportInvoiceItem.import_invoice_id)
         .filter(

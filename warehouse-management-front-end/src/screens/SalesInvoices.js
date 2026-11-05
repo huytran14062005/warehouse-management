@@ -8,8 +8,10 @@ import { notifyInventoryChanged } from "../utils/inventoryEvents";
 import { isSalesInvoiceRealtimeConnected } from "../utils/salesInvoiceRealtime";
 import ConfirmDialog from "../components/ConfirmDialog";
 import AutoDismissMessage from "../components/AutoDismissMessage";
+import FieldAlert from "../components/FieldAlert";
 import MoneyInput from "../components/MoneyInput";
 import ProductRequestModal from "../components/ProductRequestModal";
+import ProductRequestDropdownAction from "../components/ProductRequestDropdownAction";
 import SharedSearchableDropdown from "../components/SearchableDropdown";
 import CustomerFields from "../components/CustomerFields";
 import PaymentMethodDropdown from "../components/PaymentMethodDropdown";
@@ -18,6 +20,8 @@ import {
   ProductEntryInfo,
 } from "../components/ProductEntryFields";
 import { getSalePriceBounds } from "../utils/salePrice";
+import { formatCurrency, formatInteger as formatQuantity } from "../utils/money";
+import { formatDateTime, formatIsoDate as formatDate } from "../utils/date";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import "../css/SalesInvoices.css";
@@ -75,36 +79,8 @@ function getRandomItems(items, count = 6) {
   return shuffled.slice(0, count);
 }
 
-function formatCurrency(value) {
-  return new Intl.NumberFormat("vi-VN", {
-    style: "currency",
-    currency: "VND",
-    maximumFractionDigits: 0,
-  }).format(Number(value || 0));
-}
-
-function formatQuantity(value) {
-  return new Intl.NumberFormat("vi-VN", {
-    maximumFractionDigits: 0,
-  }).format(Number(value || 0));
-}
-
 function notifySalesActionCountChanged() {
   window.dispatchEvent(new Event("sales-invoices:action-count-refresh"));
-}
-
-function formatDateTime(value, showSeconds = false) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  const pad = (number) => String(number).padStart(2, "0");
-  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}${showSeconds ? `:${pad(date.getSeconds())}` : ""}`;
-}
-
-function formatDate(value) {
-  if (!value) return "—";
-  const [year, month, day] = String(value).split("-");
-  return year && month && day ? `${day}/${month}/${year}` : "—";
 }
 
 function getPaymentDueLabel(invoice) {
@@ -2431,20 +2407,14 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                         emptyLabel="Không tìm thấy sản phẩm hoặc combo."
                         filterLocally
                         emptyAction={
-                          activeUser.role === "nhân viên bán hàng" &&
-                          item.productSearch.trim() ? (
-                            <button
-                              type="button"
-                              className="searchable-dropdown-action"
-                              onClick={() => {
-                                setProductRequestName(
-                                  item.productSearch.trim(),
-                                );
+                          activeUser.role === "nhân viên bán hàng" ? (
+                            <ProductRequestDropdownAction
+                              query={item.productSearch}
+                              onRequest={(name) => {
+                                setProductRequestName(name);
                                 setProductRequestOpen(true);
                               }}
-                            >
-                              + Gửi yêu cầu thêm sản phẩm
-                            </button>
+                            />
                           ) : null
                         }
                         onChange={(value) => handleProductSelect(index, value)}
@@ -3675,10 +3645,13 @@ function SalesInvoices() {
             <label className="sales-date-field">
               <span>Từ ngày</span>
               <input
+                className="field-alert-target"
                 type="date"
                 value={fromDateInput}
                 onChange={(event) => setFromDateInput(event.target.value)}
                 aria-label="Ngày bán từ"
+                aria-invalid={Boolean(dateWarning)}
+                aria-describedby={dateWarning ? "sales-date-range-alert" : undefined}
               />
             </label>
             <span className="sales-date-separator" aria-hidden="true">
@@ -3687,10 +3660,13 @@ function SalesInvoices() {
             <label className="sales-date-field">
               <span>Đến ngày</span>
               <input
+                className="field-alert-target"
                 type="date"
                 value={toDateInput}
                 onChange={(event) => setToDateInput(event.target.value)}
                 aria-label="Ngày bán đến"
+                aria-invalid={Boolean(dateWarning)}
+                aria-describedby={dateWarning ? "sales-date-range-alert" : undefined}
               />
             </label>
           </div>
@@ -3724,9 +3700,9 @@ function SalesInvoices() {
         </p>
       )}
 
-      <AutoDismissMessage
+      <FieldAlert
+        id="sales-date-range-alert"
         message={dateWarning}
-        type="warning"
         className="sales-date-warning"
       />
       <AutoDismissMessage message={error} className="sales-alert" />

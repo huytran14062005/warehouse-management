@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import WarehouseModalCloseButton from "../components/WarehouseModalCloseButton";
+import ProductIdentityFields from "../components/ProductIdentityFields";
 import { useLocation, useNavigate } from "react-router-dom";
 import { authApis, endpoints } from "../configs/Apis";
 import { getApiError } from "../utils/apiError";
@@ -13,6 +15,7 @@ import {
   formatQuantity,
 } from "../utils/money";
 import AutoDismissMessage from "../components/AutoDismissMessage";
+import FieldAlert from "../components/FieldAlert";
 import MoneyInput from "../components/MoneyInput";
 import SharedSearchableDropdown from "../components/SearchableDropdown";
 import ProductDetailModal from "../components/ProductDetailModal";
@@ -115,35 +118,16 @@ function ProductEditor({ request, product, onClose, onSaved }) {
               </small>
             )}
           </div>
-          <button
-            type="button"
-            className="warehouse-modal-close"
-            onClick={onClose}
-            aria-label="Đóng"
-          >
-            ×
-          </button>
+          <WarehouseModalCloseButton onClick={onClose} ariaLabel="Đóng" />
         </div>
         <form className="warehouse-modal-body" onSubmit={submit}>
           <AutoDismissMessage message={error} className="warehouse-error" />
-          <label className="warehouse-field">
-            <span>Tên sản phẩm</span>
-            <input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              required
-              autoFocus
-            />
-          </label>
-          <label className="warehouse-field">
-            <span>Đơn vị tính</span>
-            <input
-              value={unit}
-              onChange={(event) => setUnit(event.target.value)}
-              placeholder="Ví dụ: Cái, Hộp, Kg"
-              required
-            />
-          </label>
+          <ProductIdentityFields
+            name={name}
+            onNameChange={setName}
+            unit={unit}
+            onUnitChange={setUnit}
+          />
           <label className="warehouse-field">
             <span>Giá bán mặc định</span>
             <MoneyInput
@@ -229,15 +213,7 @@ function InventoryThresholdEditor({ percentage, onClose, onSaved }) {
       >
         <div className="warehouse-modal-header">
           <h2 id="products-threshold-title">Ngưỡng sắp hết hàng</h2>
-          <button
-            type="button"
-            className="warehouse-modal-close"
-            onClick={onClose}
-            disabled={saving}
-            aria-label="Đóng"
-          >
-            ×
-          </button>
+          <WarehouseModalCloseButton onClick={onClose} disabled={saving} ariaLabel="Đóng" />
         </div>
         <form className="warehouse-modal-body" onSubmit={submit}>
           <AutoDismissMessage message={error} className="warehouse-error" />
@@ -580,6 +556,7 @@ function Products() {
         />
         <label className="products-price-field">
           <input
+            className="field-alert-target"
             type="text"
             inputMode="numeric"
             value={formatMoneyInput(minPriceInput)}
@@ -589,10 +566,12 @@ function Products() {
             placeholder="Giá từ"
             aria-label="Giá từ"
             aria-invalid={Boolean(validationWarning)}
+            aria-describedby={validationWarning ? "products-price-range-alert" : undefined}
           />
         </label>
         <label className="products-price-field">
           <input
+            className="field-alert-target"
             type="text"
             inputMode="numeric"
             value={formatMoneyInput(maxPriceInput)}
@@ -602,6 +581,7 @@ function Products() {
             placeholder="Giá đến"
             aria-label="Giá đến"
             aria-invalid={Boolean(validationWarning)}
+            aria-describedby={validationWarning ? "products-price-range-alert" : undefined}
           />
         </label>
         <div className="products-status-dropdown">
@@ -619,9 +599,9 @@ function Products() {
         <button type="submit">Tìm kiếm</button>
       </form>
 
-      <AutoDismissMessage
+      <FieldAlert
+        id="products-price-range-alert"
         message={validationWarning}
-        type="warning"
         className="products-validation-warning"
       />
       <AutoDismissMessage message={error} className="products-alert" />

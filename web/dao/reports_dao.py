@@ -273,7 +273,7 @@ def get_movements_report_aggregated(from_date, to_date, warehouse_id=None):
         db.session.query(
             ImportInvoiceItem.product_id,
             func.sum(ImportInvoiceItem.quantity).label("quantity"),
-            func.sum(ImportInvoiceItem.quantity * ImportInvoiceItem.unit_price).label("amount"),
+            func.sum(func.coalesce(ImportInvoiceItem.line_total, ImportInvoiceItem.quantity * ImportInvoiceItem.unit_price)).label("amount"),
         )
         .join(ImportInvoice, ImportInvoice.id == ImportInvoiceItem.import_invoice_id)
         .filter(*import_filters)

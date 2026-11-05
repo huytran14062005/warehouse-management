@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { authApis, endpoints } from "../configs/Apis";
 import { getApiError } from "../utils/apiError";
 import useNotificationState from "../utils/useNotificationState";
+import { formatIsoDate } from "../utils/date";
 import AutoDismissMessage from "../components/AutoDismissMessage";
 import MoneyInput from "../components/MoneyInput";
 import SearchableDropdown from "../components/SearchableDropdown";
@@ -34,9 +35,7 @@ const DISCOUNT_OPTIONS = [
 ];
 
 function formatDate(value) {
-  if (!value) return "Không giới hạn";
-  const [year, month, day] = String(value).split("-");
-  return year && month && day ? `${day}/${month}/${year}` : value;
+  return formatIsoDate(value, { empty: "Không giới hạn", invalid: value });
 }
 
 function PromotionForm({ promotion, onClose, onSaved }) {

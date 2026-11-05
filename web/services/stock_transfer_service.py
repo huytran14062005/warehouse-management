@@ -11,14 +11,11 @@ from web.services.authorization import (
     ensure_warehouse_access,
     get_central_warehouse,
 )
-
-
-def _parse_positive_int(value, default):
-    try:
-        number = int(value)
-        return number if number > 0 else default
-    except (TypeError, ValueError):
-        return default
+from web.services.validators import (
+    validate_coercible_positive_integer as _positive_integer,
+    validate_strict_positive_integer as _positive_number,
+)
+from web.utils.pagination import parse_page as _parse_positive_int
 
 
 def get_stock_transfers_list_service(page_value=None, per_page_value=None, warehouse_id=None):
@@ -153,30 +150,6 @@ def serialize_stock_transfer(transfer, items=None, items_count=None, total_quant
             for item in detail_items
         ],
     }
-
-
-def _positive_number(value, field_name):
-    try:
-        if isinstance(value, bool):
-            raise ValueError
-        number = int(value)
-    except (TypeError, ValueError):
-        raise ValidationError(f"{field_name} không hợp lệ")
-    if float(value) != number or number <= 0:
-        raise ValidationError(f"{field_name} phải lớn hơn 0")
-    return number
-
-
-def _positive_integer(value, field_name):
-    try:
-        if isinstance(value, bool):
-            raise ValueError
-        number = int(value)
-    except (TypeError, ValueError):
-        raise ValidationError(f"{field_name} không hợp lệ")
-    if number <= 0:
-        raise ValidationError(f"{field_name} phải lớn hơn 0")
-    return number
 
 
 def _normalize_transfer_items(items):

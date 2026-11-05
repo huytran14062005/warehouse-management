@@ -1,12 +1,18 @@
-from datetime import datetime, time
-import math
-from decimal import Decimal
-from web import app, dao, db
+from datetime import datetime, time, timedelta
+from decimal import Decimal, ROUND_HALF_UP
+from sqlalchemy import func
+from web import dao, db
 from web.dao import import_invoice_dao, product_dao
-from web.models import Employee, EmployeeRole, ImportInvoice, PaymentMethod, Product, Supplier, SupplierPayment, Warehouse
+from web.models import Employee, EmployeeRole, ImportInvoice, ImportInvoiceItem, PaymentMethod, Product, Supplier, SupplierPayment, Warehouse
 from web.services.exceptions import ForbiddenError, NotFoundError, ValidationError
 from web.services.company_fund_service import record_fund_movement
-from web.services.validators import validate_money_amount
+from web.services.validators import (
+    parse_iso_date as parse_date,
+    validate_money_amount,
+    validate_positive_number,
+    validate_strict_positive_integer as validate_positive_integer,
+)
+from web.utils.pagination import parse_page, parse_per_page, parse_paging_args
 from web.services.authorization import (
     ensure_bounded_items,
     ensure_warehouse_access,
@@ -17,75 +23,12 @@ from web.services.payment_service import parse_payment_method
 from web.services.supplier_service import get_or_create_supplier
 
 
-def validate_positive_number(value, field_name):
-                           
-    try:
-        num = float(value)
-        if not math.isfinite(num) or num <= 0:
-            raise ValidationError(f"{field_name} phải lớn hơn 0")
-        return num
-    except (ValueError, TypeError):
-        raise ValidationError(f"{field_name} không hợp lệ")
-
-
-def validate_positive_integer(value, field_name):
-                                  
-    try:
-        if isinstance(value, bool):
-            raise ValueError
-        num = int(value)
-        if float(value) != num or num <= 0:
-            raise ValidationError(f"{field_name} phải lớn hơn 0")
-        return num
-    except (ValueError, TypeError):
-        raise ValidationError(f"{field_name} không hợp lệ")
-
-
-def parse_page(value):
-                                        
-    if value is None:
-        return 1
-    try:
-        page = int(value)
-        return page if page > 0 else 1
-    except (ValueError, TypeError):
-        return 1
-
-
-def parse_per_page(value, default):
-                                     
-    if value is None:
-        return default
-    try:
-        per_page = int(value)
-        return min(per_page, app.config.get("MAX_PAGE_SIZE", 100)) if per_page > 0 else default
-    except (ValueError, TypeError):
-        return default
-
-
-def parse_paging_args(page_value, per_page_value):
-                                                 
-    default_size = app.config.get("APPLICATION_SIZE", 10)
-    return parse_page(page_value), parse_per_page(per_page_value, default_size)
-
-
-def parse_date(value):
-                                         
-    if not value:
-        return None
-    try:
-        return datetime.strptime(str(value).strip(), "%Y-%m-%d")
-    except (ValueError, TypeError):
-        raise ValidationError(f"Ngày không hợp lệ: {value}. Định dạng đúng: YYYY-MM-DD")
-
-
 def _validate_import_items(items):
     ensure_bounded_items(items, "Sản phẩm trong phiếu nhập")
     if not isinstance(items, list) or not items:
         raise ValidationError("Phiếu nhập phải có ít nhất 1 sản phẩm")
 
     normalized = []
-    product_ids = []
     seen_product_ids = set()
     for index, item in enumerate(items, start=1):
         if not isinstance(item, dict):
@@ -97,7 +40,6 @@ def _validate_import_items(items):
         if product_id in seen_product_ids:
             raise ValidationError(f"Sản phẩm ID {product_id} bị lặp trong phiếu nhập")
         seen_product_ids.add(product_id)
-        product_ids.append(product_id)
         normalized.append({
             "product_id": product_id,
             "quantity": validate_positive_integer(
@@ -110,14 +52,160 @@ def _validate_import_items(items):
                 allow_zero=False,
             ),
         })
-
-    products = Product.query.filter(Product.id.in_(product_ids)).all()
-    existing_product_ids = {product.id for product in products}
-    missing_product_ids = [product_id for product_id in product_ids if product_id not in existing_product_ids]
-    if missing_product_ids:
-        raise NotFoundError(f"Sản phẩm ID {missing_product_ids[0]} không tồn tại")
+        normalized[-1]["line_total"] = normalized[-1]["quantity"] * normalized[-1]["unit_price"]
 
     return normalized
+
+
+def _prepare_import_lines(items, combo_groups, excluded_invoice_id=None, imported_at=None):
+    """Resolve bundle prices into exact product line totals."""
+    if not isinstance(combo_groups, list) or len(combo_groups) > 30:
+        raise ValidationError("Danh sách combo không hợp lệ")
+    if not isinstance(items, list):
+        raise ValidationError("Danh sách sản phẩm không hợp lệ")
+    if not items and not combo_groups:
+        raise ValidationError("Phiếu nhập cần có sản phẩm hoặc combo")
+    singles = _validate_import_items(items) if items else []
+    groups = []
+    product_ids = {line["product_id"] for line in singles}
+    for group_index, group in enumerate(combo_groups, 1):
+        if not isinstance(group, dict):
+            raise ValidationError("Combo không hợp lệ")
+        name = str(group.get("name") or "").strip()
+        if not name or len(name) > 150:
+            raise ValidationError(f"Tên combo {group_index} không hợp lệ")
+        sets = validate_positive_integer(group.get("sets"), "Số bộ combo")
+        if sets > 100000:
+            raise ValidationError("Số bộ combo không được vượt quá 100.000")
+        price = validate_money_amount(group.get("bundle_price"), "Giá một bộ", allow_zero=False)
+        if price != price.quantize(Decimal("1")):
+            raise ValidationError("Giá combo phải là số đồng nguyên")
+        parts = group.get("parts")
+        if not isinstance(parts, list) or not 2 <= len(parts) <= 20:
+            raise ValidationError("Combo cần từ 2 đến 20 sản phẩm")
+        normalized_parts = []
+        seen = set()
+        for part in parts:
+            if not isinstance(part, dict):
+                raise ValidationError("Thành phần combo không hợp lệ")
+            pid = validate_positive_integer(part.get("product_id"), "Sản phẩm combo")
+            qty = validate_positive_integer(part.get("quantity_per_set"), "Số lượng trong bộ")
+            if pid in seen:
+                raise ValidationError("Sản phẩm bị lặp trong cùng combo")
+            seen.add(pid)
+            product_ids.add(pid)
+            normalized_parts.append({"product_id": pid, "quantity_per_set": qty,
+                                     "allocated_total": part.get("allocated_total"),
+                                     "unit_price": part.get("unit_price")})
+        groups.append({"name": name, "sets": sets, "bundle_price": price,
+                       "allocation_mode": group.get("allocation_mode", "equal"),
+                       "parts": normalized_parts})
+    ensure_bounded_items(singles + [p for g in groups for p in g["parts"]], "Sản phẩm trong phiếu nhập")
+    existing_ids = {pid for (pid,) in db.session.query(Product.id).filter(Product.id.in_(product_ids)).all()} if product_ids else set()
+    if existing_ids != product_ids:
+        raise NotFoundError("Có sản phẩm trong phiếu nhập không tồn tại")
+
+    auto_ids = {p["product_id"] for g in groups if g["allocation_mode"] == "auto" for p in g["parts"]}
+    costs = {}
+    if auto_ids:
+        cost_query = db.session.query(
+            ImportInvoiceItem.product_id,
+            func.sum(ImportInvoiceItem.quantity),
+            func.sum(func.coalesce(ImportInvoiceItem.line_total, ImportInvoiceItem.quantity * ImportInvoiceItem.unit_price)),
+        ).filter(ImportInvoiceItem.product_id.in_(auto_ids))
+        if imported_at is not None:
+            next_day = datetime.combine(imported_at.date() + timedelta(days=1), time.min)
+            cost_query = cost_query.join(ImportInvoice).filter(ImportInvoice.imported_at < next_day)
+        if excluded_invoice_id is not None:
+            cost_query = cost_query.filter(ImportInvoiceItem.import_invoice_id != excluded_invoice_id)
+        costs = {pid: Decimal(str(amount)) / Decimal(str(qty))
+                 for pid, qty, amount in cost_query.group_by(ImportInvoiceItem.product_id).all() if qty and amount}
+
+    lines = {line["product_id"]: dict(line) for line in singles}
+    snapshots = []
+    dong = Decimal("1")
+    for group in groups:
+        total = group["bundle_price"] * group["sets"]
+        parts = group["parts"]
+        if group["allocation_mode"] == "equal":
+            quantities = [part["quantity_per_set"] * group["sets"] for part in parts]
+            unit_count = sum(quantities)
+            if total < unit_count:
+                raise ValidationError(f"Giá combo '{group['name']}' quá thấp để chia cho từng sản phẩm")
+            base, remainder = divmod(int(total), unit_count)
+            amounts = []
+            for quantity in quantities:
+                extra = min(remainder, quantity)
+                amounts.append(Decimal(base * quantity + extra))
+                remainder -= extra
+        elif group["allocation_mode"] == "supplier_prices":
+            unit_prices = [validate_money_amount(p["unit_price"], "Giá nhà cung cấp báo cho một món", allow_zero=False, minimum=None)
+                           for p in parts]
+            if any(price != price.quantize(dong) for price in unit_prices):
+                raise ValidationError("Giá nhà cung cấp báo cho từng món phải là số đồng nguyên")
+            amounts = [price * part["quantity_per_set"] * group["sets"]
+                       for price, part in zip(unit_prices, parts)]
+            if sum(amounts) != total:
+                raise ValidationError(f"Tổng giá từng món do nhà cung cấp báo trong combo '{group['name']}' phải bằng giá trọn combo × số bộ ({total} đồng)")
+        elif group["allocation_mode"] == "auto":
+            if any(costs.get(p["product_id"], 0) <= 0 for p in parts):
+                raise ValidationError(f"Combo '{group['name']}' có sản phẩm chưa có giá nhập tham khảo. Hãy chọn tự chia giá combo cho từng sản phẩm.")
+            weights = [costs[p["product_id"]] * p["quantity_per_set"] for p in parts]
+            weight_sum = sum(weights)
+            amounts = []
+            remaining = total
+            for index, weight in enumerate(weights[:-1]):
+                suggested = (total * weight / weight_sum).quantize(dong, rounding=ROUND_HALF_UP)
+                amount = max(dong, min(suggested, remaining - dong * (len(parts) - index - 1)))
+                amounts.append(amount)
+                remaining -= amount
+            amounts.append(remaining)
+        elif group["allocation_mode"] == "manual":
+            amounts = [validate_money_amount(p["allocated_total"], "Phần giá combo của sản phẩm", allow_zero=False, minimum=None)
+                       for p in parts]
+            if any(amount != amount.quantize(dong) for amount in amounts):
+                raise ValidationError("Phần giá combo của sản phẩm phải là số đồng nguyên")
+            if sum(amounts) != total:
+                raise ValidationError(f"Tổng phần giá combo tính cho các sản phẩm trong '{group['name']}' phải bằng {total} đồng")
+        else:
+            raise ValidationError("Cách chia giá combo không hợp lệ")
+        snapshot_parts = []
+        for index, (part, amount) in enumerate(zip(parts, amounts)):
+            if amount <= 0:
+                raise ValidationError("Phần giá combo của mỗi sản phẩm phải lớn hơn 0")
+            pid = part["product_id"]
+            quantity = part["quantity_per_set"] * group["sets"]
+            line = lines.setdefault(pid, {"product_id": pid, "quantity": 0,
+                                          "line_total": Decimal("0"), "unit_price": Decimal("0")})
+            line["quantity"] += quantity
+            line["line_total"] += amount
+            snapshot_part = {"product_id": pid, "quantity_per_set": part["quantity_per_set"],
+                             "allocated_total": str(amount)}
+            if group["allocation_mode"] == "supplier_prices":
+                snapshot_part["unit_price"] = str(unit_prices[index])
+            snapshot_parts.append(snapshot_part)
+        snapshots.append({"name": group["name"], "sets": group["sets"],
+                          "bundle_price": str(group["bundle_price"]),
+                          "allocation_mode": group["allocation_mode"], "parts": snapshot_parts})
+    for line in lines.values():
+        line["unit_price"] = (line["line_total"] / line["quantity"]).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return list(lines.values()), snapshots
+
+
+def preview_import_combos_service(items, combo_groups, imported_at=None, invoice_id=None, employee_id=None):
+    date = parse_date(imported_at) if imported_at not in (None, "") else datetime.now()
+    excluded_id = None
+    if invoice_id not in (None, ""):
+        excluded_id = validate_positive_integer(invoice_id, "Mã phiếu nhập")
+        invoice_warehouse_id = db.session.query(ImportInvoice.warehouse_id).filter_by(id=excluded_id).scalar()
+        if invoice_warehouse_id is None:
+            raise NotFoundError("Phiếu nhập không tồn tại")
+        ensure_warehouse_access(employee_id, invoice_warehouse_id)
+    lines, groups = _prepare_import_lines(items or [], combo_groups or [], excluded_id, date)
+    return {
+        "combo_groups": groups,
+        "total_amount": float(sum((line["line_total"] for line in lines), Decimal("0"))),
+    }
 
 
 def _resolve_supplier(supplier_id, supplier_data=None, employee_role=None):
@@ -140,11 +228,14 @@ def _resolve_supplier(supplier_id, supplier_data=None, employee_role=None):
     return supplier
 
 
+def _import_line_total(item):
+    if item.line_total is not None:
+        return Decimal(str(item.line_total))
+    return Decimal(str(item.quantity)) * Decimal(str(item.unit_price))
+
+
 def _calculate_import_total(invoice):
-    return sum(
-        Decimal(str(item.quantity)) * Decimal(str(item.unit_price))
-        for item in invoice.items
-    )
+    return sum((_import_line_total(item) for item in invoice.items), Decimal("0"))
 
 
 def _supplier_paid_total(invoice):
@@ -167,7 +258,7 @@ def serialize_import_invoice(invoice):
     total_decimal = Decimal("0")
 
     for item in invoice.items:
-        item_total_decimal = Decimal(str(item.quantity)) * Decimal(str(item.unit_price))
+        item_total_decimal = _import_line_total(item)
         total_decimal += item_total_decimal
         item_total = float(item_total_decimal)
 
@@ -187,6 +278,7 @@ def serialize_import_invoice(invoice):
         "id": invoice.id,
         "imported_at": invoice.imported_at.isoformat() if invoice.imported_at else None,
         "note": invoice.note,
+        "combo_groups": invoice.combo_groups or [],
         "warehouse": {
             "id": invoice.warehouse.id,
             "name": invoice.warehouse.name,
@@ -223,10 +315,7 @@ def serialize_import_invoice(invoice):
 
 def serialize_import_invoice_summary(invoice):
                                                         
-    total_decimal = sum(
-        (Decimal(str(item.quantity)) * Decimal(str(item.unit_price)))
-        for item in invoice.items
-    )
+    total_decimal = _calculate_import_total(invoice)
     paid_amount = _supplier_paid_total(invoice)
     remaining_amount = max(Decimal("0"), total_decimal - paid_amount)
     return {
@@ -288,10 +377,10 @@ def get_import_invoice_detail_service(invoice_id):
     return invoice
 
 
-def create_import_invoice_service(employee_id, warehouse_id, supplier_id, supplier_data=None, note="", items=None, is_return=False, imported_at=None, payment_amount=0, payment_method=None):
+def create_import_invoice_service(employee_id, warehouse_id, supplier_id, supplier_data=None, note="", items=None, combo_groups=None, is_return=False, imported_at=None, payment_amount=0, payment_method=None):
        
                     
-    if not items or len(items) == 0:
+    if not items and not combo_groups:
         raise ValidationError("Phiếu nhập phải có ít nhất 1 sản phẩm")
 
                                
@@ -300,7 +389,7 @@ def create_import_invoice_service(employee_id, warehouse_id, supplier_id, suppli
     if not employee:
         raise NotFoundError("Nhân viên không tồn tại")
 
-    validated_items = _validate_import_items(items)
+    validated_items, combo_snapshots = _prepare_import_lines(items or [], combo_groups or [], imported_at=imported_at)
 
                                 
     warehouse = resolve_document_warehouse(employee_id, warehouse_id)
@@ -327,6 +416,7 @@ def create_import_invoice_service(employee_id, warehouse_id, supplier_id, suppli
         imported_at=imported_at,
         note=final_note,
         items=validated_items,
+        combo_groups=combo_snapshots,
         payment=None,
     )
 
@@ -371,7 +461,7 @@ def record_supplier_payment_service(invoice_id, employee_id, amount, payment_met
     return import_invoice_dao.get_import_invoice_by_id(invoice.id), payment_record
 
 
-def update_import_invoice_service(invoice_id, employee_id, warehouse_id, supplier_id, supplier_data=None, note="", items=None, is_return=False, imported_at=None):
+def update_import_invoice_service(invoice_id, employee_id, warehouse_id, supplier_id, supplier_data=None, note="", items=None, combo_groups=None, is_return=False, imported_at=None):
        
                               
     invoice = import_invoice_dao.get_import_invoice_by_id(invoice_id)
@@ -391,7 +481,7 @@ def update_import_invoice_service(invoice_id, employee_id, warehouse_id, supplie
     ensure_warehouse_access(employee_id, invoice.warehouse_id)
 
                     
-    if not items or len(items) == 0:
+    if not items and not combo_groups:
         raise ValidationError("Phiếu nhập phải có ít nhất 1 sản phẩm")
 
     warehouse_id = (
@@ -408,13 +498,14 @@ def update_import_invoice_service(invoice_id, employee_id, warehouse_id, supplie
     ensure_warehouse_access(employee_id, warehouse_id)
 
                                
-    validated_items = _validate_import_items(items)
+    validated_items, combo_snapshots = _prepare_import_lines(items or [], combo_groups or [], invoice_id, imported_at)
 
     supplier = _resolve_supplier(supplier_id, supplier_data, employee.role)
     supplier_id = supplier.id
 
 
     old_items = {item.product_id: float(item.quantity) for item in invoice.items}
+    old_product_names = {item.product_id: item.product.name for item in invoice.items}
 
     if invoice.warehouse_id != warehouse_id:
         old_stock_by_product = product_dao.calculate_available_stock_for_items_at_warehouse(
@@ -424,9 +515,8 @@ def update_import_invoice_service(invoice_id, employee_id, warehouse_id, supplie
         for product_id, old_quantity in old_items.items():
             old_stock = old_stock_by_product[product_id]
             if old_stock["available_stock"] - old_quantity < 0:
-                product = Product.query.get(product_id)
                 raise ValidationError(
-                    f"KhÃ´ng thá»ƒ chuyá»ƒn phiáº¿u nháº­p vÃ¬ sáº£n pháº©m '{product.name}' "
+                    f"KhÃ´ng thá»ƒ chuyá»ƒn phiáº¿u nháº­p vÃ¬ sáº£n pháº©m '{old_product_names[product_id]}' "
                     f"Ä‘Ã£ Ä‘Æ°á»£c báº£n hoáº·c xuáº¥t khá»i kho cÅ©."
                 )
     
@@ -450,9 +540,8 @@ def update_import_invoice_service(invoice_id, employee_id, warehouse_id, supplie
             new_stock = stock_info["available_stock"] + change
             
             if new_stock < 0:
-                product = Product.query.get(product_id)
                 raise ValidationError(
-                    f"Không thể sửa phiếu nhập vì sản phẩm '{product.name}' "
+                    f"Không thể sửa phiếu nhập vì sản phẩm '{old_product_names[product_id]}' "
                     f"đã bán hết. Tồn kho hiện tại: {stock_info['available_stock']}, "
                     f"giảm {abs(change)} sẽ làm tồn kho âm."
                 )
@@ -469,7 +558,8 @@ def update_import_invoice_service(invoice_id, employee_id, warehouse_id, supplie
         supplier_id=supplier_id,
         imported_at=imported_at,
         note=final_note,
-        items=validated_items
+        items=validated_items,
+        combo_groups=combo_snapshots,
     )
 
     return updated_invoice

@@ -55,6 +55,7 @@ export const endpoints = {
   suppliers: "/suppliers",
   supplierDetail: (supplierId) => `/suppliers/${supplierId}`,
   importInvoices: "/import-invoices",
+  importComboPreview: "/import-invoices/preview-combos",
   importInvoiceDetail: (invoiceId) => `/import-invoices/${invoiceId}`,
   importInvoicePayments: (invoiceId) => `/import-invoices/${invoiceId}/payments`,
   companyFunds: "/company-funds",

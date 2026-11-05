@@ -1,0 +1,3 @@
+.field-alert { display: block; color: #956016; font-size: 12px; font-weight: 600; line-height: 1.4; }
+.field-alert-target[aria-invalid="true"] { border-color: #d6a84f; background: #fffdf5; }
+.field-alert-target[aria-invalid="true"]:focus { border-color: #d6a84f; box-shadow: 0 0 0 2px rgba(214, 168, 79, .18); }

@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import WarehouseModalCloseButton from "../components/WarehouseModalCloseButton";
+import ProductRequestDropdownAction from "../components/ProductRequestDropdownAction";
 import { authApis, endpoints } from "../configs/Apis";
 import { getApiError } from "../utils/apiError";
 import useNotificationState from "../utils/useNotificationState";
+import { formatDate } from "../utils/date";
 import { notifyInventoryChanged } from "../utils/inventoryEvents";
 import AutoDismissMessage from "../components/AutoDismissMessage";
 import SharedSearchableDropdown from "../components/SearchableDropdown";
@@ -15,13 +18,6 @@ import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import "../css/StockTransfers.css";
 import "../css/WarehouseOperations.css";
-
-function formatDate(value) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
-}
 
 function StockTransfers() {
   const [employees, setEmployees] = useState([]);
@@ -312,14 +308,7 @@ function StockTransfers() {
           >
             <div className="warehouse-modal-header">
               <h2 id="stock-transfer-editor-title">Cấp hàng cho nhân viên</h2>
-              <button
-                type="button"
-                className="warehouse-modal-close"
-                onClick={closeEditor}
-                aria-label="Đóng cửa sổ cấp hàng"
-              >
-                ×
-              </button>
+              <WarehouseModalCloseButton onClick={closeEditor} ariaLabel="Đóng cửa sổ cấp hàng" />
             </div>
             <form
               className="warehouse-modal-body stock-transfers-form"
@@ -399,20 +388,13 @@ function StockTransfers() {
                           filterLocally
                           emptyLabel="Không tìm thấy sản phẩm."
                           emptyAction={
-                            item.productSearch?.trim() ? (
-                              <button
-                                type="button"
-                                className="searchable-dropdown-action"
-                                onClick={() => {
-                                  setProductRequestName(
-                                    item.productSearch.trim(),
-                                  );
-                                  setProductRequestOpen(true);
-                                }}
-                              >
-                                + Gửi yêu cầu thêm sản phẩm
-                              </button>
-                            ) : null
+                            <ProductRequestDropdownAction
+                              query={item.productSearch}
+                              onRequest={(name) => {
+                                setProductRequestName(name);
+                                setProductRequestOpen(true);
+                              }}
+                            />
                           }
                           onChange={(value, label) => {
                             updateItem(index, "product_id", String(value));
@@ -514,14 +496,7 @@ function StockTransfers() {
                   Phiếu #{detailTransfer.id}
                 </h2>
               </div>
-              <button
-                type="button"
-                className="warehouse-modal-close"
-                onClick={closeTransferDetail}
-                aria-label="Đóng chi tiết phiếu"
-              >
-                ×
-              </button>
+              <WarehouseModalCloseButton onClick={closeTransferDetail} ariaLabel="Đóng chi tiết phiếu" />
             </div>
             <div className="warehouse-modal-body stock-transfer-detail-body">
               <div className="stock-transfer-detail-summary">

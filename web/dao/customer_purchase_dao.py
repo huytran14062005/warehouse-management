@@ -2,23 +2,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import joinedload, selectinload
 from web import app, db
 from web.models import Customer, InvoiceStatus, Product, SalesInvoice, SalesInvoiceItem
-
-
-def apply_pagination(query, page, page_size=None):
-                                        
-    total = query.order_by(None).count()
-
-    if not page or page < 1:
-        page = 1
-
-    if page_size is None:
-        page_size = app.config.get("APPLICATION_SIZE", 10)
-
-    start = (page - 1) * page_size
-    end = start + page_size
-    query = query.slice(start, end)
-
-    return query, total
+from web.utils.pagination import apply_pagination
 
 
 def get_customer_orders(customer_id, page=1, per_page=None, warehouse_id=None):

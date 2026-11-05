@@ -34,7 +34,7 @@ from web.services.authorization import (
     get_central_warehouse,
     require_accountant,
 )
-from web.services.validators import MIN_MONEY_AMOUNT, require_text, validate_money_amount, validate_phone
+from web.services.validators import MIN_MONEY_AMOUNT, require_text, validate_money_amount, validate_phone, validate_positive_number
 from web.services.payment_service import parse_payment_method
 from web.services.sales_area_service import resolve_sales_area_id
 from web.services.promotion_service import (
@@ -265,17 +265,6 @@ def has_active_cancel_request(invoice):
         invoice.cancel_requested
         and invoice.status in ACTIVE_CANCEL_REQUEST_STATUSES
     )
-
-
-def validate_positive_number(value, field_name):
-                           
-    try:
-        num = float(value)
-        if not math.isfinite(num) or num <= 0:
-            raise ValidationError(f"{field_name} phải lớn hơn 0")
-        return num
-    except (ValueError, TypeError):
-        raise ValidationError(f"{field_name} không hợp lệ")
 
 
 def validate_positive_quantity(value, field_name):
@@ -1274,7 +1263,7 @@ def get_sales_invoices_list_service(
     assignee_id=None,
 ):
        
-    from web.services.customer_service import parse_page, parse_per_page
+    from web.utils.pagination import parse_page, parse_per_page
     from web import app
     import math
     
@@ -1965,7 +1954,7 @@ def approve_discount_service(invoice_id, manager_id, approved, note=""):
 
 def get_pending_discount_invoices_service(page_value, per_page_value, keyword):
        
-    from web.services.customer_service import parse_page, parse_per_page
+    from web.utils.pagination import parse_page, parse_per_page
     from web import app
     import math
     

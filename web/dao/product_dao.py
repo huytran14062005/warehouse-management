@@ -21,24 +21,8 @@ from web.models import (
 )
 from web.services.inventory_policy import STOCK_DEDUCTING_SALES_STATUSES
 from web.services.inventory_settings_service import get_low_stock_percentage
+from web.utils.pagination import apply_pagination
 from .stock_allocation import allocate_field_movements_to_transfers
-
-
-def apply_pagination(query, page, page_size=None):
-                                        
-    total = query.order_by(None).count()
-
-    if not page or page < 1:
-        page = 1
-
-    if page_size is None:
-        page_size = app.config.get("APPLICATION_SIZE", 10)
-
-    start = (page - 1) * page_size
-    end = start + page_size
-    query = query.slice(start, end)
-
-    return query, total
 
 
 def _empty_inventory():

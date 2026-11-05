@@ -51,7 +51,8 @@ def calculate_product_profit_rows(sale_lines, import_lines):
             )
             purchase_totals[purchase.product_id] = (
                 quantity + int(purchase.quantity),
-                amount + int(purchase.quantity) * _money(purchase.unit_price),
+                amount + (_money(purchase.line_total) if purchase.line_total is not None
+                          else int(purchase.quantity) * _money(purchase.unit_price)),
             )
             purchase_index += 1
 

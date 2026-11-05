@@ -8,15 +8,8 @@ import Skeleton from "../components/Skeleton";
 import { getApiError } from "../utils/apiError";
 import { INVENTORY_CHANGED_EVENT } from "../utils/inventoryEvents";
 import useNotificationState from "../utils/useNotificationState";
+import { formatCurrency } from "../utils/money";
 import "../css/EmployeeStock.css";
-
-function formatCurrency(value) {
-  return new Intl.NumberFormat("vi-VN", {
-    style: "currency",
-    currency: "VND",
-    maximumFractionDigits: 0,
-  }).format(Number(value || 0));
-}
 
 function EmployeeStock() {
   const navigate = useNavigate();

@@ -1,15 +1,18 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import WarehouseModalCloseButton from "../components/WarehouseModalCloseButton";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { authApis, endpoints } from "../configs/Apis";
 import { getApiError } from "../utils/apiError";
 import useNotificationState from "../utils/useNotificationState";
+import { formatDate } from "../utils/date";
 import { notifyInventoryChanged } from "../utils/inventoryEvents";
 import AutoDismissMessage from "../components/AutoDismissMessage";
+import FieldAlert from "../components/FieldAlert";
 import ConfirmDialog from "../components/ConfirmDialog";
 import Pagination from "../components/Pagination";
 import SharedSearchableDropdown from "../components/SearchableDropdown";
-import { ProductEntryField, ProductEntryInfo } from "../components/ProductEntryFields";
+import { ProductEntryField, ProductEntrySelector } from "../components/ProductEntryFields";
 import Skeleton from "../components/Skeleton";
 import "../css/WarehouseOperations.css";
 
@@ -20,13 +23,6 @@ const STATUS_OPTIONS = [
   { value: "approved", label: "Đã duyệt" },
   { value: "rejected", label: "Từ chối" },
 ];
-
-function formatDate(value) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
-}
 
 function statusLabel(value) {
   return (
@@ -47,14 +43,7 @@ function DamageDetail({ report, onClose, canReview, onReview }) {
       >
         <div className="warehouse-modal-header">
           <h2>Chi tiết phiếu hàng hư #{report.id}</h2>
-          <button
-            type="button"
-            className="warehouse-modal-close"
-            onClick={onClose}
-            aria-label="Đóng"
-          >
-            ×
-          </button>
+          <WarehouseModalCloseButton onClick={onClose} ariaLabel="Đóng" />
         </div>
         <div className="warehouse-modal-body">
           <div className="warehouse-info-grid">
@@ -257,14 +246,7 @@ function DamageEditor({ onClose, onSaved, isFieldEmployee }) {
       >
         <div className="warehouse-modal-header">
           <h2>Lập phiếu báo hàng hư</h2>
-          <button
-            type="button"
-            className="warehouse-modal-close"
-            onClick={onClose}
-            aria-label="Đóng"
-          >
-            ×
-          </button>
+          <WarehouseModalCloseButton onClick={onClose} ariaLabel="Đóng" />
         </div>
         <form className="warehouse-modal-body" onSubmit={submit}>
           <AutoDismissMessage message={error} className="warehouse-error" />
@@ -318,30 +300,17 @@ function DamageEditor({ onClose, onSaved, isFieldEmployee }) {
                       className="warehouse-editor-item damage-editor-item"
                       key={`${item.product_id || "new"}-${index}`}
                     >
-                      <div className="warehouse-product-field">
-                        <ProductEntryField label="Sản phẩm">
-                          <SharedSearchableDropdown
-                          value={item.product_id}
-                          placeholder="Chọn sản phẩm"
-                          ariaLabel="Chọn sản phẩm hư"
-                          onChange={(value) =>
-                            updateItem(index, "product_id", String(value))
-                          }
-                          options={[
-                            { value: "", label: "Chọn sản phẩm" },
-                            ...products.map((product) => ({
-                              value: product.id,
-                              label: product.name,
-                            })),
-                          ]}
-                          />
-                        </ProductEntryField>
-                        <ProductEntryInfo
-                          product={selected}
-                          stockLabel="Tồn kho hiện tại"
-                          stockQuantity={selected?.available_stock}
-                        />
-                      </div>
+                      <ProductEntrySelector
+                        products={products}
+                        product={selected}
+                        value={item.product_id}
+                        onChange={(value) =>
+                          updateItem(index, "product_id", String(value))
+                        }
+                        ariaLabel="Chọn sản phẩm hư"
+                        stockLabel="Tồn kho hiện tại"
+                        stockQuantity={selected?.available_stock}
+                      />
                       <ProductEntryField label="Số lượng hư">
                         <input
                           type="number"
@@ -614,6 +583,9 @@ function DamageReports() {
             </p>
             {reviewAction?.decision === "rejected" && (
               <textarea
+                className="field-alert-target"
+                aria-invalid={Boolean(reviewValidationError)}
+                aria-describedby={reviewValidationError ? "damage-review-field-alert" : undefined}
                 value={reviewNote}
                 onChange={(event) => {
                   setReviewNote(event.target.value);
@@ -624,9 +596,7 @@ function DamageReports() {
                 autoFocus
               />
             )}
-            {reviewValidationError && (
-              <small className="warehouse-review-dialog-error">{reviewValidationError}</small>
-            )}
+            <FieldAlert id="damage-review-field-alert" message={reviewValidationError} />
           </div>
         )}
         confirmLabel={reviewAction?.decision === "approved" ? "Duyệt phiếu" : "Từ chối phiếu"}

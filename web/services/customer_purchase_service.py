@@ -1,35 +1,8 @@
-from web import app, dao
+from web import dao
 from web.models import Customer
 from web.services.exceptions import NotFoundError
 from web.services.promotion_service import promotion_snapshot_from_note
-
-
-def parse_page(value):
-                                        
-    if value is None:
-        return 1
-    try:
-        page = int(value)
-        return page if page > 0 else 1
-    except (ValueError, TypeError):
-        return 1
-
-
-def parse_per_page(value, default):
-                                     
-    if value is None:
-        return default
-    try:
-        per_page = int(value)
-        return min(per_page, app.config.get("MAX_PAGE_SIZE", 100)) if per_page > 0 else default
-    except (ValueError, TypeError):
-        return default
-
-
-def parse_paging_args(page_value, per_page_value):
-                                                 
-    default_size = app.config.get("APPLICATION_SIZE", 10)
-    return parse_page(page_value), parse_per_page(per_page_value, default_size)
+from web.utils.pagination import parse_page, parse_per_page, parse_paging_args
 
 
 def get_customer_or_404(customer_id):

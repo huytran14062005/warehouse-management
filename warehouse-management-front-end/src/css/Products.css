@@ -18,7 +18,7 @@
 .products-status-dropdown { position: relative; flex: 0 1 230px; min-width: 210px; }
 .products-toolbar > button { min-height: 40px; padding: 10px 16px; color: #fff; border: 1px solid #0b3158; border-radius: 5px; background: #0b3158; font-size: 13px; font-weight: 600; cursor: pointer; }
 .products-toolbar > button:hover { background: #072542; }
-.products-validation-warning { margin-bottom: 16px; padding: 11px 13px; color: #8a5a12; border: 1px solid #ecd39e; border-radius: 5px; background: #fff8e8; font-size: 13px; }
+.products-validation-warning { margin: -8px 0 16px; }
 .products-alert { margin-bottom: 16px; padding: 11px 13px; color: #9f2d2d; border: 1px solid #f1c8c8; border-radius: 5px; background: #fff1f1; font-size: 13px; }
 .products-stock-note { margin: 0 0 12px; color: #71849a; font-size: 12px; line-height: 1.5; }
 .warehouse-modal.products-threshold-modal { max-width: 390px; }

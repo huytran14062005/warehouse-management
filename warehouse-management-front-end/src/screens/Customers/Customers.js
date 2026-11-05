@@ -4,7 +4,8 @@ import { useNavigate } from "react-router-dom";
 import { authApis, endpoints } from "../../configs/Apis";
 import { getApiError } from "../../utils/apiError";
 import useNotificationState from "../../utils/useNotificationState";
-import { digitsOnly, formatMoneyInput } from "../../utils/money";
+import { digitsOnly, formatCurrency, formatMoneyInput } from "../../utils/money";
+import { formatDateTime } from "../../utils/date";
 import AutoDismissMessage from "../../components/AutoDismissMessage";
 import MoneyInput from "../../components/MoneyInput";
 import CustomerFields from "../../components/CustomerFields";
@@ -14,22 +15,6 @@ import Skeleton from "../../components/Skeleton";
 import "../../css/Customers.css";
 
 const PER_PAGE = 10;
-
-function formatCurrency(value) {
-  return new Intl.NumberFormat("vi-VN", {
-    style: "currency",
-    currency: "VND",
-    maximumFractionDigits: 0,
-  }).format(Number(value || 0));
-}
-
-function formatDateTime(value) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  const pad = (number) => String(number).padStart(2, "0");
-  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
 
 function getSaleSourceLabel(value) {
   const source = String(value || "").toLowerCase();

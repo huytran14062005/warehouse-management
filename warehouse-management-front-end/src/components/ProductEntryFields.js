@@ -1,5 +1,6 @@
 import React from "react";
 import { formatCurrency, formatQuantity } from "../utils/money";
+import SearchableDropdown from "./SearchableDropdown";
 import "../css/ProductEntryFields.css";
 
 export function ProductEntryField({ label, children, className = "" }) {
@@ -22,6 +23,43 @@ export function ProductEntryInfo({ product, stockLabel, stockQuantity, showUnit 
       {product.default_sale_price != null && (
         <span>Giá bán mặc định: {formatCurrency(product.default_sale_price)}</span>
       )}
+    </div>
+  );
+}
+
+export function ProductEntrySelector({
+  products,
+  product,
+  value,
+  onChange,
+  ariaLabel,
+  stockLabel,
+  stockQuantity,
+  showUnit = false,
+}) {
+  return (
+    <div className="warehouse-product-field">
+      <ProductEntryField label="Sản phẩm">
+        <SearchableDropdown
+          value={value}
+          placeholder="Chọn sản phẩm"
+          ariaLabel={ariaLabel}
+          onChange={onChange}
+          options={[
+            { value: "", label: "Chọn sản phẩm" },
+            ...products.map((entry) => ({
+              value: entry.id,
+              label: entry.name,
+            })),
+          ]}
+        />
+      </ProductEntryField>
+      <ProductEntryInfo
+        product={product}
+        stockLabel={stockLabel}
+        stockQuantity={stockQuantity}
+        showUnit={showUnit}
+      />
     </div>
   );
 }

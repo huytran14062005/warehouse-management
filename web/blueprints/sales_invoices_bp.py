@@ -37,9 +37,8 @@ from web.services.sales_invoice_service import (
 from web.models import EmployeeRole, SalesInvoice
 from web.services.authorization import ensure_warehouse_access, scoped_warehouse_id
 from web.services.validators import parse_bool
-from web.services.customer_service import parse_page, parse_per_page
 from web.services.exceptions import ForbiddenError, NotFoundError
-from web.utils.pagination import build_pagination
+from web.utils.pagination import build_pagination, parse_page, parse_per_page
 from web.utils.query_cache import cached_query
 
 

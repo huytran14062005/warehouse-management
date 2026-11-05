@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useId, useMemo, useState } from "react";
 import { digitsOnly, formatMoneyInput } from "../utils/money";
+import FieldAlert from "./FieldAlert";
 import "../css/MoneyInput.css";
 
 export const MIN_MONEY_AMOUNT = 500;
@@ -38,15 +39,21 @@ function MoneyInput({
   // Do not warn just because the user focused an empty field. Show the
   // warning after the first actual edit (including typing and deleting).
   const [hasEdited, setHasEdited] = useState(false);
+  const alertId = useId();
   const warning = useMemo(
     () => getMoneyWarning(value, label, { allowZero, allowEmpty, minAmount, maxAmount }),
     [allowEmpty, allowZero, label, maxAmount, minAmount, value],
   );
+  const activeWarning = hasEdited ? warning : "";
+  const describedBy = [inputProps["aria-describedby"], activeWarning && alertId]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <div className={`money-input${className ? ` ${className}` : ""}`}>
       <input
         {...inputProps}
+        className={`field-alert-target${inputProps.className ? ` ${inputProps.className}` : ""}`}
         type="text"
         inputMode="numeric"
         value={formatMoneyInput(value)}
@@ -54,9 +61,10 @@ function MoneyInput({
           setHasEdited(true);
           onChange(digitsOnly(event.target.value));
         }}
-        aria-invalid={Boolean(hasEdited && warning)}
+        aria-invalid={Boolean(activeWarning)}
+        aria-describedby={describedBy || undefined}
       />
-      {hasEdited && warning && <small className="money-input-warning">{warning}</small>}
+      <FieldAlert id={alertId} message={activeWarning} />
     </div>
   );
 }

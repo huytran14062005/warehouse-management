@@ -14,6 +14,7 @@ from web.services.import_invoice_service import (
     serialize_import_invoice,
     serialize_import_invoice_summary,
     update_import_invoice_service,
+    preview_import_combos_service,
     record_supplier_payment_service,
 )
 from web.utils.pagination import build_pagination
@@ -21,6 +22,18 @@ from web.utils.query_cache import cached_query
 
 
 import_invoices_bp = Blueprint("import_invoices", __name__, url_prefix="/api/import-invoices")
+
+
+@import_invoices_bp.route("/preview-combos", methods=["POST"])
+@verify_token
+@verify_role(EmployeeRole.THU_KHO, EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY)
+@handle_api_errors
+def preview_import_combos():
+    data = request.get_json(silent=True) or {}
+    return jsonify(preview_import_combos_service(
+        data.get("items", []), data.get("combo_groups", []), data.get("imported_at"),
+        data.get("invoice_id"), request.employee_id,
+    )), 200
 
 
 @import_invoices_bp.route("", methods=["GET"])
@@ -84,6 +97,7 @@ def create_import_invoice():
         imported_at=data.get("imported_at"),
         note=data.get("note", ""),
         items=data.get("items", []),
+        combo_groups=data.get("combo_groups", []),
         is_return=parse_bool(data.get("is_return", False), "is_return"),
         payment_amount=data.get("payment_amount", 0),
         payment_method=data.get("payment_method"),
@@ -142,6 +156,7 @@ def update_import_invoice(invoice_id):
         imported_at=data.get("imported_at"),
         note=data.get("note", ""),
         items=data.get("items", []),
+        combo_groups=data.get("combo_groups", []),
         is_return=parse_bool(data.get("is_return", False), "is_return")
     )
 

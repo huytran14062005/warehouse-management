@@ -34,7 +34,7 @@ products_bp = Blueprint("products", __name__, url_prefix="/api/products")
 
 @products_bp.route("/combos", methods=["GET"])
 @verify_token
-@verify_role(EmployeeRole.NHAN_VIEN_BAN_HANG, EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY)
+@verify_role(EmployeeRole.NHAN_VIEN_BAN_HANG, EmployeeRole.THU_KHO, EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY)
 @handle_api_errors
 def get_product_combos():
     return jsonify({"combos": cached_query("product-combos", {}, 300, get_product_combos_service)}), 200
