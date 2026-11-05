@@ -720,6 +720,7 @@ def create_sales_invoice_service(
     payment_method=None,
     payment_due_date=None,
     stock_employee_id=None,
+    sales_area_id=None,
 ):
        
                     
@@ -759,6 +760,11 @@ def create_sales_invoice_service(
             address=customer_address,
             sales_area_id=resolve_sales_area_id(customer_data.get("sales_area_id"), required=True),
         )
+
+    invoice_sales_area_id = (
+        resolve_sales_area_id(sales_area_id)
+        if sales_area_id not in (None, "") else customer.sales_area_id
+    )
 
                                 
     validated_items = _validate_sales_items(items)
@@ -822,7 +828,7 @@ def create_sales_invoice_service(
                 discount_note=discount_note,
                 sale_source=sale_source,
                 status=InvoiceStatus.COMPLETED,
-                sales_area_id=customer.sales_area_id,
+                sales_area_id=invoice_sales_area_id,
                 payment_due_date=clean_payment_due_date,
                 commit=False,
             )
@@ -845,7 +851,7 @@ def create_sales_invoice_service(
         sale_source=sale_source,
         payment_status=PaymentStatus.UNPAID,
         paid_amount=0,
-        sales_area_id=customer.sales_area_id,
+        sales_area_id=invoice_sales_area_id,
         payment_due_date=clean_payment_due_date,
     )
 

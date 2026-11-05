@@ -26,9 +26,6 @@
 .combo-manager-form { min-height: 0; overflow-y: auto; padding: 24px 30px 26px; }
 .combo-manager-form-heading h3 { margin: 0 0 4px; color: #0b3158; font-size: 19px; }
 .combo-manager-form-heading p { margin: 0 0 24px; color: #71849a; font-size: 13px; }
-.combo-manager-message { margin-bottom: 16px; padding: 11px 13px; border-radius: 7px; font-size: 13px; }
-.combo-manager-message.is-error { border: 1px solid #efbfc1; background: #fff3f3; color: #a3333a; }
-.combo-manager-message.is-success { border: 1px solid #b3dcc3; background: #effaf3; color: #23724a; }
 .combo-manager-field { display: grid; gap: 8px; margin-bottom: 26px; color: #3b5873; font-size: 13px; font-weight: 700; }
 .combo-manager-field input { box-sizing: border-box; width: 100%; min-height: 46px; padding: 11px 14px; border: 1px solid #cbd9e6; border-radius: 8px; outline: 0; background: #fff; color: #203952; font: inherit; font-weight: 400; }
 .combo-manager-field input:focus, .combo-manager-item-quantity input:focus { border-color: #2472ad; box-shadow: 0 0 0 3px rgba(36, 114, 173, .12); }

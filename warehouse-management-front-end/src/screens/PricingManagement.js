@@ -424,7 +424,7 @@ export default function PricingManagement() {
         <h1>Chi phí &amp; giá bán</h1>
       </header>
       <AutoDismissMessage message={error} className="pricing-error" />
-      <AutoDismissMessage message={success} className="pricing-success" />
+      <AutoDismissMessage message={success} type="success" role="status" className="pricing-success" />
 
       <section
         className="pricing-panel"

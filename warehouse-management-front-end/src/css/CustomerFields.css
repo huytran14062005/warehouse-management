@@ -1,6 +1,16 @@
 .customer-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 12px; }
 .customer-fields-field { display: block; min-width: 0; margin: 0; color: #52657a; font-size: 12px; font-weight: 600; }
 .customer-fields-field > span { display: block; margin-bottom: 6px; }
+.customer-fields-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 40px; margin-bottom: 6px; }
+.customer-fields-add-area { flex: none; min-height: 40px; padding: 8px 0; border: 0; background: transparent; color: #0b4a7c; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.customer-fields-add-area:hover { text-decoration: underline; }
+.customer-fields-add-area:disabled { opacity: .6; cursor: not-allowed; }
+.customer-fields-create-area { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
+.customer-fields-create-area input { box-sizing: border-box; flex: 1 1 170px; min-width: 0; min-height: 40px; padding: 8px 11px; border: 1px solid #cbd7e2; border-radius: 5px; background: #fff; color: #1b2d40; font: inherit; font-size: 13px; font-weight: 400; }
+.customer-fields-create-area input:focus { outline: none; border-color: #0b3158; box-shadow: 0 0 0 2px rgba(11, 49, 88, .1); }
+.customer-fields-create-area button { min-height: 40px; padding: 8px 12px; border: 1px solid #0b3158; border-radius: 5px; background: #0b3158; color: #fff; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.customer-fields-create-area button:disabled { opacity: .6; cursor: not-allowed; }
+.customer-fields-create-area .customer-fields-area-error { flex-basis: 100%; }
 .customer-fields-wide { grid-column: 1 / -1; }
 .customer-fields-field > input, .customer-fields-field > textarea { box-sizing: border-box; display: block; width: 100%; min-height: 42px; padding: 10px 12px; color: #1b2d40; border: 1px solid #cbd7e2; border-radius: 5px; background: #fff; outline: none; font: inherit; font-size: 13px; font-weight: 400; }
 .customer-fields-field > textarea { min-height: 94px; resize: vertical; line-height: 1.5; }

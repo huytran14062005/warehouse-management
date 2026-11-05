@@ -1,8 +1,8 @@
 import React from "react";
-import SearchableDropdown from "./SearchableDropdown";
+import SalesAreaField from "./SalesAreaField";
 import "../css/CustomerFields.css";
 
-function CustomerFields({ value, onChange, salesAreas, salesAreasLoading = false, requireSalesArea = false }) {
+function CustomerFields({ value, onChange, salesAreas, salesAreasLoading = false, requireSalesArea = false, onSalesAreaCreated }) {
   return (
     <div className="customer-fields">
       <label className="customer-fields-field">
@@ -40,20 +40,14 @@ function CustomerFields({ value, onChange, salesAreas, salesAreasLoading = false
           required
         />
       </label>
-      <div className="customer-fields-field customer-fields-wide">
-        <span>Khu vực bán hàng{requireSalesArea ? " *" : ""}</span>
-        <SearchableDropdown
-          value={String(value.sales_area_id || "")}
-          onChange={(areaId) => onChange("sales_area_id", String(areaId))}
-          options={salesAreasLoading ? [] : [
-            { value: "", label: "Chọn khu vực bán hàng" },
-            ...salesAreas.map((area) => ({ value: area.id, label: area.name })),
-          ]}
-          placeholder={salesAreasLoading ? "Đang tải khu vực bán hàng..." : "Chọn khu vực bán hàng"}
-          ariaLabel="Chọn khu vực bán hàng"
-          disabled={salesAreasLoading}
-        />
-      </div>
+      <SalesAreaField
+        value={value.sales_area_id}
+        onChange={(areaId) => onChange("sales_area_id", areaId)}
+        salesAreas={salesAreas}
+        salesAreasLoading={salesAreasLoading}
+        required={requireSalesArea}
+        onSalesAreaCreated={onSalesAreaCreated}
+      />
     </div>
   );
 }

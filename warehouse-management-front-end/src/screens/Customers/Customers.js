@@ -105,6 +105,10 @@ function CustomerEditModal({ customer, onClose, onSaved }) {
             }}
             salesAreas={salesAreas}
             salesAreasLoading={salesAreasLoading}
+            onSalesAreaCreated={(area) => setSalesAreas((current) =>
+              [...current.filter((item) => item.id !== area.id), area]
+                .sort((first, second) => first.name.localeCompare(second.name, "vi"))
+            )}
           />
           <div className="customer-edit-actions">
             <button type="button" onClick={onClose} disabled={saving}>Hủy</button>

@@ -156,6 +156,7 @@ function EmployeeAccounts() {
       <AutoDismissMessage
         message={success}
         type="success"
+        role="status"
         className="employee-accounts-success"
       />
 

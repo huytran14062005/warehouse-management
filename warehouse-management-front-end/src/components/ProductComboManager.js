@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { authApis, endpoints } from "../configs/Apis";
 import { getApiError } from "../utils/apiError";
+import useNotificationState from "../utils/useNotificationState";
+import AutoDismissMessage from "./AutoDismissMessage";
 import SearchableDropdown from "./SearchableDropdown";
 import "../css/ProductComboManager.css";
 
@@ -18,8 +20,8 @@ function ProductComboManager({ onClose }) {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [error, setError] = useNotificationState();
+  const [notice, setNotice] = useNotificationState();
 
   useEffect(() => {
     let active = true;
@@ -36,7 +38,7 @@ function ProductComboManager({ onClose }) {
       if (active) setLoading(false);
     });
     return () => { active = false; };
-  }, []);
+  }, [setError]);
 
   const startNew = () => {
     setEditingId(null);
@@ -107,6 +109,7 @@ function ProductComboManager({ onClose }) {
     try {
       setSaving(true);
       setError("");
+      setNotice("");
       await authApis().delete(endpoints.productComboDetail(comboId));
       setCombos((current) => current.filter((combo) => combo.id !== comboId));
       setConfirmDeleteId(null);
@@ -128,6 +131,8 @@ function ProductComboManager({ onClose }) {
 
   return createPortal(
     <div className="combo-manager-overlay">
+      <AutoDismissMessage message={error} />
+      <AutoDismissMessage message={notice} type="success" role="status" />
       <div className="combo-manager-dialog" role="dialog" aria-modal="true" aria-labelledby="combo-manager-title">
         <header className="combo-manager-header">
           <div>
@@ -174,8 +179,6 @@ function ProductComboManager({ onClose }) {
                 <p>Mỗi bộ sẽ thêm đúng số lượng sản phẩm bạn thiết lập bên dưới.</p>
               </div>
             </div>
-            {error && <div className="combo-manager-message is-error" role="alert">{error}</div>}
-            {notice && <div className="combo-manager-message is-success" role="status">{notice}</div>}
             <label className="combo-manager-field">
               <span>Tên combo</span>
               <input value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}

@@ -14,6 +14,7 @@ import ProductRequestModal from "../components/ProductRequestModal";
 import ProductRequestDropdownAction from "../components/ProductRequestDropdownAction";
 import SharedSearchableDropdown from "../components/SearchableDropdown";
 import CustomerFields from "../components/CustomerFields";
+import SalesAreaField from "../components/SalesAreaField";
 import PaymentMethodDropdown from "../components/PaymentMethodDropdown";
 import {
   ProductEntryField,
@@ -30,18 +31,13 @@ const PER_PAGE = 10;
 const DISCOUNT_PER_PAGE = 10;
 const LIVE_REFRESH_INTERVAL_MS = 2000;
 const CONNECTED_POLL_EVERY_TICKS = 5;
-let cachedSalesAreas = null;
 let salesAreasRequest = null;
 
 async function getSalesAreasOnce() {
-  if (cachedSalesAreas) return cachedSalesAreas;
   if (!salesAreasRequest) {
     salesAreasRequest = authApis()
       .get(endpoints.salesAreas)
-      .then((response) => {
-        cachedSalesAreas = response.data?.sales_areas || [];
-        return cachedSalesAreas;
-      })
+      .then((response) => response.data?.sales_areas || [])
       .finally(() => {
         salesAreasRequest = null;
       });
@@ -1338,7 +1334,7 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
   })();
   const canUseEmployeeStock = activeUser.role === "nhân viên bán hàng";
   const [customers, setCustomers] = useState([]);
-  const [salesAreas, setSalesAreas] = useState(() => cachedSalesAreas || []);
+  const [salesAreas, setSalesAreas] = useState([]);
   const [salesAreasLoading, setSalesAreasLoading] = useState(false);
   const [formError, setFormError] = useNotificationState();
   const [saving, setSaving] = useState(false);
@@ -1375,6 +1371,7 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
     address: "",
     sales_area_id: "",
   });
+  const [salesAreaOverrideId, setSalesAreaOverrideId] = useState("");
   const [items, setItems] = useState(
     (invoice?.items || []).map((item) => ({
       productId: String(item.product_id),
@@ -1430,7 +1427,7 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
   }, [setFormError]);
 
   useEffect(() => {
-    if (isEditing || customerMode !== "new" || salesAreas.length) {
+    if (isEditing || salesAreas.length) {
       return undefined;
     }
 
@@ -1453,7 +1450,7 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
     return () => {
       cancelled = true;
     };
-  }, [customerMode, isEditing, salesAreas.length, setFormError]);
+  }, [isEditing, salesAreas.length, setFormError]);
 
   useEffect(() => {
     if (saleSource !== "employee_stock" || isEditing) return undefined;
@@ -1574,6 +1571,11 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
     setSelectedCustomer(selected || null);
     setCustomerSearchInput(selected?.full_name || "");
   };
+
+  const handleSalesAreaCreated = (area) => setSalesAreas((current) =>
+    [...current.filter((item) => item.id !== area.id), area]
+      .sort((first, second) => first.name.localeCompare(second.name, "vi"))
+  );
 
   const subtotal = items.reduce(
     (total, item) =>
@@ -2034,6 +2036,9 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                   : null,
               }
             : undefined,
+        sales_area_id: !isEditing && customerMode === "existing" && salesAreaOverrideId
+          ? Number(salesAreaOverrideId)
+          : null,
         note: note.trim(),
         discount_amount: 0,
         promotion_id: selectedPromotion?.id || null,
@@ -2099,7 +2104,7 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
         </div>
         <form className="sales-editor-body" onSubmit={handleSubmit}>
           <AutoDismissMessage message={formError} className="sales-alert" />
-          <AutoDismissMessage message={formSuccess} type="success" />
+          <AutoDismissMessage message={formSuccess} type="success" role="status" />
           {!isEditing && (
             <div className="sales-editor-field">
               <span>Nguồn hàng</span>
@@ -2233,6 +2238,16 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                     </span>
                   </div>
                 )}
+                <div className="sales-customer-area">
+                  <SalesAreaField
+                    value={salesAreaOverrideId || selectedCustomer?.sales_area_id || ""}
+                    onChange={setSalesAreaOverrideId}
+                    salesAreas={salesAreas}
+                    salesAreasLoading={salesAreasLoading}
+                    onSalesAreaCreated={handleSalesAreaCreated}
+                  />
+                  <small>Khu vực chọn ở đây chỉ áp dụng cho đơn này.</small>
+                </div>
               </>
             ) : (
               <CustomerFields
@@ -2243,6 +2258,7 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                 salesAreas={salesAreas}
                 salesAreasLoading={salesAreasLoading}
                 requireSalesArea
+                onSalesAreaCreated={handleSalesAreaCreated}
               />
             )}
           </div>

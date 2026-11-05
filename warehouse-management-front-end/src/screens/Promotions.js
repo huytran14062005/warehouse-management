@@ -354,7 +354,7 @@ function Promotions() {
         </button>
       </header>
       <AutoDismissMessage message={error} className="promotion-alert" />
-      <AutoDismissMessage message={success} className="promotion-success" />
+      <AutoDismissMessage message={success} type="success" role="status" className="promotion-success" />
 
       <div className="promotions-card">
         {loading ? (

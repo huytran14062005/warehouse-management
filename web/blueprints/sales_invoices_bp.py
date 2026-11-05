@@ -215,6 +215,7 @@ def create_sales_invoice():
         warehouse_id=data.get("warehouse_id"),
         customer_id=data.get("customer_id"),
         customer_data=data.get("customer"),
+        sales_area_id=data.get("sales_area_id"),
         note=data.get("note", ""),
         items=data.get("items", []),
         discount_amount=data.get("discount_amount", 0),

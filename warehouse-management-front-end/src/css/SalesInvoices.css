@@ -257,6 +257,7 @@
 .sales-customer-mode button.is-active { color: #fff; border-color: #0b3158; background: #0b3158; }
 .sales-customer-contact { display: grid; gap: 4px; margin-top: 8px; padding: 9px 10px; color: #71849a; border-left: 3px solid #0b3158; background: #f5f8fb; font-size: 12px; font-weight: 400; }
 .sales-customer-contact strong { color: #1b2d40; font-weight: 600; }
+.sales-customer-area { margin-top: 12px; }
 .sales-editor-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 20px 0 10px; }
 .sales-editor-section-heading h3 { margin: 0; color: #0b3158; font-size: 14px; }
 .sales-editor-add { padding: 7px 10px; color: #0b3158; border: 1px solid #b7c8d8; border-radius: 5px; background: #fff; font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
