@@ -6,6 +6,43 @@
     text-size-adjust: 100%;
   }
 
+  /* Keep long names and amounts inside their card without clipping controls. */
+  .app-route-content,
+  .page-transition,
+  .app-route-content main,
+  .app-route-content section,
+  .app-route-content article { min-width: 0; }
+
+  .app-route-content h1,
+  .app-route-content h2,
+  .app-route-content h3,
+  .app-route-content p,
+  .app-route-content strong { overflow-wrap: anywhere; }
+
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea { max-width: 100%; font-size: 16px; }
+
+  .searchable-dropdown-input { font-size: 16px; }
+
+  .customers-table-wrapper,
+  .products-table-wrapper,
+  .sales-table-wrap,
+  .suppliers-table-wrapper,
+  .warehouse-table-wrap,
+  .employee-accounts-table-wrap,
+  .employee-stock-table-wrap,
+  .stock-transfers-history-table-wrap,
+  .manager-analytics-table-wrap,
+  .customer-history-table-wrap,
+  .pricing-table-wrap,
+  .promotions-table-wrap,
+  .sales-detail-table-wrap,
+  .stock-transfer-detail-table-wrap {
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .app-route-content,
   .page-transition,
   .customers-card,
@@ -322,11 +359,118 @@
     bottom: max(14px, env(safe-area-inset-bottom));
   }
 
+  .warehouse-pagination-controls { max-width: 100%; }
+  .warehouse-page-button { min-width: 44px; min-height: 44px; }
+  .warehouse-page-nav { min-width: 44px; }
+
+  .customer-modal-overlay,
+  .sales-detail-overlay,
+  .sales-editor-overlay,
+  .warehouse-modal-overlay,
+  .suppliers-modal-overlay,
+  .promotion-modal-overlay,
+  .courier-modal-overlay,
+  .company-funds-modal-overlay,
+  .combo-manager-overlay,
+  .confirm-dialog-overlay {
+    padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+      max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  }
+
+  .suppliers-modal,
+  .promotion-modal,
+  .courier-modal,
+  .company-funds-modal,
+  .combo-manager-dialog,
+  .confirm-dialog { max-width: 100%; max-height: 100%; }
+
+  .suppliers-modal-close,
+  .promotion-modal-header > button,
+  .courier-modal-header button,
+  .company-funds-modal-close,
+  .combo-manager-close { flex: 0 0 44px; width: 44px; height: 44px; }
+
+  .suppliers-modal-actions button,
+  .promotion-form-actions button,
+  .courier-modal-actions button,
+  .company-funds-adjust-actions button,
+  .company-funds-entry-actions button,
+  .combo-manager-actions button,
+  .combo-manager-add,
+  .combo-manager-new { min-height: 44px; }
+
+  .combo-manager-dialog { max-height: calc(100dvh - 24px); }
+  .combo-manager-content { min-height: 0; }
+  .combo-manager-item-remove { width: 44px; min-height: 44px; }
+
+  .pricing-period label,
+  .pricing-search,
+  .company-funds-method-filter { min-width: 0; }
+  .pricing-page button { min-height: 44px; }
+  .company-funds-list-actions > *,
+  .company-funds-method-filter .searchable-dropdown { max-width: 100%; }
+
+  .stock-transfers-source-warehouse { flex-wrap: wrap; }
+  .stock-transfers-source-warehouse select { width: 100%; min-width: 0; }
+
+  .courier-modal-body li { flex-wrap: wrap; }
+  .courier-modal-body li strong { white-space: normal; overflow-wrap: anywhere; }
+
   .page-transition--forward,
   .page-transition--back { animation-name: mobile-page-appear; }
 }
 
 @media (max-width: 520px) {
+  .internal-header-inner { width: calc(100% - 20px); gap: 8px; }
+  .internal-brand { min-width: 0; gap: 6px; }
+  .internal-logo { flex: 0 0 36px; width: 36px; height: 36px; }
+  .internal-brand-name { font-size: 12px; letter-spacing: .04em; white-space: nowrap; }
+  .internal-auth-actions { min-width: 0; }
+  .internal-welcome { max-width: 72px; }
+  .auth-button { min-height: 44px; padding: 7px 8px; }
+  .internal-hero h1 { font-size: clamp(26px, 9vw, 38px); }
+
+  .suppliers-header-actions { width: 100%; gap: 10px; }
+  .suppliers-header-actions .suppliers-add-button { flex: 1 1 auto; }
+  .suppliers-modal-actions,
+  .courier-modal-actions,
+  .company-funds-adjust-actions,
+  .company-funds-list-actions { align-items: stretch; flex-direction: column; }
+  .suppliers-modal-actions button,
+  .courier-modal-actions button,
+  .company-funds-adjust-actions button,
+  .company-funds-list-actions > button,
+  .company-funds-entry-actions button { width: 100%; }
+  .suppliers-modal-actions .suppliers-delete-button:not(.suppliers-add-button) { margin-right: 0; }
+  .company-funds-method-filter { width: 100%; flex-wrap: wrap; }
+  .company-funds-method-filter .searchable-dropdown { flex: 1 1 160px; width: auto; }
+  .company-funds-balance strong { font-size: clamp(19px, 6vw, 25px); overflow-wrap: anywhere; }
+  .combo-manager-header { gap: 10px; padding: 14px; }
+  .combo-manager-header h2 { font-size: 20px; }
+  .combo-manager-sidebar,
+  .combo-manager-form { padding: 14px; }
+  .combo-manager-item { grid-template-columns: 26px minmax(0, 1fr) 44px; gap: 8px; padding: 10px; }
+  .combo-manager-item-remove { grid-column: 3; grid-row: 1 / span 2; }
+  .combo-manager-actions { flex-direction: column-reverse; }
+  .combo-manager-actions button { width: 100%; }
+
+  .warehouse-combo-part.is-manual { grid-template-columns: minmax(0, 1fr) 44px; }
+  .warehouse-combo-part.is-manual > .money-input { grid-column: 1; }
+  .warehouse-combo-part.is-manual > button { grid-column: 2; grid-row: 2 / span 2; }
+
+  .sales-editor-section-heading,
+  .sales-promotion-picker-header { align-items: stretch; flex-direction: column; }
+  .sales-editor-section-heading button,
+  .sales-promotion-picker-header button { width: 100%; min-height: 44px; }
+
+  .pricing-period label { flex: 1 1 100%; }
+  .pricing-period button,
+  .pricing-search button { flex: 1 1 100%; }
+  .pricing-search input { flex: 1 1 100%; }
+
+  .warehouse-pagination-controls { gap: 6px; }
+  .warehouse-page-ellipsis { min-width: 16px; }
+
   .customers-page,
   .products-page,
   .sales-page,
@@ -464,6 +608,14 @@
 }
 
 @media (max-width: 380px) {
+  .internal-brand-name { display: none; }
+  .internal-logo { flex-basis: 42px; width: 42px; }
+  .internal-welcome { max-width: 58px; }
+  .sales-detail-line,
+  .sales-detail-payment .sales-detail-line { grid-template-columns: 1fr; gap: 4px; }
+  .sales-detail-payment .sales-detail-line dd { text-align: left; white-space: normal; }
+  .stock-transfer-detail-summary { grid-template-columns: 1fr; }
+
   .customers-page,
   .products-page,
   .sales-page,
