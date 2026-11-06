@@ -46,6 +46,7 @@
 .combo-manager-item-product .searchable-dropdown-input { min-height: 40px; font-size: 13px; }
 .combo-manager-item-quantity input { box-sizing: border-box; width: 100%; min-height: 42px; padding: 9px 10px; border: 1px solid #cbd9e6; border-radius: 7px; outline: 0; color: #203952; font: inherit; font-size: 13px; }
 .combo-manager-item-remove { width: 34px; height: 42px; border: 1px solid #e7c4c4; border-radius: 7px; background: #fff; color: #a33e3e; font-size: 21px; cursor: pointer; }
+.combo-manager-item-remove-text { display: none; }
 .combo-manager-item-remove:disabled { opacity: .4; cursor: not-allowed; }
 .combo-manager-add { width: 100%; min-height: 42px; margin-top: 12px; }
 .combo-manager-add:disabled { opacity: .5; cursor: not-allowed; }
@@ -57,6 +58,63 @@
 .combo-manager-actions button { min-width: 110px; min-height: 42px; padding: 9px 16px; border: 1px solid #acc0d3; border-radius: 7px; background: #fff; color: #0b3158; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
 .combo-manager-actions button.is-primary { border-color: #0b3158; background: #0b3158; color: #fff; }
 .combo-manager-actions button:disabled { opacity: .55; cursor: not-allowed; }
-@media (max-width: 760px) { .combo-manager-overlay { padding: 10px; } .combo-manager-dialog { max-height: 96vh; } .combo-manager-header { padding: 18px; } .combo-manager-header h2 { font-size: 22px; } .combo-manager-content { grid-template-columns: 1fr; overflow-y: auto; } .combo-manager-sidebar, .combo-manager-form { overflow: visible; padding: 18px; } .combo-manager-sidebar { border-right: 0; border-bottom: 1px solid #e4ebf2; } .combo-manager-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 768px) {
+  .combo-manager-overlay {
+    --combo-inset-top: max(10px, env(safe-area-inset-top));
+    --combo-inset-right: max(10px, env(safe-area-inset-right));
+    --combo-inset-bottom: max(10px, env(safe-area-inset-bottom));
+    --combo-inset-left: max(10px, env(safe-area-inset-left));
+    inset: 0 0 auto;
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    height: 100vh;
+    height: 100svh;
+    padding: var(--combo-inset-top) var(--combo-inset-right)
+      var(--combo-inset-bottom) var(--combo-inset-left);
+  }
+  .combo-manager-dialog {
+    width: 100%;
+    height: calc(100vh - var(--combo-inset-top) - var(--combo-inset-bottom));
+    height: calc(100svh - var(--combo-inset-top) - var(--combo-inset-bottom));
+    min-height: 0;
+    max-height: none;
+  }
+  .combo-manager-header { flex: 0 0 auto; padding: 18px; }
+  .combo-manager-header h2 { font-size: 22px; }
+  .combo-manager-content {
+    display: block;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .combo-manager-sidebar, .combo-manager-form { overflow: visible; padding: 18px; }
+  .combo-manager-form { padding-bottom: max(36px, env(safe-area-inset-bottom)); }
+  .combo-manager-sidebar { border-right: 0; border-bottom: 1px solid #e4ebf2; }
+  .combo-manager-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 @media (max-width: 620px) { .combo-manager-price-card { grid-template-columns: 1fr; gap: 14px; } }
-@media (max-width: 520px) { .combo-manager-list { grid-template-columns: 1fr; } .combo-manager-item { grid-template-columns: 28px minmax(0, 1fr) 34px; } .combo-manager-item-quantity { grid-column: 2; } .combo-manager-item-remove { grid-column: 3; grid-row: 1 / span 2; align-self: center; } }
+@media (max-width: 520px) {
+  .combo-manager-list { grid-template-columns: 1fr; }
+  .combo-manager-item { grid-template-columns: 28px minmax(0, 1fr); align-items: start; gap: 10px; }
+  .combo-manager-item-number { grid-column: 1; grid-row: 1; align-self: center; }
+  .combo-manager-item-product { grid-column: 2; grid-row: 1; }
+  .combo-manager-item-quantity { grid-column: 2; grid-row: 2; }
+  .combo-manager-item-remove {
+    display: flex;
+    grid-column: 2;
+    grid-row: 3;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    width: 100%;
+    height: 44px;
+    margin: 0;
+    font-size: 17px;
+  }
+  .combo-manager-item-remove:disabled { display: none; }
+  .combo-manager-item-remove-text { display: inline; font-size: 13px; font-weight: 700; }
+}

@@ -371,7 +371,6 @@
   .promotion-modal-overlay,
   .courier-modal-overlay,
   .company-funds-modal-overlay,
-  .combo-manager-overlay,
   .confirm-dialog-overlay {
     padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
       max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
@@ -381,7 +380,6 @@
   .promotion-modal,
   .courier-modal,
   .company-funds-modal,
-  .combo-manager-dialog,
   .confirm-dialog { max-width: 100%; max-height: 100%; }
 
   .suppliers-modal-close,
@@ -398,10 +396,6 @@
   .combo-manager-actions button,
   .combo-manager-add,
   .combo-manager-new { min-height: 44px; }
-
-  .combo-manager-dialog { max-height: calc(100dvh - 24px); }
-  .combo-manager-content { min-height: 0; }
-  .combo-manager-item-remove { width: 44px; min-height: 44px; }
 
   .pricing-period label,
   .pricing-search,
@@ -449,8 +443,7 @@
   .combo-manager-header h2 { font-size: 20px; }
   .combo-manager-sidebar,
   .combo-manager-form { padding: 14px; }
-  .combo-manager-item { grid-template-columns: 26px minmax(0, 1fr) 44px; gap: 8px; padding: 10px; }
-  .combo-manager-item-remove { grid-column: 3; grid-row: 1 / span 2; }
+  .combo-manager-item { gap: 8px; padding: 10px; }
   .combo-manager-actions { flex-direction: column-reverse; }
   .combo-manager-actions button { width: 100%; }
 

@@ -285,7 +285,9 @@ function ProductComboManager({ onClose }) {
                   </label>
                   <button type="button" className="combo-manager-item-remove" onClick={() => setDraft((current) => ({
                     ...current, items: current.items.filter((row) => row.key !== item.key),
-                  }))} disabled={draft.items.length <= 2} aria-label={`Bỏ sản phẩm ${index + 1}`}>×</button>
+                  }))} disabled={draft.items.length <= 2} aria-label={`Bỏ sản phẩm ${index + 1}`}>
+                    <span aria-hidden="true">×</span><span className="combo-manager-item-remove-text">Bỏ sản phẩm</span>
+                  </button>
                 </div>
               ))}
             </div>
