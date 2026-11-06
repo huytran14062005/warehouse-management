@@ -163,9 +163,11 @@ def get_pending_requests_summary():
 @verify_role(EmployeeRole.QUAN_LY)
 @handle_api_errors
 def approve_employee(employee_id):
-    employee = approve_employee_service(employee_id, request.employee_id)
+    employee, email_sent = approve_employee_service(employee_id, request.employee_id)
     return jsonify({
-        "message": "Đã duyệt tài khoản. Email thông báo đã được gửi.",
+        "message": "Đã duyệt tài khoản." + (" Email thông báo đã được gửi." if email_sent else ""),
+        "email_sent": email_sent,
+        "warning": None if email_sent else "Email thông báo chưa được gửi. Vui lòng báo quản trị viên kiểm tra cấu hình email.",
         "employee": _serialize_employee(employee),
     }), 200
 
@@ -176,16 +178,15 @@ def approve_employee(employee_id):
 @handle_api_errors
 def update_employee_lock(employee_id):
     data = request.get_json(silent=True) or {}
-    employee = set_employee_lock_service(
+    employee, email_sent = set_employee_lock_service(
         employee_id,
         request.employee_id,
         parse_bool(data.get("is_locked"), "is_locked"),
     )
     return jsonify({
-        "message": (
-            "Đã khóa tài khoản. Email thông báo đã được gửi."
-            if employee.is_locked
-            else "Đã mở khóa tài khoản. Email thông báo đã được gửi."
-        ),
+        "message": ("Đã khóa tài khoản." if employee.is_locked else "Đã mở khóa tài khoản.")
+        + (" Email thông báo đã được gửi." if email_sent else ""),
+        "email_sent": email_sent,
+        "warning": None if email_sent else "Email thông báo chưa được gửi. Vui lòng báo quản trị viên kiểm tra cấu hình email.",
         "employee": _serialize_employee(employee),
     }), 200

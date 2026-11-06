@@ -31,6 +31,7 @@ function EmployeeAccounts() {
   const [confirmState, setConfirmState] = useState(null);
   const [error, setError] = useNotificationState();
   const [success, setSuccess] = useNotificationState();
+  const [warning, setWarning] = useNotificationState();
 
   const fetchEmployees = useCallback(async () => {
     if (!localStorage.getItem("token")) {
@@ -88,8 +89,8 @@ function EmployeeAccounts() {
           ? "Khóa tài khoản"
           : "Mở khóa tài khoản",
       message: approving
-        ? `Bạn có chắc muốn duyệt tài khoản ${employee.username}? Email thông báo sẽ được gửi.`
-        : `Bạn có chắc muốn ${nextLocked ? "khóa" : "mở khóa"} tài khoản ${employee.username}? Email thông báo sẽ được gửi.`,
+        ? `Bạn có chắc muốn duyệt tài khoản ${employee.username}? Hệ thống sẽ cố gửi email thông báo.`
+        : `Bạn có chắc muốn ${nextLocked ? "khóa" : "mở khóa"} tài khoản ${employee.username}? Hệ thống sẽ cố gửi email thông báo.`,
     });
   };
 
@@ -100,13 +101,18 @@ function EmployeeAccounts() {
     setActionId(employee.id);
     setError("");
     setSuccess("");
+    setWarning("");
     try {
       const response = approving
         ? await authApis().put(endpoints.approveEmployeeAccount(employee.id))
         : await authApis().put(endpoints.lockEmployeeAccount(employee.id), {
             is_locked: nextLocked,
           });
-      setSuccess(response.data?.message || "Đã cập nhật tài khoản.");
+      if (response.data?.warning) {
+        setWarning(`${response.data?.message || "Đã cập nhật tài khoản."} ${response.data.warning}`);
+      } else {
+        setSuccess(response.data?.message || "Đã cập nhật tài khoản.");
+      }
       await fetchEmployees();
     } catch (requestError) {
       setError(getApiError(requestError));
@@ -159,6 +165,7 @@ function EmployeeAccounts() {
         role="status"
         className="employee-accounts-success"
       />
+      <AutoDismissMessage message={warning} type="warning" className="employee-accounts-alert" />
 
       <section className="employee-accounts-card">
         {loading ? (

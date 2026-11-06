@@ -1,3 +1,5 @@
+from flask import current_app
+
 from web import dao
 from web.models import EmployeeRole
 from web.services.exceptions import ForbiddenError, NotFoundError, ValidationError
@@ -11,6 +13,28 @@ from web.services.validators import parse_bool
 
 
 ACCOUNT_STATUSES = {"pending", "approved", "locked", "active"}
+
+
+def _send_status_notification(employee, send_email, action):
+    """Email is secondary to the committed account change."""
+    sender = current_app.config.get("MAIL_DEFAULT_SENDER")
+    sender_address = sender[1] if isinstance(sender, (tuple, list)) else sender
+    if not employee.email or not sender_address:
+        current_app.logger.warning("%s email skipped: missing recipient or sender", action)
+        return False
+
+    if str(current_app.config.get("MAIL_SERVER", "")).lower() in {
+        "smtp.gmail.com", "smtp.googlemail.com"
+    } and not (current_app.config.get("MAIL_USERNAME") and current_app.config.get("MAIL_PASSWORD")):
+        current_app.logger.warning("%s email skipped: Gmail SMTP credentials are not configured", action)
+        return False
+
+    try:
+        send_email(employee)
+    except Exception:
+        current_app.logger.exception("%s email failed after account update for employee %s", action, employee.id)
+        return False
+    return True
 
 
 def _require_manager(actor_id):
@@ -48,8 +72,8 @@ def approve_employee_service(employee_id, actor_id):
     if employee.is_locked:
         raise ValidationError("Không thể duyệt tài khoản đang bị khóa")
     employee = dao.approve_employee(employee)
-    send_account_approved_email(employee)
-    return employee
+    email_sent = _send_status_notification(employee, send_account_approved_email, "Account approval")
+    return employee, email_sent
 
 
 def set_employee_lock_service(employee_id, actor_id, is_locked):
@@ -62,7 +86,7 @@ def set_employee_lock_service(employee_id, actor_id, is_locked):
     employee = dao.set_employee_locked(employee, locked)
     if locked:
         revoke_all_refresh_sessions(employee.id)
-        send_account_locked_email(employee)
+        email_sent = _send_status_notification(employee, send_account_locked_email, "Account lock")
     else:
-        send_account_unlocked_email(employee)
-    return employee
+        email_sent = _send_status_notification(employee, send_account_unlocked_email, "Account unlock")
+    return employee, email_sent

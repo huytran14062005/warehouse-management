@@ -1,5 +1,19 @@
 # warehouse-management
 
+## Email thông báo tài khoản
+
+API gửi email khi duyệt, khóa hoặc mở khóa tài khoản. Với Gmail SMTP, cấu hình các biến sau trong môi trường chạy API (Production trên Vercel), không chỉ trong `.env` ở máy phát triển:
+
+```text
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=<địa chỉ Gmail gửi thư>
+SMTP_PASSWORD=<mật khẩu ứng dụng của tài khoản gửi>
+MAIL_SENDER=<địa chỉ Gmail gửi thư>
+```
+
+Tài khoản Google cần bật xác minh 2 bước để tạo mật khẩu ứng dụng. Sau khi sửa biến môi trường trên Vercel, triển khai lại API để cấu hình mới có hiệu lực. Nếu SMTP không hoạt động, thao tác tài khoản vẫn được lưu và API trả cảnh báo email chưa gửi; hãy xử lý cấu hình trước khi thử gửi thông báo tiếp theo.
+
 ## Nhập hàng theo combo
 
 Chức năng nhập combo dùng hai cột `import_invoices.combo_groups` và
