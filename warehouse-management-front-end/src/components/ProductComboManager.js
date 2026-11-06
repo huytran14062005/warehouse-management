@@ -4,13 +4,36 @@ import { authApis, endpoints } from "../configs/Apis";
 import { getApiError } from "../utils/apiError";
 import useNotificationState from "../utils/useNotificationState";
 import AutoDismissMessage from "./AutoDismissMessage";
+import MoneyInput from "./MoneyInput";
 import SearchableDropdown from "./SearchableDropdown";
+import { formatCurrency } from "../utils/money";
+import { getSalePriceBounds } from "../utils/salePrice";
 import "../css/ProductComboManager.css";
 
 const newDraft = () => ({ name: "", items: [
   { key: "first", product_id: "", quantity: "1" },
   { key: "second", product_id: "", quantity: "1" },
-] });
+], sale_price: null });
+
+function getCalculatedComboPrice(items, products) {
+  return Math.round(items.reduce((total, item) => {
+    const product = products.find((candidate) => String(candidate.id) === String(item.product_id));
+    return total + (product ? Number(product.default_sale_price || 0) * Number(item.quantity || 0) : 0);
+  }, 0));
+}
+
+function getComboPriceBounds(items, products) {
+  const bounds = items.map((item) => {
+    const product = products.find((candidate) => String(candidate.id) === String(item.product_id));
+    if (!product) return null;
+    return getSalePriceBounds(product.default_sale_price);
+  });
+  if (bounds.some((entry) => !entry)) return null;
+  return {
+    min: Math.round(items.reduce((total, item, index) => total + bounds[index].min * Number(item.quantity || 0), 0)),
+    max: Math.round(items.reduce((total, item, index) => total + bounds[index].max * Number(item.quantity || 0), 0)),
+  };
+}
 
 function ProductComboManager({ onClose }) {
   const [combos, setCombos] = useState([]);
@@ -52,6 +75,9 @@ function ProductComboManager({ onClose }) {
     setEditingId(combo.id);
     setDraft({
       name: combo.name,
+      sale_price: combo.sale_price != null
+        ? String(Math.round(Number(combo.sale_price)))
+        : String(Math.round(Number(combo.calculated_price || 0))),
       items: combo.items.map((item, index) => ({
         key: `existing-${index}`,
         product_id: String(item.product_id),
@@ -66,6 +92,7 @@ function ProductComboManager({ onClose }) {
   const updateItem = (key, field, value) => {
     setDraft((current) => ({
       ...current,
+      sale_price: field === "product_id" || field === "quantity" ? null : current.sale_price,
       items: current.items.map((item) => item.key === key ? { ...item, [field]: value } : item),
     }));
   };
@@ -81,6 +108,21 @@ function ProductComboManager({ onClose }) {
       setError("Nhập tên combo và chọn ít nhất 2 sản phẩm khác nhau, mỗi sản phẩm có số lượng từ 1.");
       return;
     }
+    const calculatedPrice = getCalculatedComboPrice(draft.items, products);
+    const priceBounds = getComboPriceBounds(draft.items, products);
+    const salePrice = Number(
+      draft.sale_price == null || draft.sale_price === ""
+        ? calculatedPrice
+        : draft.sale_price,
+    );
+    if (!priceBounds) {
+      setError("Các sản phẩm trong combo cần có tổng giá bán mặc định từ 500 đồng.");
+      return;
+    }
+    if (!Number.isFinite(salePrice) || salePrice < priceBounds.min || salePrice > priceBounds.max) {
+      setError(`Giá combo phải từ ${formatCurrency(priceBounds.min)} đến ${formatCurrency(priceBounds.max)} (±10% giá hệ thống).`);
+      return;
+    }
     try {
       setSaving(true);
       const payload = {
@@ -89,6 +131,7 @@ function ProductComboManager({ onClose }) {
           product_id: Number(item.product_id),
           quantity: Number(item.quantity),
         })),
+        sale_price: salePrice,
       };
       const response = editingId
         ? await authApis().put(endpoints.productComboDetail(editingId), payload)
@@ -128,6 +171,11 @@ function ProductComboManager({ onClose }) {
       return product ? `${item.quantity || 1} ${product.unit} ${product.name}` : null;
     })
     .filter(Boolean);
+  const calculatedPrice = getCalculatedComboPrice(draft.items, products);
+  const priceBounds = getComboPriceBounds(draft.items, products);
+  const displayedSalePrice = draft.sale_price == null
+    ? (calculatedPrice ? String(calculatedPrice) : "")
+    : draft.sale_price;
 
   return createPortal(
     <div className="combo-manager-overlay">
@@ -156,6 +204,7 @@ function ProductComboManager({ onClose }) {
                     <button type="button" onClick={() => startEdit(combo)}>
                       <strong>{combo.name}</strong>
                       <span>{combo.items.length} sản phẩm · {combo.items.map((item) => item.product_name).join(", ")}</span>
+                      <span className="combo-manager-list-price">Giá combo: {formatCurrency(combo.sale_price ?? combo.calculated_price)}</span>
                     </button>
                     {confirmDeleteId === combo.id ? (
                       <div className="combo-manager-confirm">
@@ -184,6 +233,32 @@ function ProductComboManager({ onClose }) {
               <input value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
                 placeholder="Ví dụ: Bộ rèm cửa và phụ kiện" maxLength={150} required />
             </label>
+            <section className="combo-manager-price-card" aria-label="Giá combo">
+              <div className="combo-manager-price-system">
+                <span>Giá hệ thống tính</span>
+                <strong>{calculatedPrice ? formatCurrency(calculatedPrice) : "Chưa đủ dữ liệu"}</strong>
+                <small>Tổng giá bán mặc định của sản phẩm × số lượng trong một bộ.</small>
+              </div>
+              <label className="combo-manager-price-input">
+                <span>Giá combo áp dụng</span>
+                <MoneyInput
+                  value={displayedSalePrice}
+                  onChange={(value) => setDraft((current) => ({ ...current, sale_price: value }))}
+                  label="Giá combo"
+                  allowEmpty={!calculatedPrice}
+                  minAmount={priceBounds?.min || 500}
+                  maxAmount={priceBounds?.max || null}
+                  placeholder="Giá combo"
+                  aria-label="Giá combo áp dụng"
+                  required
+                />
+                <small className="combo-manager-price-range">
+                  {priceBounds
+                    ? `Cho phép từ ${formatCurrency(priceBounds.min)} đến ${formatCurrency(priceBounds.max)} (±10%).`
+                    : "Chọn sản phẩm để hệ thống tính giá combo."}
+                </small>
+              </label>
+            </section>
             <div className="combo-manager-products-heading">
               <div>
                 <strong>Sản phẩm trong bộ</strong>

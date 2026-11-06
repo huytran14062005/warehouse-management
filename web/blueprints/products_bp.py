@@ -37,7 +37,7 @@ products_bp = Blueprint("products", __name__, url_prefix="/api/products")
 @verify_role(EmployeeRole.NHAN_VIEN_BAN_HANG, EmployeeRole.THU_KHO, EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY)
 @handle_api_errors
 def get_product_combos():
-    return jsonify({"combos": cached_query("product-combos", {}, 300, get_product_combos_service)}), 200
+    return jsonify({"combos": cached_query("product-combos-pricing", {}, 300, get_product_combos_service)}), 200
 
 
 @products_bp.route("/combos/catalog", methods=["GET"])
@@ -54,7 +54,9 @@ def get_product_combo_catalog():
 @handle_api_errors
 def create_product_combo():
     data = request.get_json(silent=True) or {}
-    combo = save_product_combo_service(None, data.get("name"), data.get("items"))
+    combo = save_product_combo_service(
+        None, data.get("name"), data.get("items"), data.get("sale_price")
+    )
     return jsonify({"combo": combo, "message": "Đã tạo combo"}), 201
 
 
@@ -64,7 +66,9 @@ def create_product_combo():
 @handle_api_errors
 def update_product_combo(combo_id):
     data = request.get_json(silent=True) or {}
-    combo = save_product_combo_service(combo_id, data.get("name"), data.get("items"))
+    combo = save_product_combo_service(
+        combo_id, data.get("name"), data.get("items"), data.get("sale_price")
+    )
     return jsonify({"combo": combo, "message": "Đã cập nhật combo"}), 200
 
 

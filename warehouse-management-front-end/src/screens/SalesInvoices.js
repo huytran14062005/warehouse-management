@@ -75,6 +75,34 @@ function getRandomItems(items, count = 6) {
   return shuffled.slice(0, count);
 }
 
+function getComboPriceBoundsFromParts(parts) {
+  const bounds = parts.map((part) => getSalePriceBounds(part.default_unit_price ?? part.unit_price));
+  if (bounds.some((entry) => !entry)) return null;
+  return {
+    min: Math.round(parts.reduce((total, part, index) => total + bounds[index].min * Number(part.quantity || 0), 0)),
+    max: Math.round(parts.reduce((total, part, index) => total + bounds[index].max * Number(part.quantity || 0), 0)),
+  };
+}
+
+function allocateComboPrices(parts, targetTotal) {
+  const baseTotal = parts.reduce(
+    (total, part) => total + Number(part.default_unit_price ?? part.unit_price ?? 0) * Number(part.quantity || 0),
+    0,
+  );
+  if (!baseTotal || !Number.isFinite(Number(targetTotal))) return parts;
+  const ratio = Number(targetTotal) / baseTotal;
+  let allocated = 0;
+  return parts.map((part, index) => {
+    const quantity = Number(part.quantity || 1);
+    const defaultUnitPrice = Number(part.default_unit_price ?? part.unit_price ?? 0);
+    const unitPrice = index === parts.length - 1
+      ? Number(((Number(targetTotal) - allocated) / quantity).toFixed(2))
+      : Number((defaultUnitPrice * ratio).toFixed(2));
+    allocated += unitPrice * quantity;
+    return { ...part, unit_price: unitPrice };
+  });
+}
+
 function notifySalesActionCountChanged() {
   window.dispatchEvent(new Event("sales-invoices:action-count-refresh"));
 }
@@ -1875,17 +1903,33 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
           unit: product.unit,
           quantity: Number(part.quantity),
           unit_price: Number(product.default_sale_price),
+          default_unit_price: Number(product.default_sale_price),
           available_stock: product.available_stock,
         });
+      }
+
+      const calculatedComboPrice = Math.round(totalComboPrice);
+      const comboPriceBounds = getComboPriceBoundsFromParts(comboProducts);
+      const configuredComboPrice = Number(combo.sale_price ?? calculatedComboPrice);
+      if (
+        !comboPriceBounds ||
+        configuredComboPrice < comboPriceBounds.min ||
+        configuredComboPrice > comboPriceBounds.max
+      ) {
+        setFormError(
+          `Giá combo "${combo.name}" đã thay đổi theo giá sản phẩm. Hãy cập nhật lại combo trong phần quản lý sản phẩm.`,
+        );
+        return;
       }
 
       next[index] = {
         type: "combo",
         comboId: String(combo.id),
         comboName: combo.name,
-        comboProducts: comboProducts,
+        comboProducts: allocateComboPrices(comboProducts, configuredComboPrice),
+        comboBasePrice: calculatedComboPrice,
         quantity: String(numberOfSets),
-        unitPrice: String(totalComboPrice),
+        unitPrice: String(configuredComboPrice),
         productId: "",
         productSearch: combo.name,
       };
@@ -1977,6 +2021,17 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
       if (item.type === "combo") {
         if (Number(item.quantity) <= 0) {
           setFormError("Số bộ combo phải lớn hơn 0.");
+          return;
+        }
+        const comboPriceBounds = getComboPriceBoundsFromParts(item.comboProducts || []);
+        if (
+          !comboPriceBounds ||
+          Number(item.unitPrice) < comboPriceBounds.min ||
+          Number(item.unitPrice) > comboPriceBounds.max
+        ) {
+          setFormError(
+            "Giá combo phải nằm trong giới hạn ±10% giá bán mặc định của các sản phẩm trong bộ.",
+          );
           return;
         }
         continue;
@@ -2282,7 +2337,7 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                     .join(", ") || "";
                 const totalPrice =
                   Number(item.unitPrice) * Number(item.quantity);
-                const comboPriceBounds = getSalePriceBounds(item.unitPrice);
+                const comboPriceBounds = getComboPriceBoundsFromParts(item.comboProducts || []);
 
                 return (
                   <div
@@ -2322,7 +2377,13 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                           const newTotalPrice = Number(value);
                           const quantity = Number(item.quantity) || 1;
                           const newUnitPrice = newTotalPrice / quantity;
-                          updateItem(index, "unitPrice", String(newUnitPrice));
+                          setItems((current) => current.map((row, rowIndex) => rowIndex === index
+                            ? {
+                              ...row,
+                              unitPrice: String(newUnitPrice),
+                              comboProducts: allocateComboPrices(row.comboProducts || [], newUnitPrice),
+                            }
+                            : row));
                         }}
                         label="Tổng giá"
                         minAmount={

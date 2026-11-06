@@ -10,6 +10,7 @@ SET NAMES utf8mb4;
 CREATE TABLE IF NOT EXISTS product_combos (
   id INT NOT NULL AUTO_INCREMENT,
   name VARCHAR(150) NOT NULL,
+  sale_price DECIMAL(14, 2) NULL,
   PRIMARY KEY (id),
   UNIQUE KEY uq_product_combos_name (name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

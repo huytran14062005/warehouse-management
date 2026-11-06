@@ -1,11 +1,18 @@
 """Manage reusable product sets suggested while preparing a sales invoice."""
 
+from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR
+
 from sqlalchemy import func, inspect
 from sqlalchemy.orm import selectinload
 
 from web import db
 from web.models import Product, ProductCombo, ProductComboItem
 from web.services.exceptions import NotFoundError, ValidationError
+from web.services.validators import MIN_MONEY_AMOUNT, validate_money_amount
+
+
+SALE_PRICE_TOLERANCE = Decimal("0.10")
+_combo_schema_ready = False
 
 
 def _tables_exist():
@@ -14,16 +21,94 @@ def _tables_exist():
 
 
 def _ensure_tables():
+    global _combo_schema_ready
+    if _combo_schema_ready:
+        return
     ProductCombo.__table__.create(bind=db.engine, checkfirst=True)
     ProductComboItem.__table__.create(bind=db.engine, checkfirst=True)
+    inspector = inspect(db.engine)
+    combo_columns = {column["name"] for column in inspector.get_columns(ProductCombo.__tablename__)}
+    if "sale_price" not in combo_columns:
+        with db.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "ALTER TABLE `product_combos` ADD COLUMN `sale_price` DECIMAL(14, 2) NULL"
+            )
     # Creating MySQL tables ends the authentication query's transaction.
     db.session.remove()
+    _combo_schema_ready = True
+
+
+def _unit_price_bounds(default_price):
+    base = Decimal(str(default_price or 0))
+    if base < MIN_MONEY_AMOUNT:
+        return None
+    return (
+        max(
+            MIN_MONEY_AMOUNT,
+            (base * (1 - SALE_PRICE_TOLERANCE)).to_integral_value(rounding=ROUND_CEILING),
+        ),
+        (base * (1 + SALE_PRICE_TOLERANCE)).to_integral_value(rounding=ROUND_FLOOR),
+    )
+
+
+def _price_bounds(calculated_price, items=None, products_by_id=None):
+    if items is not None and products_by_id is not None:
+        unit_bounds = [
+            _unit_price_bounds(products_by_id[item["product_id"]].default_sale_price)
+            for item in items
+        ]
+        if any(bounds is None for bounds in unit_bounds):
+            return None
+        return (
+            sum((bounds[0] * item["quantity"] for bounds, item in zip(unit_bounds, items)), Decimal("0")),
+            sum((bounds[1] * item["quantity"] for bounds, item in zip(unit_bounds, items)), Decimal("0")),
+        )
+    base = Decimal(str(calculated_price or 0))
+    if base < MIN_MONEY_AMOUNT:
+        return None
+    return _unit_price_bounds(base)
+
+
+def _calculate_price(items, products_by_id):
+    return sum(
+        (
+            Decimal(str(products_by_id[item["product_id"]].default_sale_price or 0))
+            * item["quantity"]
+            for item in items
+        ),
+        Decimal("0"),
+    )
+
+
+def _validate_sale_price(value, calculated_price, items, products_by_id):
+    bounds = _price_bounds(calculated_price, items, products_by_id)
+    if bounds is None:
+        raise ValidationError("Tổng giá bán mặc định của combo phải từ 500 đồng")
+    sale_price = validate_money_amount(value, "Giá combo", allow_zero=False)
+    minimum, maximum = bounds
+    if not minimum <= sale_price <= maximum:
+        raise ValidationError(
+            f"Giá combo phải từ {minimum:,.0f} đến {maximum:,.0f} đồng (±10% giá hệ thống)"
+        )
+    return sale_price
 
 
 def _serialize(combo):
+    calculated_price = _calculate_price(
+        [{"product_id": item.product_id, "quantity": item.quantity} for item in combo.items],
+        {item.product_id: item.product for item in combo.items},
+    )
+    combo_items = [{"product_id": item.product_id, "quantity": item.quantity} for item in combo.items]
+    products_by_id = {item.product_id: item.product for item in combo.items}
+    bounds = _price_bounds(calculated_price, combo_items, products_by_id)
+    sale_price = Decimal(str(combo.sale_price)) if combo.sale_price is not None else calculated_price
     return {
         "id": combo.id,
         "name": combo.name,
+        "calculated_price": float(calculated_price),
+        "sale_price": float(sale_price),
+        "price_min": float(bounds[0]) if bounds else None,
+        "price_max": float(bounds[1]) if bounds else None,
         "items": [
             {
                 "product_id": item.product_id,
@@ -38,6 +123,7 @@ def _serialize(combo):
 
 
 def get_product_combos_service():
+    _ensure_tables()
     if not _tables_exist():
         return []
     combos = (
@@ -85,17 +171,25 @@ def _validated_payload(name, items):
         product_ids.add(product_id)
         clean_items.append({"product_id": product_id, "quantity": quantity})
 
-    existing_ids = {
-        product.id for product in Product.query.filter(Product.id.in_(product_ids)).all()
+    products_by_id = {
+        product.id: product
+        for product in Product.query.filter(Product.id.in_(product_ids)).all()
     }
-    if existing_ids != product_ids:
+    if set(products_by_id) != product_ids:
         raise ValidationError("Có sản phẩm trong combo không còn tồn tại")
-    return clean_name, clean_items
+    return clean_name, clean_items, products_by_id
 
 
-def save_product_combo_service(combo_id, name, items):
+def save_product_combo_service(combo_id, name, items, sale_price=None):
     _ensure_tables()
-    clean_name, clean_items = _validated_payload(name, items)
+    clean_name, clean_items, products_by_id = _validated_payload(name, items)
+    calculated_price = _calculate_price(clean_items, products_by_id)
+    normalized_sale_price = _validate_sale_price(
+        calculated_price if sale_price in (None, "") else sale_price,
+        calculated_price,
+        clean_items,
+        products_by_id,
+    )
     combo = db.session.get(ProductCombo, combo_id) if combo_id is not None else None
     if combo_id is not None and combo is None:
         raise NotFoundError("Combo không tồn tại")
@@ -107,10 +201,11 @@ def save_product_combo_service(combo_id, name, items):
         raise ValidationError("Tên combo đã được sử dụng")
 
     if combo is None:
-        combo = ProductCombo(name=clean_name)
+        combo = ProductCombo(name=clean_name, sale_price=normalized_sale_price)
         db.session.add(combo)
     else:
         combo.name = clean_name
+        combo.sale_price = normalized_sale_price
     existing = {item.product_id: item for item in combo.items}
     selected_ids = {item["product_id"] for item in clean_items}
     for item in list(combo.items):
@@ -127,6 +222,7 @@ def save_product_combo_service(combo_id, name, items):
 
 
 def delete_product_combo_service(combo_id):
+    _ensure_tables()
     if not _tables_exist():
         raise NotFoundError("Combo không tồn tại")
     combo = db.session.get(ProductCombo, combo_id)

@@ -137,6 +137,7 @@ class ProductCombo(BaseModel):
     __tablename__ = "product_combos"
 
     name = Column(String(150), nullable=False, unique=True)
+    sale_price = Column(Numeric(14, 2), nullable=True)
     items = relationship(
         "ProductComboItem", back_populates="combo", lazy="selectin",
         cascade="all, delete-orphan", order_by="ProductComboItem.id",

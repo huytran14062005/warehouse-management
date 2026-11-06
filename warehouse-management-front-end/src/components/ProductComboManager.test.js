@@ -27,8 +27,8 @@ jest.mock("./SearchableDropdown", () => function MockSearchableDropdown({ ariaLa
 
 test("shows combo creation success above the mobile dialog", async () => {
   const products = [
-    { id: 1, name: "Product 1", unit: "item" },
-    { id: 2, name: "Product 2", unit: "item" },
+    { id: 1, name: "Product 1", unit: "item", default_sale_price: 1000 },
+    { id: 2, name: "Product 2", unit: "item", default_sale_price: 2000 },
   ];
   const api = {
     get: jest.fn((url) => Promise.resolve({
@@ -37,6 +37,8 @@ test("shows combo creation success above the mobile dialog", async () => {
     post: jest.fn().mockResolvedValue({ data: { combo: {
       id: 1,
       name: "Sample combo",
+      calculated_price: 3000,
+      sale_price: 3000,
       items: products.map((product) => ({
         product_id: product.id,
         product_name: product.name,
