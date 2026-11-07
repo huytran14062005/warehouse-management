@@ -96,7 +96,8 @@ def create_sales_invoice(
                 sales_invoice_id=invoice.id,
                 product_id=item_data["product_id"],
                 quantity=item_data["quantity"],
-                unit_price=item_data["unit_price"]
+                unit_price=item_data["unit_price"],
+                combo_id=item_data.get("combo_id"),
             )
             db.session.add(item)
 
@@ -143,7 +144,8 @@ def update_sales_invoice(invoice_id, warehouse_id, customer_id, note, items, dis
                 sales_invoice_id=invoice.id,
                 product_id=item_data["product_id"],
                 quantity=item_data["quantity"],
-                unit_price=item_data["unit_price"]
+                unit_price=item_data["unit_price"],
+                combo_id=item_data.get("combo_id"),
             )
             db.session.add(item)
 

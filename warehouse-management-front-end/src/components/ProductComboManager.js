@@ -7,7 +7,6 @@ import AutoDismissMessage from "./AutoDismissMessage";
 import MoneyInput from "./MoneyInput";
 import SearchableDropdown from "./SearchableDropdown";
 import { formatCurrency } from "../utils/money";
-import { getSalePriceBounds } from "../utils/salePrice";
 import "../css/ProductComboManager.css";
 
 const newDraft = () => ({ name: "", items: [
@@ -20,19 +19,6 @@ function getCalculatedComboPrice(items, products) {
     const product = products.find((candidate) => String(candidate.id) === String(item.product_id));
     return total + (product ? Number(product.default_sale_price || 0) * Number(item.quantity || 0) : 0);
   }, 0));
-}
-
-function getComboPriceBounds(items, products) {
-  const bounds = items.map((item) => {
-    const product = products.find((candidate) => String(candidate.id) === String(item.product_id));
-    if (!product) return null;
-    return getSalePriceBounds(product.default_sale_price);
-  });
-  if (bounds.some((entry) => !entry)) return null;
-  return {
-    min: Math.round(items.reduce((total, item, index) => total + bounds[index].min * Number(item.quantity || 0), 0)),
-    max: Math.round(items.reduce((total, item, index) => total + bounds[index].max * Number(item.quantity || 0), 0)),
-  };
 }
 
 function ProductComboManager({ onClose }) {
@@ -109,18 +95,13 @@ function ProductComboManager({ onClose }) {
       return;
     }
     const calculatedPrice = getCalculatedComboPrice(draft.items, products);
-    const priceBounds = getComboPriceBounds(draft.items, products);
     const salePrice = Number(
       draft.sale_price == null || draft.sale_price === ""
         ? calculatedPrice
         : draft.sale_price,
     );
-    if (!priceBounds) {
-      setError("Các sản phẩm trong combo cần có tổng giá bán mặc định từ 500 đồng.");
-      return;
-    }
-    if (!Number.isFinite(salePrice) || salePrice < priceBounds.min || salePrice > priceBounds.max) {
-      setError(`Giá combo phải từ ${formatCurrency(priceBounds.min)} đến ${formatCurrency(priceBounds.max)} (±10% giá hệ thống).`);
+    if (!Number.isSafeInteger(salePrice) || salePrice < 1 || salePrice > 999999999999) {
+      setError("Giá combo phải là số nguyên dương và không vượt quá giới hạn lưu trữ.");
       return;
     }
     try {
@@ -172,7 +153,6 @@ function ProductComboManager({ onClose }) {
     })
     .filter(Boolean);
   const calculatedPrice = getCalculatedComboPrice(draft.items, products);
-  const priceBounds = getComboPriceBounds(draft.items, products);
   const displayedSalePrice = draft.sale_price == null
     ? (calculatedPrice ? String(calculatedPrice) : "")
     : draft.sale_price;
@@ -246,16 +226,14 @@ function ProductComboManager({ onClose }) {
                   onChange={(value) => setDraft((current) => ({ ...current, sale_price: value }))}
                   label="Giá combo"
                   allowEmpty={!calculatedPrice}
-                  minAmount={priceBounds?.min || 500}
-                  maxAmount={priceBounds?.max || null}
+                  minAmount={1}
+                  maxAmount={999999999999}
                   placeholder="Giá combo"
                   aria-label="Giá combo áp dụng"
                   required
                 />
                 <small className="combo-manager-price-range">
-                  {priceBounds
-                    ? `Cho phép từ ${formatCurrency(priceBounds.min)} đến ${formatCurrency(priceBounds.max)} (±10%).`
-                    : "Chọn sản phẩm để hệ thống tính giá combo."}
+                  Có thể nhập giá combo theo thỏa thuận, không giới hạn chênh lệch với giá hệ thống.
                 </small>
               </label>
             </section>

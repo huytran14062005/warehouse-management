@@ -632,6 +632,7 @@ class SalesInvoiceItem(BaseModel):
 
     quantity = Column(Integer, nullable=False)
     unit_price = Column(Numeric(14, 2), nullable=False)
+    combo_id = Column(Integer, nullable=True)
 
     sales_invoice_id = Column(
         Integer,

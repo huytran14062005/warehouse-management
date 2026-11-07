@@ -1,6 +1,6 @@
 """Manage reusable product sets suggested while preparing a sales invoice."""
 
-from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR
+from decimal import Decimal
 
 from sqlalchemy import func, inspect
 from sqlalchemy.orm import selectinload
@@ -8,10 +8,9 @@ from sqlalchemy.orm import selectinload
 from web import db
 from web.models import Product, ProductCombo, ProductComboItem
 from web.services.exceptions import NotFoundError, ValidationError
-from web.services.validators import MIN_MONEY_AMOUNT, validate_money_amount
+from web.services.validators import validate_money_amount
 
 
-SALE_PRICE_TOLERANCE = Decimal("0.10")
 _combo_schema_ready = False
 
 
@@ -38,37 +37,6 @@ def _ensure_tables():
     _combo_schema_ready = True
 
 
-def _unit_price_bounds(default_price):
-    base = Decimal(str(default_price or 0))
-    if base < MIN_MONEY_AMOUNT:
-        return None
-    return (
-        max(
-            MIN_MONEY_AMOUNT,
-            (base * (1 - SALE_PRICE_TOLERANCE)).to_integral_value(rounding=ROUND_CEILING),
-        ),
-        (base * (1 + SALE_PRICE_TOLERANCE)).to_integral_value(rounding=ROUND_FLOOR),
-    )
-
-
-def _price_bounds(calculated_price, items=None, products_by_id=None):
-    if items is not None and products_by_id is not None:
-        unit_bounds = [
-            _unit_price_bounds(products_by_id[item["product_id"]].default_sale_price)
-            for item in items
-        ]
-        if any(bounds is None for bounds in unit_bounds):
-            return None
-        return (
-            sum((bounds[0] * item["quantity"] for bounds, item in zip(unit_bounds, items)), Decimal("0")),
-            sum((bounds[1] * item["quantity"] for bounds, item in zip(unit_bounds, items)), Decimal("0")),
-        )
-    base = Decimal(str(calculated_price or 0))
-    if base < MIN_MONEY_AMOUNT:
-        return None
-    return _unit_price_bounds(base)
-
-
 def _calculate_price(items, products_by_id):
     return sum(
         (
@@ -80,16 +48,10 @@ def _calculate_price(items, products_by_id):
     )
 
 
-def _validate_sale_price(value, calculated_price, items, products_by_id):
-    bounds = _price_bounds(calculated_price, items, products_by_id)
-    if bounds is None:
-        raise ValidationError("Tổng giá bán mặc định của combo phải từ 500 đồng")
-    sale_price = validate_money_amount(value, "Giá combo", allow_zero=False)
-    minimum, maximum = bounds
-    if not minimum <= sale_price <= maximum:
-        raise ValidationError(
-            f"Giá combo phải từ {minimum:,.0f} đến {maximum:,.0f} đồng (±10% giá hệ thống)"
-        )
+def _validate_sale_price(value):
+    sale_price = validate_money_amount(value, "Giá combo", allow_zero=False, minimum=Decimal("1"))
+    if sale_price > Decimal("999999999999.99"):
+        raise ValidationError("Giá combo vượt quá giới hạn lưu trữ")
     return sale_price
 
 
@@ -98,17 +60,14 @@ def _serialize(combo):
         [{"product_id": item.product_id, "quantity": item.quantity} for item in combo.items],
         {item.product_id: item.product for item in combo.items},
     )
-    combo_items = [{"product_id": item.product_id, "quantity": item.quantity} for item in combo.items]
-    products_by_id = {item.product_id: item.product for item in combo.items}
-    bounds = _price_bounds(calculated_price, combo_items, products_by_id)
     sale_price = Decimal(str(combo.sale_price)) if combo.sale_price is not None else calculated_price
     return {
         "id": combo.id,
         "name": combo.name,
         "calculated_price": float(calculated_price),
         "sale_price": float(sale_price),
-        "price_min": float(bounds[0]) if bounds else None,
-        "price_max": float(bounds[1]) if bounds else None,
+        "price_min": 1,
+        "price_max": None,
         "items": [
             {
                 "product_id": item.product_id,
@@ -185,10 +144,7 @@ def save_product_combo_service(combo_id, name, items, sale_price=None):
     clean_name, clean_items, products_by_id = _validated_payload(name, items)
     calculated_price = _calculate_price(clean_items, products_by_id)
     normalized_sale_price = _validate_sale_price(
-        calculated_price if sale_price in (None, "") else sale_price,
-        calculated_price,
-        clean_items,
-        products_by_id,
+        calculated_price if sale_price in (None, "") else sale_price
     )
     combo = db.session.get(ProductCombo, combo_id) if combo_id is not None else None
     if combo_id is not None and combo is None:

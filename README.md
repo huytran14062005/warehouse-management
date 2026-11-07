@@ -37,5 +37,8 @@ nhân số lượng trong một bộ phải bằng giá trọn combo.
 
 Combo dùng cột `product_combos.sale_price` trong bảng hiện có. Giá hệ thống được
 tính từ giá bán mặc định của từng sản phẩm nhân số lượng trong bộ; giá áp dụng
-được giới hạn trong khoảng ±10% giá hệ thống. Khi API combo khởi động trên cơ sở
-dữ liệu cũ, nó tự bổ sung cột này nếu chưa có.
+do quản lý nhập, là số nguyên dương và không bị giới hạn ±10% so với giá hệ thống.
+Giá sản phẩm bán lẻ trong đơn vẫn phải nằm trong khoảng ±10% giá bán mặc định.
+Khi API khởi động trên cơ sở dữ liệu cũ, nó tự bổ sung cột `product_combos.sale_price`
+và `sales_invoice_items.combo_id` nếu chưa có. Dòng sản phẩm thuộc combo được
+đánh dấu `combo_id` và xác thực đủ thành phần trước khi áp dụng giá combo trong đơn.

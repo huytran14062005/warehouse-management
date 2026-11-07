@@ -50,6 +50,36 @@ db = SQLAlchemy(app=app)
 mail = Mail(app)
 
 
+_sales_combo_column_ready = False
+
+
+@app.before_request
+def ensure_sales_combo_column():
+    """Add the nullable combo marker before any invoice ORM query uses it."""
+    global _sales_combo_column_ready
+    if _sales_combo_column_ready or not request.path.startswith("/api/"):
+        return
+    from sqlalchemy import inspect
+    from web.models import SalesInvoiceItem
+
+    inspector = inspect(db.engine)
+    table = SalesInvoiceItem.__tablename__
+    if not inspector.has_table(table):
+        return
+    if "combo_id" not in {column["name"] for column in inspector.get_columns(table)}:
+        try:
+            with db.engine.begin() as connection:
+                connection.exec_driver_sql("ALTER TABLE sales_invoice_items ADD COLUMN combo_id INT NULL")
+        except Exception:
+            # A second cold instance may have added the column concurrently.
+            if "combo_id" not in {
+                column["name"] for column in inspect(db.engine).get_columns(table)
+            }:
+                raise
+        db.session.remove()
+    _sales_combo_column_ready = True
+
+
 @app.after_request
 def add_security_headers(response):
     response.headers.setdefault("X-Content-Type-Options", "nosniff")

@@ -75,15 +75,6 @@ function getRandomItems(items, count = 6) {
   return shuffled.slice(0, count);
 }
 
-function getComboPriceBoundsFromParts(parts) {
-  const bounds = parts.map((part) => getSalePriceBounds(part.default_unit_price ?? part.unit_price));
-  if (bounds.some((entry) => !entry)) return null;
-  return {
-    min: Math.round(parts.reduce((total, part, index) => total + bounds[index].min * Number(part.quantity || 0), 0)),
-    max: Math.round(parts.reduce((total, part, index) => total + bounds[index].max * Number(part.quantity || 0), 0)),
-  };
-}
-
 function allocateComboPrices(parts, targetTotal) {
   const baseTotal = parts.reduce(
     (total, part) => total + Number(part.default_unit_price ?? part.unit_price ?? 0) * Number(part.quantity || 0),
@@ -91,15 +82,61 @@ function allocateComboPrices(parts, targetTotal) {
   );
   if (!baseTotal || !Number.isFinite(Number(targetTotal))) return parts;
   const ratio = Number(targetTotal) / baseTotal;
-  let allocated = 0;
-  return parts.map((part, index) => {
-    const quantity = Number(part.quantity || 1);
+  const remainderIndex = Math.max(0, parts.findIndex((part) => Number(part.quantity) === 1));
+  let remainingCents = Math.round(Number(targetTotal) * 100);
+  const allocatedParts = parts.map((part, index) => {
+    if (index === remainderIndex) return { ...part, unit_price: 0 };
+    const units = Number(part.quantity || 1);
     const defaultUnitPrice = Number(part.default_unit_price ?? part.unit_price ?? 0);
-    const unitPrice = index === parts.length - 1
-      ? Number(((Number(targetTotal) - allocated) / quantity).toFixed(2))
-      : Number((defaultUnitPrice * ratio).toFixed(2));
-    allocated += unitPrice * quantity;
-    return { ...part, unit_price: unitPrice };
+    const cents = Math.max(0, Math.min(Math.round(defaultUnitPrice * ratio * 100), Math.floor(remainingCents / units)));
+    remainingCents -= cents * units;
+    return { ...part, unit_price: cents / 100 };
+  });
+  const remainder = allocatedParts[remainderIndex];
+  remainder.unit_price = Math.round(remainingCents / Number(remainder.quantity || 1)) / 100;
+  return allocatedParts;
+}
+
+function getInvoiceEditorItems(invoiceItems) {
+  const seenCombos = new Set();
+  return invoiceItems.flatMap((item) => {
+    if (item.combo_id && seenCombos.has(item.combo_id)) return [];
+    if (item.combo_id) {
+      const group = invoiceItems.filter((part) => part.combo_id === item.combo_id);
+      const numberOfSets = Number(item.quantity) / Number(item.combo_item_quantity);
+      if (item.combo_name && Number.isInteger(numberOfSets) && numberOfSets > 0 &&
+          group.every((part) => Number(part.combo_item_quantity) > 0 &&
+            Number(part.quantity) === numberOfSets * Number(part.combo_item_quantity))) {
+        seenCombos.add(item.combo_id);
+        const comboProducts = group.map((part) => ({
+          product_id: String(part.product_id),
+          product_name: part.product_name,
+          unit: part.unit,
+          quantity: Number(part.combo_item_quantity),
+          unit_price: Number(part.unit_price),
+          default_unit_price: Number(part.default_sale_price),
+        }));
+        return [{
+          type: "combo",
+          comboId: String(item.combo_id),
+          comboName: item.combo_name,
+          comboProducts,
+          comboBasePrice: comboProducts.reduce((sum, part) => sum + part.default_unit_price * part.quantity, 0),
+          quantity: String(numberOfSets),
+          unitPrice: String(comboProducts.reduce((sum, part) => sum + part.unit_price * part.quantity, 0)),
+          productId: "",
+          productSearch: item.combo_name,
+        }];
+      }
+    }
+    return [{
+      productId: String(item.product_id),
+      productSearch: item.product_name || "",
+      unit: item.unit || "",
+      defaultPrice: item.default_sale_price != null ? String(item.default_sale_price) : "",
+      quantity: String(item.quantity),
+      unitPrice: String(item.unit_price),
+    }];
   });
 }
 
@@ -1400,17 +1437,7 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
     sales_area_id: "",
   });
   const [salesAreaOverrideId, setSalesAreaOverrideId] = useState("");
-  const [items, setItems] = useState(
-    (invoice?.items || []).map((item) => ({
-      productId: String(item.product_id),
-      productSearch: item.product_name || "",
-      unit: item.unit || "",
-      defaultPrice:
-        item.default_sale_price != null ? String(item.default_sale_price) : "",
-      quantity: String(item.quantity),
-      unitPrice: String(item.unit_price),
-    })),
-  );
+  const [items, setItems] = useState(() => getInvoiceEditorItems(invoice?.items || []));
   const [selectedPromotion, setSelectedPromotion] = useState(
     invoice?.discount?.promotion || null,
   );
@@ -1909,15 +1936,10 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
       }
 
       const calculatedComboPrice = Math.round(totalComboPrice);
-      const comboPriceBounds = getComboPriceBoundsFromParts(comboProducts);
       const configuredComboPrice = Number(combo.sale_price ?? calculatedComboPrice);
-      if (
-        !comboPriceBounds ||
-        configuredComboPrice < comboPriceBounds.min ||
-        configuredComboPrice > comboPriceBounds.max
-      ) {
+      if (!Number.isFinite(configuredComboPrice) || configuredComboPrice <= 0) {
         setFormError(
-          `Giá combo "${combo.name}" đã thay đổi theo giá sản phẩm. Hãy cập nhật lại combo trong phần quản lý sản phẩm.`,
+          `Giá combo "${combo.name}" phải lớn hơn 0.`,
         );
         return;
       }
@@ -2023,15 +2045,10 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
           setFormError("Số bộ combo phải lớn hơn 0.");
           return;
         }
-        const comboPriceBounds = getComboPriceBoundsFromParts(item.comboProducts || []);
-        if (
-          !comboPriceBounds ||
-          Number(item.unitPrice) < comboPriceBounds.min ||
-          Number(item.unitPrice) > comboPriceBounds.max
-        ) {
-          setFormError(
-            "Giá combo phải nằm trong giới hạn ±10% giá bán mặc định của các sản phẩm trong bộ.",
-          );
+        if (!Number.isFinite(Number(item.unitPrice)) || Number(item.unitPrice) <= 0 ||
+            Number(item.unitPrice) * Number(item.quantity) > 999999999999 ||
+            (item.comboProducts || []).some((part) => !Number.isFinite(part.unit_price) || part.unit_price < 0)) {
+          setFormError("Giá combo phải lớn hơn 0, không vượt quá giới hạn lưu trữ và các phần giá không được âm.");
           return;
         }
         continue;
@@ -2106,6 +2123,7 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
               product_id: Number(comboProduct.product_id),
               quantity: Number(comboProduct.quantity) * numberOfSets,
               unit_price: Number(comboProduct.unit_price),
+              combo_id: Number(item.comboId),
             }));
           }
           return [
@@ -2337,7 +2355,6 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                     .join(", ") || "";
                 const totalPrice =
                   Number(item.unitPrice) * Number(item.quantity);
-                const comboPriceBounds = getComboPriceBoundsFromParts(item.comboProducts || []);
 
                 return (
                   <div
@@ -2386,33 +2403,15 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                             : row));
                         }}
                         label="Tổng giá"
-                        minAmount={
-                          comboPriceBounds?.min
-                            ? comboPriceBounds.min * Number(item.quantity)
-                            : 500
-                        }
-                        maxAmount={
-                          comboPriceBounds?.max
-                            ? comboPriceBounds.max * Number(item.quantity)
-                            : null
-                        }
+                        minAmount={1}
+                        maxAmount={999999999999}
                         placeholder="Nhập tổng giá"
                         aria-label="Tổng giá combo"
                         required
                       />
-                      {comboPriceBounds && (
-                        <small className="product-entry-range">
-                          Giá 1 bộ: {formatCurrency(item.unitPrice)} • Cho phép:{" "}
-                          {formatCurrency(
-                            comboPriceBounds.min * Number(item.quantity),
-                          )}{" "}
-                          –{" "}
-                          {formatCurrency(
-                            comboPriceBounds.max * Number(item.quantity),
-                          )}{" "}
-                          (±10%)
-                        </small>
-                      )}
+                      <small className="product-entry-range">
+                        Giá 1 bộ: {formatCurrency(item.unitPrice)} • Có thể chỉnh giá combo theo thỏa thuận.
+                      </small>
                     </ProductEntryField>
                     <button
                       type="button"

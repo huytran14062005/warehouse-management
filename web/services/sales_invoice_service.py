@@ -19,6 +19,7 @@ from web.models import (
     PaymentStatus,
     PaymentType,
     Product,
+    ProductCombo,
     SaleSource,
     SalesInvoice,
     SalesInvoiceItem,
@@ -333,17 +334,24 @@ def _validate_sales_items(items):
             raise ValidationError(f"Sáº£n pháº©m ID {product_id} bá»‹ lặp trong đơn hàng")
         seen_product_ids.add(product_id)
         product_ids.append(product_id)
+        combo_id = item.get("combo_id")
+        if combo_id not in (None, ""):
+            combo_id = validate_positive_quantity(combo_id, f"Mã combo (item {index})")
+        else:
+            combo_id = None
         normalized.append({
             "product_id": product_id,
             "quantity": validate_positive_quantity(
                 item.get("quantity"),
                 f"Sá»‘ lÆ°á»£ng (item {index})",
             ),
-            "unit_price": validate_money(
+            "unit_price": validate_money_amount(
                 item.get("unit_price"),
                 f"ÄÆ¡n giÃ¡ (item {index})",
-                allow_zero=False,
+                allow_zero=combo_id is not None,
+                minimum=None if combo_id is not None else MIN_MONEY_AMOUNT,
             ),
+            "combo_id": combo_id,
         })
 
     products = Product.query.filter(Product.id.in_(product_ids)).all()
@@ -351,6 +359,35 @@ def _validate_sales_items(items):
     missing_product_ids = [product_id for product_id in product_ids if product_id not in products_by_id]
     if missing_product_ids:
         raise NotFoundError(f"Sáº£n pháº©m ID {missing_product_ids[0]} khÃ´ng tá»“n táº¡i")
+
+    combo_groups = {}
+    for item in normalized:
+        if item["combo_id"] is not None:
+            combo_groups.setdefault(item["combo_id"], []).append(item)
+    if combo_groups:
+        combos = ProductCombo.query.options(selectinload(ProductCombo.items)).filter(
+            ProductCombo.id.in_(combo_groups)
+        ).all()
+        combos_by_id = {combo.id: combo for combo in combos}
+        for combo_id, group in combo_groups.items():
+            combo = combos_by_id.get(combo_id)
+            if combo is None:
+                raise ValidationError(f"Combo ID {combo_id} không còn tồn tại")
+            configured = {part.product_id: part.quantity for part in combo.items}
+            submitted = {part["product_id"]: part["quantity"] for part in group}
+            if configured.keys() != submitted.keys():
+                raise ValidationError(f"Thành phần combo '{combo.name}' không hợp lệ")
+            if any(submitted[product_id] % quantity for product_id, quantity in configured.items()):
+                raise ValidationError(f"Số lượng combo '{combo.name}' không hợp lệ")
+            set_counts = {
+                submitted[product_id] // quantity for product_id, quantity in configured.items()
+            }
+            if len(set_counts) != 1 or 0 in set_counts:
+                raise ValidationError(f"Số lượng combo '{combo.name}' không hợp lệ")
+            if sum(part["unit_price"] * part["quantity"] for part in group) <= 0:
+                raise ValidationError(f"Giá combo '{combo.name}' phải lớn hơn 0")
+            if any(part["unit_price"] > Decimal("999999999999.99") for part in group):
+                raise ValidationError(f"Giá combo '{combo.name}' vượt quá giới hạn lưu trữ")
 
     for item in normalized:
         product = products_by_id[item["product_id"]]
@@ -360,6 +397,8 @@ def _validate_sales_items(items):
                 f"Sản phẩm '{product.name}' chưa có giá bán mặc định hợp lệ (từ 500 đ). "
                 "Vui lòng cập nhật giá sản phẩm trước khi bán."
             )
+        if item["combo_id"] is not None:
+            continue
         minimum = max(MIN_MONEY_AMOUNT, default_price * (1 - SALE_PRICE_TOLERANCE))
         maximum = default_price * (1 + SALE_PRICE_TOLERANCE)
         if not minimum <= item["unit_price"] <= maximum:
@@ -593,6 +632,13 @@ def serialize_sales_invoice(invoice):
     items_data = []
     total_amount = 0
 
+    combo_ids = {item.combo_id for item in invoice.items if item.combo_id is not None}
+    combos_by_id = {
+        combo.id: combo for combo in ProductCombo.query.options(selectinload(ProductCombo.items)).filter(
+            ProductCombo.id.in_(combo_ids)
+        ).all()
+    } if combo_ids else {}
+
     for item in invoice.items:
         item_total = float(item.quantity) * float(item.unit_price)
         total_amount += item_total
@@ -600,6 +646,12 @@ def serialize_sales_invoice(invoice):
         items_data.append({
             "id": item.id,
             "product_id": item.product_id,
+            "combo_id": item.combo_id,
+            "combo_name": combos_by_id[item.combo_id].name if item.combo_id in combos_by_id else None,
+            "combo_item_quantity": next(
+                (part.quantity for part in combos_by_id[item.combo_id].items if part.product_id == item.product_id),
+                None,
+            ) if item.combo_id in combos_by_id else None,
             "product_name": item.product.name,
             "unit": item.product.unit,
             "default_sale_price": float(item.product.default_sale_price),
