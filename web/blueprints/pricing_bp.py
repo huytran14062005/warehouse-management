@@ -6,7 +6,7 @@ from web.models import EmployeeRole
 from web.services.pricing_service import (
     apply_suggested_price, create_expense, create_expense_category,
     list_expense_categories, list_expenses, pricing_catalog,
-    pay_expense, profitability_report, save_pricing_policy, void_expense,
+    pay_expense, profitability_report, save_pricing_cycle, save_pricing_policy, void_expense,
 )
 from web.utils.query_cache import cached_query
 
@@ -87,6 +87,14 @@ def catalog():
 def update_policy(product_id):
     policy = save_pricing_policy(request.employee_id, product_id, request.get_json(silent=True) or {})
     return jsonify({"policy": policy}), 200
+
+
+@pricing_bp.route("/cycle", methods=["PUT"])
+@verify_token
+@verify_role(EmployeeRole.QUAN_LY)
+@handle_api_errors
+def update_cycle():
+    return jsonify({"cycle": save_pricing_cycle(request.employee_id, request.get_json(silent=True) or {})}), 200
 
 
 @pricing_bp.route("/apply/<int:product_id>", methods=["POST"])

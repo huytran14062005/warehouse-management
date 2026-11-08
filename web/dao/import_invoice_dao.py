@@ -69,7 +69,7 @@ def get_import_invoice_by_id(invoice_id):
     )
 
 
-def create_import_invoice(warehouse_id, supplier_id, employee_id, note, items, imported_at=None, payment=None, combo_groups=None):
+def create_import_invoice(warehouse_id, supplier_id, employee_id, note, items, imported_at=None, payment=None, combo_groups=None, inbound_fee=0):
        
     try:
                      
@@ -80,6 +80,7 @@ def create_import_invoice(warehouse_id, supplier_id, employee_id, note, items, i
             imported_at=imported_at or datetime.now(),
             note=note,
             combo_groups=combo_groups or None,
+            inbound_fee=inbound_fee,
         )
         db.session.add(invoice)
         db.session.flush()                    
@@ -117,7 +118,7 @@ def create_import_invoice(warehouse_id, supplier_id, employee_id, note, items, i
         raise Exception(f"Lỗi tạo phiếu nhập kho: {str(ex)}")
 
 
-def update_import_invoice(invoice_id, warehouse_id, supplier_id, note, items, imported_at=None, combo_groups=None):
+def update_import_invoice(invoice_id, warehouse_id, supplier_id, note, items, imported_at=None, combo_groups=None, inbound_fee=0):
        
     try:
         invoice = ImportInvoice.query.get(invoice_id)
@@ -134,6 +135,7 @@ def update_import_invoice(invoice_id, warehouse_id, supplier_id, note, items, im
             invoice.imported_at = imported_at
         invoice.note = note
         invoice.combo_groups = combo_groups or None
+        invoice.inbound_fee = inbound_fee
 
                        
         for item_data in items:

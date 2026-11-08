@@ -14,6 +14,8 @@ const CATEGORIES = {
   vehicle_repair: "Sửa xe",
   lodging: "Nhà nghỉ",
   sales_salary: "Lương nhân viên bán hàng",
+  overtime: "Tiền tăng ca",
+  depreciation: "Hao mòn, khấu hao",
   other: "Chi phí bán hàng khác",
 };
 
@@ -41,12 +43,20 @@ function monthStart() {
   return `${businessDate().slice(0, 7)}-01`;
 }
 
+function formatExpenseDate(value) {
+  const [year, month, day] = String(value || "").split("-");
+  return year && month && day ? `${day}-${month}-${year}` : "—";
+}
+
 function PricingRow({ row, onSave, onApply, busy }) {
-  const [markup, setMarkup] = useState(String(row.markup_percent));
+  const [profit, setProfit] = useState(String(row.desired_profit_per_unit ?? ""));
+  const [plannedQuantity, setPlannedQuantity] = useState(String(row.planned_quantity));
   useEffect(() => {
-    setMarkup(String(row.markup_percent));
-  }, [row.markup_percent]);
-  const changed = Number(markup) !== row.markup_percent;
+    setProfit(String(row.desired_profit_per_unit ?? ""));
+    setPlannedQuantity(String(row.planned_quantity));
+  }, [row.desired_profit_per_unit, row.planned_quantity]);
+  const changed = Number(profit) !== row.desired_profit_per_unit || plannedQuantity !== String(row.planned_quantity);
+  const valid = profit !== "" && Number(profit) >= 0 && /^[0-9]+$/.test(plannedQuantity) && /[1-9]/.test(plannedQuantity);
   return (
     <tr>
       <th scope="row">
@@ -69,13 +79,23 @@ function PricingRow({ row, onSave, onApply, busy }) {
       </td>
       <td>
         <input
+          className="pricing-plan-input"
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          aria-label={`Sản lượng dự kiến ${row.name}`}
+          value={plannedQuantity}
+          onChange={(event) => setPlannedQuantity(event.target.value.replace(/\D/g, ""))}
+        />
+      </td>
+      <td>
+        <input
           type="number"
           min="0"
-          max="90"
           step="0.01"
-          aria-label={`Lãi trên giá nhập ${row.name}`}
-          value={markup}
-          onChange={(event) => setMarkup(event.target.value)}
+          aria-label={`Tiền lời mong muốn mỗi ${row.unit} của ${row.name}`}
+          value={profit}
+          onChange={(event) => setProfit(event.target.value)}
         />
       </td>
       <td>
@@ -89,10 +109,10 @@ function PricingRow({ row, onSave, onApply, busy }) {
         <div className="pricing-row-actions">
           <button
             type="button"
-            disabled={busy || !changed || markup === ""}
-            onClick={() => onSave(row.product_id, markup)}
+            disabled={busy || !changed || !valid}
+            onClick={() => onSave(row.product_id, { planned_quantity: plannedQuantity, desired_profit_per_unit: Number(profit) })}
           >
-            Lưu % lãi
+            Lưu kế hoạch
           </button>
           <button
             type="button"
@@ -160,9 +180,10 @@ export default function PricingManagement() {
     pagination: { total_pages: 1 },
     pricing_operating_expenses: 0,
     pricing_shipping: 0,
-    pricing_units_sold: null,
-    pricing_expense_per_unit: null,
+    pricing_period_start: "",
+    pricing_planned_value: 0,
   });
+  const [cycleStartDraft, setCycleStartDraft] = useState("");
   const [applyRow, setApplyRow] = useState(null);
   const [voidRow, setVoidRow] = useState(null);
   const [voidReason, setVoidReason] = useState("");
@@ -191,6 +212,7 @@ export default function PricingManagement() {
       params: { page: catalogPage, keyword },
     });
     setCatalog(response.data);
+    setCycleStartDraft(response.data.pricing_period_start || "");
   }, [catalogPage, keyword]);
 
   useEffect(() => {
@@ -332,15 +354,29 @@ export default function PricingManagement() {
     }
   };
 
-  const savePolicy = async (productId, markupPercent) => {
+  const savePolicy = async (productId, policy) => {
     setBusy(true);
     setError("");
     setSuccess("");
     try {
-      await authApis().put(endpoints.pricingPolicy(productId), {
-        markup_percent: Number(markupPercent),
-      });
-      setSuccess("Đã lưu tỷ lệ lãi. Giá đề xuất đã tính lại.");
+      await authApis().put(endpoints.pricingPolicy(productId), policy);
+      setSuccess("Đã lưu sản lượng dự kiến và tiền lời. Giá đề xuất đã tính lại.");
+      await loadCatalog();
+    } catch (requestError) {
+      setError(getApiError(requestError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveCycle = async (event) => {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    setSuccess("");
+    try {
+      await authApis().put(endpoints.pricingCycle, { start_date: cycleStartDraft });
+      setSuccess("Đã cập nhật kỳ tính giá.");
       await loadCatalog();
     } catch (requestError) {
       setError(getApiError(requestError));
@@ -501,7 +537,7 @@ export default function PricingManagement() {
                   key={row.id}
                   className={row.voided_at ? "pricing-voided-row" : ""}
                 >
-                  <td>{row.occurred_on}</td>
+                  <td>{formatExpenseDate(row.occurred_on)}</td>
                   <td>{row.category_label}</td>
                   <td>{row.description}</td>
                   <td>
@@ -575,7 +611,7 @@ export default function PricingManagement() {
           <div>
             <h2 id="pricing-catalog-heading">Giá bán đề xuất</h2>
             <p>
-              Giá đề xuất = Giá nhập + (Giá nhập × Tỷ lệ lãi) + Chi phí / đơn vị;
+              Giá đề xuất = Giá mua + phí đưa hàng về kho + chi phí kinh doanh phân bổ + tiền lời mong muốn;
               làm tròn lên 1.000 đ.
             </p>
           </div>
@@ -597,17 +633,35 @@ export default function PricingManagement() {
           </form>
         </div>
         <p className="pricing-hint">
-          Chi phí / đơn vị = (Tổng chi phí phát sinh + Tổng phí giao ngoài) ÷
-          Tổng số lượng đã bán trong 30 ngày.
+          Chi phí chung từ ngày bắt đầu kỳ đến hôm nay, gồm các khoản chi chưa hủy và phí giao bên thứ ba,
+          được phân bổ theo giá trị nhập dự kiến (giá nhập đã gồm phí về kho × sản lượng dự kiến).
+          Không cần đơn bán hoàn thành. Sản lượng mặc định là 100 cho mỗi sản phẩm; hãy chỉnh theo kế hoạch thực tế.
+          Tiền lời ban đầu được quy đổi từ % lãi cũ (hoặc 20% nếu chưa đặt); lưu kế hoạch để cố định số tiền lời trên mỗi đơn vị.
+        </p>
+        <form className="pricing-cycle-form" onSubmit={saveCycle}>
+          <label htmlFor="pricing-cycle-start">Tính chi phí từ ngày</label>
+          <input id="pricing-cycle-start" type="date" value={cycleStartDraft} max={businessDate()}
+            onChange={(event) => setCycleStartDraft(event.target.value)} required />
+          <button type="submit" disabled={busy || !cycleStartDraft || cycleStartDraft === catalog.pricing_period_start}>
+            Lưu kỳ tính giá
+          </button>
+          <span>
+            Tổng chi phí kỳ này: {formatCurrency((catalog.pricing_operating_expenses || 0) + (catalog.pricing_shipping || 0))}
+          </span>
+        </form>
+        <p className="pricing-hint">
+          Chi phí đã ghi sẽ tiếp tục nằm trong kỳ này cho đến khi bạn chủ động đổi ngày bắt đầu.
+          Chỉ bắt đầu kỳ mới khi đã xem xét các chi phí cũ đã được bù đắp.
         </p>
         <div className="pricing-table-wrap">
           <table>
             <thead>
               <tr>
                 <th>Sản phẩm</th>
-                <th title="Lấy từ phiếu nhập; nếu có nhiều lần nhập với giá khác nhau, hệ thống tính theo số lượng nhập.">Giá nhập</th>
+                <th title="Bình quân từ phiếu nhập, gồm phí đưa hàng về kho được chia theo giá trị từng dòng.">Giá nhập về kho</th>
                 <th>Chi phí / đơn vị</th>
-                <th>Lãi trên giá nhập %</th>
+                <th>Sản lượng dự kiến</th>
+                <th>Tiền lời / đơn vị</th>
                 <th>Giá đề xuất</th>
                 <th>Thao tác</th>
               </tr>
@@ -624,7 +678,7 @@ export default function PricingManagement() {
               ))}
               {!catalog.products.length && (
                 <tr>
-                  <td colSpan="6">
+                  <td colSpan="7">
                     {loadingCatalog
                       ? "Đang tải giá đề xuất..."
                       : "Chưa có sản phẩm phù hợp."}

@@ -23,6 +23,13 @@ from web.services.payment_service import parse_payment_method
 from web.services.supplier_service import get_or_create_supplier
 
 
+def _validate_inbound_fee(value):
+    fee = validate_money_amount(value, "Phí mua hàng về kho", minimum=None)
+    if fee > Decimal("999999999999.99"):
+        raise ValidationError("Phí mua hàng về kho vượt quá giới hạn lưu trữ")
+    return fee
+
+
 def _validate_import_items(items):
     ensure_bounded_items(items, "Sản phẩm trong phiếu nhập")
     if not isinstance(items, list) or not items:
@@ -276,6 +283,7 @@ def serialize_import_invoice(invoice):
     remaining_amount = max(Decimal("0"), total_decimal - paid_amount)
     return {
         "id": invoice.id,
+        "inbound_fee": float(invoice.inbound_fee or 0),
         "imported_at": invoice.imported_at.isoformat() if invoice.imported_at else None,
         "note": invoice.note,
         "combo_groups": invoice.combo_groups or [],
@@ -320,6 +328,7 @@ def serialize_import_invoice_summary(invoice):
     remaining_amount = max(Decimal("0"), total_decimal - paid_amount)
     return {
         "id": invoice.id,
+        "inbound_fee": float(invoice.inbound_fee or 0),
         "imported_at": invoice.imported_at.isoformat() if invoice.imported_at else None,
         "warehouse": {
             "id": invoice.warehouse.id,
@@ -377,7 +386,17 @@ def get_import_invoice_detail_service(invoice_id):
     return invoice
 
 
-def create_import_invoice_service(employee_id, warehouse_id, supplier_id, supplier_data=None, note="", items=None, combo_groups=None, is_return=False, imported_at=None, payment_amount=0, payment_method=None):
+def update_import_inbound_fee_service(invoice_id, employee_id, inbound_fee):
+    invoice = ImportInvoice.query.filter_by(id=invoice_id).with_for_update().first()
+    if invoice is None:
+        raise NotFoundError("Phiếu nhập không tồn tại")
+    ensure_warehouse_access(employee_id, invoice.warehouse_id)
+    invoice.inbound_fee = _validate_inbound_fee(inbound_fee)
+    db.session.commit()
+    return import_invoice_dao.get_import_invoice_by_id(invoice.id)
+
+
+def create_import_invoice_service(employee_id, warehouse_id, supplier_id, supplier_data=None, note="", items=None, combo_groups=None, is_return=False, imported_at=None, payment_amount=0, payment_method=None, inbound_fee=0):
        
                     
     if not items and not combo_groups:
@@ -417,6 +436,7 @@ def create_import_invoice_service(employee_id, warehouse_id, supplier_id, suppli
         note=final_note,
         items=validated_items,
         combo_groups=combo_snapshots,
+        inbound_fee=_validate_inbound_fee(inbound_fee),
         payment=None,
     )
 
@@ -461,7 +481,7 @@ def record_supplier_payment_service(invoice_id, employee_id, amount, payment_met
     return import_invoice_dao.get_import_invoice_by_id(invoice.id), payment_record
 
 
-def update_import_invoice_service(invoice_id, employee_id, warehouse_id, supplier_id, supplier_data=None, note="", items=None, combo_groups=None, is_return=False, imported_at=None):
+def update_import_invoice_service(invoice_id, employee_id, warehouse_id, supplier_id, supplier_data=None, note="", items=None, combo_groups=None, is_return=False, imported_at=None, inbound_fee=0):
        
                               
     invoice = import_invoice_dao.get_import_invoice_by_id(invoice_id)
@@ -560,6 +580,7 @@ def update_import_invoice_service(invoice_id, employee_id, warehouse_id, supplie
         note=final_note,
         items=validated_items,
         combo_groups=combo_snapshots,
+        inbound_fee=_validate_inbound_fee(inbound_fee),
     )
 
     return updated_invoice

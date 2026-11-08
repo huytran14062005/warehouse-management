@@ -16,6 +16,7 @@ from web.services.import_invoice_service import (
     update_import_invoice_service,
     preview_import_combos_service,
     record_supplier_payment_service,
+    update_import_inbound_fee_service,
 )
 from web.utils.pagination import build_pagination
 from web.utils.query_cache import cached_query
@@ -98,6 +99,7 @@ def create_import_invoice():
         note=data.get("note", ""),
         items=data.get("items", []),
         combo_groups=data.get("combo_groups", []),
+        inbound_fee=data.get("inbound_fee", 0),
         is_return=parse_bool(data.get("is_return", False), "is_return"),
         payment_amount=data.get("payment_amount", 0),
         payment_method=data.get("payment_method"),
@@ -139,6 +141,16 @@ def record_supplier_payment(invoice_id):
     }), 201
 
 
+@import_invoices_bp.route("/<int:invoice_id>/inbound-fee", methods=["PUT"])
+@verify_token
+@verify_role(EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY)
+@handle_api_errors
+def update_inbound_fee(invoice_id):
+    data = request.get_json(silent=True) or {}
+    invoice = update_import_inbound_fee_service(invoice_id, request.employee_id, data.get("inbound_fee"))
+    return jsonify({"invoice": serialize_import_invoice(invoice)}), 200
+
+
 @import_invoices_bp.route("/<int:invoice_id>", methods=["PUT"])
 @verify_token
 @verify_role(EmployeeRole.THU_KHO, EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY)
@@ -157,6 +169,7 @@ def update_import_invoice(invoice_id):
         note=data.get("note", ""),
         items=data.get("items", []),
         combo_groups=data.get("combo_groups", []),
+        inbound_fee=data.get("inbound_fee", 0),
         is_return=parse_bool(data.get("is_return", False), "is_return")
     )
 

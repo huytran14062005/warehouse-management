@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from enum import Enum as UserEnum
 
-from sqlalchemy import Boolean, CheckConstraint, Column, Date, DateTime, Enum, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Date, DateTime, Enum, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from web import db
@@ -96,8 +96,18 @@ class PricingPolicy(db.Model):
     )
 
     product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), primary_key=True)
-    planned_quantity = Column(Integer, nullable=False, default=100)
+    planned_quantity = Column(BigInteger, nullable=False, default=100)
     markup_percent = Column("target_margin", Numeric(5, 2), nullable=False, default=20)
+    desired_profit_per_unit = Column(Numeric(14, 2), nullable=True)
+    updated_at = Column(DateTime, nullable=False, default=vietnam_payment_time)
+    updated_by_id = Column(Integer, ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False)
+
+
+class PricingCycle(db.Model):
+    __tablename__ = "pricing_cycles"
+
+    id = Column(Integer, primary_key=True)
+    start_date = Column(Date, nullable=False)
     updated_at = Column(DateTime, nullable=False, default=vietnam_payment_time)
     updated_by_id = Column(Integer, ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False)
 
@@ -322,6 +332,7 @@ class ImportInvoice(BaseModel):
     imported_at = Column(DateTime, nullable=False, default=datetime.now)
     note = Column(Text)
     combo_groups = Column(JSON, nullable=True)
+    inbound_fee = Column(Numeric(14, 2), nullable=False, default=0)
 
     warehouse_id = Column(Integer, ForeignKey("warehouses.id", ondelete="RESTRICT"), nullable=False, index=True)
     supplier_id = Column(Integer, ForeignKey("suppliers.id", ondelete="RESTRICT"), nullable=False, index=True)

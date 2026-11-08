@@ -47,7 +47,9 @@ function ImportDetail({
   canEdit,
   canDelete,
   canPay,
+  canEditFee,
   onPaymentSaved,
+  onFeeSaved,
 }) {
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("");
@@ -57,6 +59,9 @@ function ImportDetail({
   const [funds, setFunds] = useState(null);
   const [fundsError, setFundsError] = useState("");
   const [paymentHistoryPage, setPaymentHistoryPage] = useState(1);
+  const [feeDraft, setFeeDraft] = useState(String(invoice.inbound_fee || ""));
+  const [feeSaving, setFeeSaving] = useState(false);
+  const [feeError, setFeeError] = useState("");
   const paymentHistory = useMemo(
     () =>
       [...(invoice.payments || [])].sort(
@@ -77,6 +82,9 @@ function ImportDetail({
   useEffect(() => {
     setPaymentHistoryPage(1);
   }, [invoice.id, invoice.payments?.length]);
+  useEffect(() => {
+    setFeeDraft(String(invoice.inbound_fee || ""));
+  }, [invoice.id, invoice.inbound_fee]);
   useEffect(() => {
     if (!canPay) return undefined;
     let active = true;
@@ -144,6 +152,21 @@ function ImportDetail({
       setPaymentError(getApiError(requestError));
     } finally {
       setPaymentSaving(false);
+    }
+  };
+  const saveInboundFee = async (event) => {
+    event.preventDefault();
+    setFeeSaving(true);
+    setFeeError("");
+    try {
+      const response = await authApis().put(endpoints.importInvoiceInboundFee(invoice.id), {
+        inbound_fee: Number(feeDraft || 0),
+      });
+      onFeeSaved(response.data.invoice);
+    } catch (requestError) {
+      setFeeError(getApiError(requestError));
+    } finally {
+      setFeeSaving(false);
     }
   };
   return createPortal(
@@ -310,6 +333,24 @@ function ImportDetail({
               </tbody>
             </table>
           </div>
+          <p className="warehouse-inbound-fee-note">
+            Phí mua hàng về kho: {formatCurrency(invoice.inbound_fee || 0)}.
+            Giá nhập dùng để đề xuất giá bán đã gồm khoản phí này.
+          </p>
+          {canEditFee && (
+            <form className="warehouse-inbound-fee-form" onSubmit={saveInboundFee}>
+              <label className="warehouse-field">
+                <span>Cập nhật phí về kho cho phiếu nhập này</span>
+                <MoneyInput value={feeDraft} onChange={setFeeDraft} label="Phí về kho"
+                  allowZero allowEmpty minAmount={0} placeholder="0 đ nếu không có" />
+              </label>
+              <button type="submit" disabled={feeSaving || Number(feeDraft || 0) === Number(invoice.inbound_fee || 0)}>
+                {feeSaving ? "Đang lưu..." : "Lưu phí về kho"}
+              </button>
+              {feeError && <p className="warehouse-error">{feeError}</p>}
+              <small>Chỉ thay đổi giá nhập dùng để tính giá đề xuất; không thay đổi tiền trả nhà cung cấp hoặc số dư quỹ.</small>
+            </form>
+          )}
           {(invoice.combo_groups || []).map((group, index) => (
             <div
               className="warehouse-combo-summary"
@@ -525,6 +566,7 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = false }) {
   const [comboPreview, setComboPreview] = useState(null);
   const [previewing, setPreviewing] = useState(false);
   const [note, setNote] = useState(invoice?.note || "");
+  const [inboundFee, setInboundFee] = useState(String(invoice?.inbound_fee || ""));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useNotificationState();
@@ -842,6 +884,7 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = false }) {
               }
             : undefined,
         note: note.trim(),
+        inbound_fee: Number(inboundFee || 0),
         imported_at: importedAt,
         items: getSinglePayload(),
         combo_groups: getComboPayload(),
@@ -998,6 +1041,19 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = false }) {
                   aria-label="Ngày nhập kho"
                   required
                 />
+              </label>
+              <label className="warehouse-field">
+                <span>Phí mua hàng về kho (toàn phiếu)</span>
+                <MoneyInput
+                  value={inboundFee}
+                  onChange={setInboundFee}
+                  label="Phí mua hàng về kho"
+                  placeholder="0 đ nếu không có"
+                  allowZero
+                  allowEmpty
+                  minAmount={0}
+                />
+                <small>Chỉ dùng để tính giá, chưa ghi quỹ. Phí được chia theo giá trị hàng; không ghi lại ở chi phí kinh doanh.</small>
               </label>
               <div className="warehouse-section-heading">
                 <h3>Combo nhập</h3>
@@ -1457,6 +1513,7 @@ function ImportInvoices() {
   );
   const canDeleteImports = currentUser.role === "quản lý";
   const canPayImports = currentUser.role === "kế toán";
+  const canEditImportFee = ["kế toán", "quản lý"].includes(currentUser.role);
 
   const fetchInvoices = useCallback(async () => {
     if (!localStorage.getItem("token"))
@@ -1616,6 +1673,7 @@ function ImportInvoices() {
           canEdit={canEditImports}
           canDelete={canDeleteImports}
           canPay={canPayImports}
+          canEditFee={canEditImportFee}
           onClose={() => setSelected(null)}
           onEdit={(invoice) => {
             setSelected(null);
@@ -1626,6 +1684,10 @@ function ImportInvoices() {
             setDeletingInvoice(invoice);
           }}
           onPaymentSaved={(invoice) => {
+            setSelected(invoice);
+            fetchInvoices();
+          }}
+          onFeeSaved={(invoice) => {
             setSelected(invoice);
             fetchInvoices();
           }}

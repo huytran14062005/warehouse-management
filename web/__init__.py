@@ -50,34 +50,69 @@ db = SQLAlchemy(app=app)
 mail = Mail(app)
 
 
-_sales_combo_column_ready = False
+_business_schema_ready = False
 
 
 @app.before_request
-def ensure_sales_combo_column():
-    """Add the nullable combo marker before any invoice ORM query uses it."""
-    global _sales_combo_column_ready
-    if _sales_combo_column_ready or not request.path.startswith("/api/"):
+def ensure_business_columns():
+    """Bring existing databases up to the columns used by current business flows."""
+    global _business_schema_ready
+    if _business_schema_ready or not request.path.startswith("/api/"):
         return
-    from sqlalchemy import inspect
-    from web.models import SalesInvoiceItem
+    from sqlalchemy import BigInteger, inspect
+    from web.models import ImportInvoice, PricingCycle, PricingPolicy, SalesInvoiceItem
 
     inspector = inspect(db.engine)
-    table = SalesInvoiceItem.__tablename__
-    if not inspector.has_table(table):
+    columns = (
+        (SalesInvoiceItem.__tablename__, "combo_id", "INT NULL"),
+        (ImportInvoice.__tablename__, "inbound_fee", "DECIMAL(14, 2) NOT NULL DEFAULT 0"),
+        (PricingPolicy.__tablename__, "desired_profit_per_unit", "DECIMAL(14, 2) NULL"),
+    )
+    if any(not inspector.has_table(table) for table, _, _ in columns):
         return
-    if "combo_id" not in {column["name"] for column in inspector.get_columns(table)}:
+    changed = False
+    for table, column, definition in columns:
+        if column in {entry["name"] for entry in inspector.get_columns(table)}:
+            continue
         try:
             with db.engine.begin() as connection:
-                connection.exec_driver_sql("ALTER TABLE sales_invoice_items ADD COLUMN combo_id INT NULL")
+                connection.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
         except Exception:
-            # A second cold instance may have added the column concurrently.
-            if "combo_id" not in {
-                column["name"] for column in inspect(db.engine).get_columns(table)
-            }:
+            # Another cold instance may have added the column concurrently.
+            if column not in {entry["name"] for entry in inspect(db.engine).get_columns(table)}:
                 raise
+        changed = True
+    dialect = db.engine.dialect.name
+    if dialect in {"mysql", "postgresql"}:
+        planned_type = next(
+            entry["type"] for entry in inspect(db.engine).get_columns(PricingPolicy.__tablename__)
+            if entry["name"] == "planned_quantity"
+        )
+        if not isinstance(planned_type, BigInteger):
+            statement = (
+                "ALTER TABLE pricing_policies MODIFY COLUMN planned_quantity BIGINT NOT NULL DEFAULT 100"
+                if dialect == "mysql" else
+                "ALTER TABLE pricing_policies ALTER COLUMN planned_quantity TYPE BIGINT"
+            )
+            try:
+                with db.engine.begin() as connection:
+                    connection.exec_driver_sql(statement)
+            except Exception:
+                current_type = next(
+                    entry["type"] for entry in inspect(db.engine).get_columns(PricingPolicy.__tablename__)
+                    if entry["name"] == "planned_quantity"
+                )
+                if not isinstance(current_type, BigInteger):
+                    raise
+            changed = True
+    try:
+        PricingCycle.__table__.create(bind=db.engine, checkfirst=True)
+    except Exception:
+        if not inspect(db.engine).has_table(PricingCycle.__tablename__):
+            raise
+    if changed:
         db.session.remove()
-    _sales_combo_column_ready = True
+    _business_schema_ready = True
 
 
 @app.after_request

@@ -7,7 +7,7 @@ if __package__ in (None, ""):
 
 from web import app
 from web.realtime import socketio
-    
+
 
 if __name__ == "__main__":
     if app.config["IS_PRODUCTION"]:

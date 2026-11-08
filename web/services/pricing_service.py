@@ -6,7 +6,7 @@ weighted import estimate, not a perpetual inventory valuation.
 """
 
 from datetime import datetime, timedelta
-from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_HALF_UP, localcontext
 from uuid import uuid4
 
 from sqlalchemy import case, func
@@ -15,7 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from web import db
 from web.models import (
     ExpenseCategory, ImportInvoice, ImportInvoiceItem, InvoiceStatus, OperatingExpense,
-    PaymentMethod, PricingPolicy, Product, SalesInvoice, SalesInvoiceItem,
+    PaymentMethod, PricingCycle, PricingPolicy, Product, SalesInvoice, SalesInvoiceItem,
     vietnam_payment_time,
 )
 from web.services.company_fund_service import record_fund_movement
@@ -28,6 +28,8 @@ CATEGORIES = {
     "vehicle_repair": "Sửa xe",
     "lodging": "Nhà nghỉ",
     "sales_salary": "Lương nhân viên bán hàng",
+    "overtime": "Tiền tăng ca",
+    "depreciation": "Hao mòn, khấu hao",
     "other": "Chi phí bán hàng khác",
 }
 
@@ -68,6 +70,7 @@ def _category_label(code, custom_labels=None):
 
 CENT = Decimal("0.01")
 DEFAULT_MARKUP = Decimal("20")
+MAX_PLANNED_QUANTITY = 9223372036854775807
 
 
 def money(value):
@@ -257,34 +260,57 @@ def _shipping_total(start, end):
     ).scalar())
 
 
-def _recent_expense_per_unit():
-    end = vietnam_payment_time().date()
-    start = end - timedelta(days=29)
-    _, operating_expenses = _expense_totals(start, end)
-    shipping = _shipping_total(start, end)
-    units_sold = int(db.session.query(func.sum(SalesInvoiceItem.quantity)).join(
-        SalesInvoice, SalesInvoiceItem.sales_invoice_id == SalesInvoice.id,
-    ).filter(
-        SalesInvoice.status == InvoiceStatus.COMPLETED,
-        SalesInvoice.sold_at >= datetime.combine(start, datetime.min.time()),
-        SalesInvoice.sold_at < datetime.combine(end + timedelta(days=1), datetime.min.time()),
-    ).scalar() or 0)
-    total_expenses = operating_expenses + shipping
-    per_unit = (
-        (total_expenses / units_sold).quantize(CENT, rounding=ROUND_CEILING)
-        if units_sold else (Decimal("0") if total_expenses == 0 else None)
-    )
-    return operating_expenses, shipping, units_sold, per_unit
+def _pricing_cycle_start():
+    """Keep shared costs in scope until a manager explicitly starts a new cycle."""
+    saved = db.session.get(PricingCycle, 1)
+    if saved:
+        return saved.start_date
+    first_expense = db.session.query(func.min(OperatingExpense.occurred_on)).filter(
+        OperatingExpense.voided_at.is_(None),
+    ).scalar()
+    first_shipping = db.session.query(func.min(SalesInvoice.shipping_charged_at)).filter(
+        SalesInvoice.delivery_method == "third_party",
+        SalesInvoice.shipping_fee.isnot(None),
+    ).scalar()
+    dates = [date for date in (first_expense, first_shipping.date() if first_shipping else None) if date]
+    return min(dates) if dates else vietnam_payment_time().date()
+
+
+def save_pricing_cycle(employee_id, payload):
+    try:
+        start_date = datetime.strptime(str(payload.get("start_date")), "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        raise ValidationError("Ngày bắt đầu kỳ tính giá không hợp lệ")
+    if start_date > vietnam_payment_time().date():
+        raise ValidationError("Ngày bắt đầu kỳ tính giá không được ở tương lai")
+    cycle = db.session.get(PricingCycle, 1)
+    if cycle is None:
+        cycle = PricingCycle(id=1, updated_by_id=employee_id)
+        db.session.add(cycle)
+    cycle.start_date = start_date
+    cycle.updated_at = vietnam_payment_time()
+    cycle.updated_by_id = employee_id
+    db.session.commit()
+    return {"start_date": start_date.isoformat()}
 
 
 def _purchase_costs(product_ids, start=None, end=None):
+    """Weighted landed cost; split each import's inbound fee by line value."""
     if not product_ids:
         return {}
+    invoice_totals = db.session.query(
+        ImportInvoiceItem.import_invoice_id.label("invoice_id"),
+        func.sum(func.coalesce(ImportInvoiceItem.line_total, ImportInvoiceItem.quantity * ImportInvoiceItem.unit_price)).label("amount"),
+    ).group_by(ImportInvoiceItem.import_invoice_id).subquery()
+    line_amount = func.coalesce(ImportInvoiceItem.line_total, ImportInvoiceItem.quantity * ImportInvoiceItem.unit_price)
+    landed_amount = line_amount + line_amount * func.coalesce(ImportInvoice.inbound_fee, 0) / func.nullif(invoice_totals.c.amount, 0)
     query = db.session.query(
         ImportInvoiceItem.product_id,
         func.sum(ImportInvoiceItem.quantity),
-        func.sum(func.coalesce(ImportInvoiceItem.line_total, ImportInvoiceItem.quantity * ImportInvoiceItem.unit_price)),
-    ).join(ImportInvoice, ImportInvoiceItem.import_invoice_id == ImportInvoice.id).filter(
+        func.sum(landed_amount),
+    ).join(ImportInvoice, ImportInvoiceItem.import_invoice_id == ImportInvoice.id).join(
+        invoice_totals, invoice_totals.c.invoice_id == ImportInvoice.id,
+    ).filter(
         ImportInvoiceItem.product_id.in_(product_ids),
     )
     if start:
@@ -294,64 +320,113 @@ def _purchase_costs(product_ids, start=None, end=None):
     return {pid: rounded(money(total) / money(qty)) for pid, qty, total in query.group_by(ImportInvoiceItem.product_id).all() if qty}
 
 
-def _pricing_row(product, policy, unit_cost, expense_per_unit):
+def _pricing_row(product, policy, unit_cost, expense_total, planned_value):
+    planned_quantity = policy.planned_quantity if policy else 100
     markup = money(policy.markup_percent) if policy else DEFAULT_MARKUP
+    desired_profit = (
+        money(policy.desired_profit_per_unit)
+        if policy and policy.desired_profit_per_unit is not None
+        else rounded(unit_cost * markup / 100) if unit_cost is not None else None
+    )
     current_price = money(product.default_sale_price)
     suggested = None
+    expense_per_unit = None
+    if unit_cost is not None and planned_value > 0:
+        # SKU share = planned quantity * unit cost / all planned purchase value.
+        # Dividing that share by planned quantity leaves this per-unit amount.
+        with localcontext() as context:
+            context.prec = 60
+            expense_per_unit = (expense_total * unit_cost / planned_value).quantize(CENT, rounding=ROUND_CEILING)
     if unit_cost is not None and expense_per_unit is not None:
-        raw_price = unit_cost * (Decimal("1") + markup / 100) + expense_per_unit
+        raw_price = unit_cost + expense_per_unit + desired_profit
         suggested = int((raw_price / 1000).to_integral_value(rounding=ROUND_CEILING) * 1000)
     return {
         "product_id": product.id, "name": product.name, "unit": product.unit,
         "current_price": float(current_price), "estimated_unit_cost": float(unit_cost) if unit_cost is not None else None,
         "expense_per_unit": float(expense_per_unit) if expense_per_unit is not None else None,
-        "markup_percent": float(markup), "suggested_price": suggested,
+        "markup_percent": float(markup), "planned_quantity": str(planned_quantity),
+        "desired_profit_per_unit": float(desired_profit) if desired_profit is not None else None,
+        "suggested_price": suggested,
     }
+
+
+def _pricing_inputs():
+    ids = [product_id for (product_id,) in db.session.query(Product.id).all()]
+    policies = {row.product_id: row for row in PricingPolicy.query.all()}
+    recent_start = datetime.combine(vietnam_payment_time().date() - timedelta(days=89), datetime.min.time())
+    recent_costs = _purchase_costs(ids, start=recent_start)
+    fallback_costs = _purchase_costs([pid for pid in ids if pid not in recent_costs])
+    costs = {pid: recent_costs.get(pid, fallback_costs.get(pid)) for pid in ids}
+    with localcontext() as context:
+        context.prec = 60
+        planned_value = sum((costs[pid] * (policies[pid].planned_quantity if pid in policies else 100)
+                             for pid in ids if costs[pid] is not None), Decimal("0"))
+    start = _pricing_cycle_start()
+    end = vietnam_payment_time().date()
+    _, operating_expenses = _expense_totals(start, end)
+    shipping = _shipping_total(start, end)
+    return policies, costs, planned_value, start, operating_expenses, shipping
 
 
 def pricing_catalog(page_value=None, keyword=None):
     page = parse_page(page_value)
     keyword = str(keyword or "").strip()[:100]
+    policies, costs, planned_value, start, operating_expenses, shipping = _pricing_inputs()
     query = Product.query
     if keyword:
         query = query.filter(Product.name.ilike(f"%{keyword}%"))
     total = query.count()
     products = query.order_by(Product.name, Product.id).offset((page - 1) * 20).limit(20).all()
-    ids = [product.id for product in products]
-    policies = {row.product_id: row for row in PricingPolicy.query.filter(PricingPolicy.product_id.in_(ids)).all()} if ids else {}
-    recent_start = datetime.combine(vietnam_payment_time().date() - timedelta(days=89), datetime.min.time())
-    recent_costs = _purchase_costs(ids, start=recent_start)
-    missing_ids = [pid for pid in ids if pid not in recent_costs]
-    fallback_costs = _purchase_costs(missing_ids)
-    operating_expenses, shipping, units_sold, expense_per_unit = _recent_expense_per_unit()
+    expense_total = operating_expenses + shipping
     return {
-        "products": [_pricing_row(product, policies.get(product.id), recent_costs.get(product.id, fallback_costs.get(product.id)), expense_per_unit) for product in products],
+        "products": [_pricing_row(product, policies.get(product.id), costs.get(product.id), expense_total, planned_value) for product in products],
         "pagination": build_pagination(page, 20, total),
         "pricing_operating_expenses": float(operating_expenses),
         "pricing_shipping": float(shipping),
-        "pricing_units_sold": units_sold,
-        "pricing_expense_per_unit": float(expense_per_unit) if expense_per_unit is not None else None,
+        "pricing_period_start": start.isoformat(),
+        "pricing_planned_value": str(planned_value),
     }
 
 
 def save_pricing_policy(employee_id, product_id, payload):
     if not db.session.get(Product, product_id):
         raise NotFoundError("Sản phẩm không tồn tại")
-    try:
-        markup = Decimal(str(payload.get("markup_percent")))
-    except (TypeError, ValueError, InvalidOperation):
-        raise ValidationError("Tỷ lệ lãi trên giá nhập không hợp lệ")
-    if not markup.is_finite() or markup < 0 or markup > 90 or markup.as_tuple().exponent < -2:
-        raise ValidationError("Tỷ lệ lãi trên giá nhập phải từ 0% đến 90%")
+    if "desired_profit_per_unit" in payload:
+        try:
+            profit = Decimal(str(payload["desired_profit_per_unit"]))
+            planned_text = str(payload["planned_quantity"]).strip()
+            if not planned_text.isascii() or not planned_text.isdecimal():
+                raise ValueError
+            planned_quantity = int(planned_text)
+        except (KeyError, TypeError, ValueError, InvalidOperation):
+            raise ValidationError("Tiền lời hoặc sản lượng dự kiến không hợp lệ")
+        if not profit.is_finite() or profit < 0 or profit > Decimal("999999999999.99") or profit.as_tuple().exponent < -2:
+            raise ValidationError("Tiền lời mong muốn phải từ 0 đồng và có tối đa 2 chữ số thập phân")
+        if planned_quantity <= 0 or planned_quantity > MAX_PLANNED_QUANTITY:
+            raise ValidationError("Sản lượng dự kiến phải lớn hơn 0 và nằm trong giới hạn lưu trữ của hệ thống")
+    else:
+        try:
+            markup = Decimal(str(payload.get("markup_percent")))
+        except (TypeError, ValueError, InvalidOperation):
+            raise ValidationError("Tỷ lệ lãi trên giá nhập không hợp lệ")
+        if not markup.is_finite() or markup < 0 or markup > 90 or markup.as_tuple().exponent < -2:
+            raise ValidationError("Tỷ lệ lãi trên giá nhập phải từ 0% đến 90%")
     policy = db.session.get(PricingPolicy, product_id)
     if policy is None:
         policy = PricingPolicy(product_id=product_id, updated_by_id=employee_id)
         db.session.add(policy)
-    policy.markup_percent = markup
+    if "desired_profit_per_unit" in payload:
+        policy.desired_profit_per_unit = profit
+        policy.planned_quantity = planned_quantity
+    else:
+        policy.markup_percent = markup
+        policy.desired_profit_per_unit = None
     policy.updated_by_id = employee_id
     policy.updated_at = vietnam_payment_time()
     db.session.commit()
-    return {"product_id": product_id, "markup_percent": float(markup)}
+    return {"product_id": product_id, "markup_percent": float(policy.markup_percent),
+            "planned_quantity": str(policy.planned_quantity),
+            "desired_profit_per_unit": float(policy.desired_profit_per_unit) if policy.desired_profit_per_unit is not None else None}
 
 
 def apply_suggested_price(product_id, expected_price, expected_suggested_price):
@@ -364,22 +439,17 @@ def apply_suggested_price(product_id, expected_price, expected_suggested_price):
         raise ValidationError("Giá hiện tại không hợp lệ")
     if expected != money(product.default_sale_price):
         raise ValidationError("Giá sản phẩm đã thay đổi; hãy tải lại đề xuất", status_code=409)
-    recent_start = datetime.combine(vietnam_payment_time().date() - timedelta(days=89), datetime.min.time())
-    costs = _purchase_costs([product_id], start=recent_start)
-    unit_cost = costs.get(product_id) or _purchase_costs([product_id]).get(product_id)
+    policies, costs, planned_value, _, operating_expenses, shipping = _pricing_inputs()
+    unit_cost = costs.get(product_id)
     if unit_cost is None:
         raise ValidationError("Chưa có giá nhập để đề xuất giá bán")
-    policy = db.session.get(PricingPolicy, product_id)
-    _, _, _, expense_per_unit = _recent_expense_per_unit()
-    if expense_per_unit is None:
-        raise ValidationError("Chưa có sản phẩm bán trong 30 ngày để phân bổ chi phí")
-    proposal = _pricing_row(product, policy, unit_cost, expense_per_unit)
+    proposal = _pricing_row(product, policies.get(product_id), unit_cost, operating_expenses + shipping, planned_value)
     try:
         expected_suggestion = int(expected_suggested_price)
     except (TypeError, ValueError):
         raise ValidationError("Giá đề xuất cần được tải lại")
     if expected_suggestion != proposal["suggested_price"]:
-        raise ValidationError("Giá nhập, chi phí hoặc tỷ lệ lãi đã thay đổi; hãy tải lại giá đề xuất", status_code=409)
+        raise ValidationError("Giá nhập, chi phí hoặc kế hoạch giá đã thay đổi; hãy tải lại giá đề xuất", status_code=409)
     if proposal["suggested_price"] < 500:
         raise ValidationError("Giá đề xuất thấp hơn mức tối thiểu 500 đồng")
     product.default_sale_price = Decimal(proposal["suggested_price"])
