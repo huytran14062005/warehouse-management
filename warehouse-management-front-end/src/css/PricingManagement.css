@@ -50,7 +50,14 @@
 .pricing-row-actions { display: flex; gap: 6px; }
 .pricing-row-actions button { white-space: nowrap; font-size: 11px; }
 .pricing-voided-row { color: #8997a5; background: #fafbfc; }
-.pricing-void-dialog label { display: grid; gap: 7px; color: #52657a; font-size: 13px; font-weight: 600; }
-.pricing-void-dialog input { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid #cbd7e2; border-radius: 5px; }
+.pricing-void-confirm { box-sizing: border-box; max-width: 440px; padding: 28px; text-align: left; }
+.pricing-void-confirm h2 { margin-bottom: 10px; font-size: 18px; }
+.pricing-void-confirm > p { margin-bottom: 22px; font-size: 14px; line-height: 1.6; }
+.pricing-void-dialog label { display: grid; gap: 8px; color: #52657a; font-size: 13px; font-weight: 600; }
+.pricing-void-dialog input { box-sizing: border-box; width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid #cbd7e2; border-radius: 6px; color: #1b2d40; font: inherit; font-size: 14px; }
+.pricing-void-confirm .pricing-void-dialog input:focus { border-color: #0b3158; outline: 2px solid rgba(11, 49, 88, .16); outline-offset: 1px; }
+.pricing-void-confirm .confirm-dialog-actions { justify-content: flex-end; gap: 10px; margin-top: 24px; padding-top: 18px; border-top: 1px solid #e8edf2; }
+.pricing-void-confirm .confirm-dialog-actions button { min-height: 40px; }
+@media (max-width: 480px) { .pricing-void-confirm { padding: 22px 20px; } .pricing-void-confirm .confirm-dialog-actions { flex-direction: row; } .pricing-void-confirm .confirm-dialog-actions button { width: auto; } }
 @media (max-width: 768px) { .pricing-page { width: calc(100% - 24px); padding-top: 24px; } .pricing-panel { padding: 15px; } .pricing-expense-form { grid-template-columns: 1fr; } .pricing-expense-form .pricing-description { grid-column: auto; } .pricing-period, .pricing-search { width: 100%; } .pricing-period label { flex: 1 1 130px; } .pricing-search input { flex: 1; min-width: 0; } }
 @media (max-width: 600px) { .pricing-expense-dialog .pricing-expense-form { grid-template-columns: 1fr; } .pricing-expense-dialog .pricing-description { grid-column: 1; } .pricing-category-field, .pricing-new-category { flex-direction: column; align-items: stretch; } }

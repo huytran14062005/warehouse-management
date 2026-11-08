@@ -785,6 +785,7 @@ export default function PricingManagement() {
       />
       <ConfirmDialog
         open={Boolean(voidRow)}
+        className="pricing-void-confirm"
         title="Hủy khoản chi?"
         message={
           voidRow
@@ -792,6 +793,7 @@ export default function PricingManagement() {
             : ""
         }
         confirmLabel="Hủy khoản chi"
+        cancelLabel="Quay lại"
         onConfirm={voidExpense}
         onCancel={() => setVoidRow(null)}
         loading={busy}
