@@ -318,20 +318,20 @@ def calculate_total_amount(items):
 def _validate_sales_items(items):
     ensure_bounded_items(items, "Sản phẩm trong đơn hàng")
     if not isinstance(items, list) or not items:
-        raise ValidationError("ÄÆ¡n hÃ ng pháº£i cÃ³ Ã­t nháº¥t 1 sáº£n pháº©m")
+        raise ValidationError("Đơn hàng phải có ít nhất 1 sản phẩm")
 
     normalized = []
     product_ids = []
     seen_product_ids = set()
     for index, item in enumerate(items, start=1):
         if not isinstance(item, dict):
-            raise ValidationError(f"Sáº£n pháº©m (item {index}) khÃ´ng há»£p lá»‡")
+            raise ValidationError(f"Sản phẩm (item {index}) không hợp lệ")
         product_id = validate_positive_integer(
             item.get("product_id"),
-            f"MÃ£ sáº£n pháº©m (item {index})",
+            f"Mã sản phẩm (item {index})",
         )
         if product_id in seen_product_ids:
-            raise ValidationError(f"Sáº£n pháº©m ID {product_id} bá»‹ lặp trong đơn hàng")
+            raise ValidationError(f"Sản phẩm ID {product_id} bị lặp trong đơn hàng")
         seen_product_ids.add(product_id)
         product_ids.append(product_id)
         combo_id = item.get("combo_id")
@@ -343,11 +343,11 @@ def _validate_sales_items(items):
             "product_id": product_id,
             "quantity": validate_positive_quantity(
                 item.get("quantity"),
-                f"Sá»‘ lÆ°á»£ng (item {index})",
+                f"Số lượng (item {index})",
             ),
             "unit_price": validate_money_amount(
                 item.get("unit_price"),
-                f"ÄÆ¡n giÃ¡ (item {index})",
+                f"Đơn giá (item {index})",
                 allow_zero=combo_id is not None,
                 minimum=None if combo_id is not None else MIN_MONEY_AMOUNT,
             ),
@@ -358,7 +358,7 @@ def _validate_sales_items(items):
     products_by_id = {product.id: product for product in products}
     missing_product_ids = [product_id for product_id in product_ids if product_id not in products_by_id]
     if missing_product_ids:
-        raise NotFoundError(f"Sáº£n pháº©m ID {missing_product_ids[0]} khÃ´ng tá»“n táº¡i")
+        raise NotFoundError(f"Sản phẩm ID {missing_product_ids[0]} không tồn tại")
 
     combo_groups = {}
     for item in normalized:
@@ -458,7 +458,7 @@ def determine_discount_status(total_amount, discount_amount, is_promotion=False)
         return DiscountStatus.NO_DISCOUNT
 
     if discount_amount > total_amount:
-        raise ValidationError("Sá»‘ tiá»n giáº£m giÃ¡ khÃ´ng Ä‘Æ°á»£c vÆ°á»£t quá» tÃ´ng tiá»n Ä‘Æ¡n")
+        raise ValidationError("Số tiền giảm giá không được vượt quá tổng tiền đơn")
 
     # Promotions are configured and authorized by a manager in advance, so
     # applying an eligible program must not create a second approval step.
@@ -1775,7 +1775,7 @@ def update_invoice_status_service(invoice_id, employee_id, status_value):
         InvoiceStatus.CANCELLED: set(),
     }
     if new_status not in allowed_transitions[invoice.status]:
-        raise ValidationError("Chuyá»ƒn tráº¡ng thÃ¡i Ä‘Æ¡n hÃ ng khÃ´ng há»£p lá»‡")
+        raise ValidationError("Chuyển trạng thái đơn hàng không hợp lệ")
 
     if new_status == InvoiceStatus.PROCESSING and employee.role not in {
         EmployeeRole.THU_KHO, EmployeeRole.QUAN_LY,

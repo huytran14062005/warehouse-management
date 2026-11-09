@@ -6,10 +6,13 @@ import useNotificationState from "../utils/useNotificationState";
 import { formatIsoDate } from "../utils/date";
 import AutoDismissMessage from "../components/AutoDismissMessage";
 import MoneyInput from "../components/MoneyInput";
+import Pagination from "../components/Pagination";
 import SearchableDropdown from "../components/SearchableDropdown";
 import ConfirmDialog from "../components/ConfirmDialog";
 import Skeleton from "../components/Skeleton";
 import "../css/Promotions.css";
+
+const PER_PAGE = 10;
 
 const EMPTY_FORM = {
   name: "",
@@ -265,6 +268,8 @@ function PromotionForm({ promotion, onClose, onSaved }) {
 
 function Promotions() {
   const [promotions, setPromotions] = useState([]);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ total_pages: 1 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useNotificationState();
   const [success, setSuccess] = useNotificationState();
@@ -284,28 +289,38 @@ function Promotions() {
     try {
       setLoading(true);
       setError("");
-      const response = await authApis().get(endpoints.promotions);
+      const response = await authApis().get(endpoints.promotions, {
+        params: { page, per_page: PER_PAGE },
+      });
+      const totalPages = Math.max(1, Number(response.data?.pagination?.total_pages || 1));
+      if (page > totalPages) {
+        setPage(totalPages);
+        return;
+      }
       setPromotions(response.data?.promotions || []);
+      setPagination(response.data?.pagination || { total_pages: 1 });
     } catch (requestError) {
       setError(getApiError(requestError));
     } finally {
       setLoading(false);
     }
-  }, [setError]);
+  }, [page, setError]);
 
   useEffect(() => {
     if (currentUser.role === "quản lý") fetchPromotions();
   }, [currentUser.role, fetchPromotions]);
 
   const handleSaved = (promotion) => {
+    const wasEditing = promotion?.id === editingPromotion?.id;
     setFormOpen(false);
     setEditingPromotion(null);
     setSuccess(
-      promotion?.id === editingPromotion?.id
+      wasEditing
         ? "Đã cập nhật khuyến mãi."
         : "Đã tạo khuyến mãi.",
     );
-    fetchPromotions();
+    if (!wasEditing && page !== 1) setPage(1);
+    else fetchPromotions();
   };
 
   const handleDelete = async () => {
@@ -315,7 +330,8 @@ function Promotions() {
       await authApis().delete(endpoints.promotionDetail(deleteTarget.id));
       setDeleteTarget(null);
       setSuccess("Đã xóa khuyến mãi. Các đơn cũ vẫn giữ thông tin đã áp dụng.");
-      fetchPromotions();
+      if (promotions.length === 1 && page > 1) setPage(page - 1);
+      else fetchPromotions();
     } catch (requestError) {
       setError(getApiError(requestError));
     } finally {
@@ -419,6 +435,13 @@ function Promotions() {
           </div>
         )}
       </div>
+
+      <Pagination
+        page={page}
+        totalPages={Number(pagination.total_pages || 1)}
+        onPageChange={setPage}
+        disabled={loading}
+      />
 
       {formOpen && (
         <PromotionForm

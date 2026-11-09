@@ -295,11 +295,22 @@ def serialize_promotion(
     return result
 
 
-def list_promotions(include_inactive=False):
+def _promotions_query(include_inactive=False):
     query = Promotion.query
     if not include_inactive:
         query = query.filter(Promotion.is_active.is_(True))
-    return query.order_by(Promotion.is_active.desc(), Promotion.id.desc()).all()
+    return query.order_by(Promotion.is_active.desc(), Promotion.id.desc())
+
+
+def list_promotions(include_inactive=False):
+    return _promotions_query(include_inactive).all()
+
+
+def list_promotions_page(include_inactive=False, page=1, per_page=10):
+    query = _promotions_query(include_inactive)
+    total = query.order_by(None).count()
+    promotions = query.offset((page - 1) * per_page).limit(per_page).all()
+    return promotions, total
 
 
 def create_promotion(data, employee_id):

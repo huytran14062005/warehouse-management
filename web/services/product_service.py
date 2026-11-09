@@ -31,20 +31,20 @@ def parse_optional_price(value, field_name):
     try:
         price = Decimal(str(value).strip())
     except (InvalidOperation, ValueError, TypeError):
-        raise ValidationError(f"{field_name} khÃ´ng há»£p lá»‡")
+        raise ValidationError(f"{field_name} không hợp lệ")
 
     if not price.is_finite() or price < 0:
-        raise ValidationError(f"{field_name} khÃ´ng Ä‘Æ°á»£c Ã¢m")
+        raise ValidationError(f"{field_name} không được âm")
 
     return price
 
 
 def parse_price_range(min_price_value, max_price_value):
-    min_price = parse_optional_price(min_price_value, "GiÃ¡ tá»«")
-    max_price = parse_optional_price(max_price_value, "GiÃ¡ Ä‘áº¿n")
+    min_price = parse_optional_price(min_price_value, "Giá từ")
+    max_price = parse_optional_price(max_price_value, "Giá đến")
 
     if min_price is not None and max_price is not None and min_price > max_price:
-        raise ValidationError("GiÃ¡ tá»« khÃ´ng Ä‘Æ°á»£c lá»›n hÆ¡n giÃ¡ Ä‘áº¿n")
+        raise ValidationError("Giá từ không được lớn hơn giá đến")
 
     return min_price, max_price
 

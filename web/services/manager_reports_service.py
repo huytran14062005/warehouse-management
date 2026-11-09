@@ -34,12 +34,15 @@ def _date_range(from_date_value, to_date_value):
     return from_date, to_date
 
 
-def _invoice_total_subquery():
+def _invoice_total_subquery(include_quantity=False):
+    columns = [
+        SalesInvoiceItem.sales_invoice_id.label("invoice_id"),
+        func.sum(SalesInvoiceItem.quantity * SalesInvoiceItem.unit_price).label("gross_amount"),
+    ]
+    if include_quantity:
+        columns.append(func.sum(SalesInvoiceItem.quantity).label("quantity"))
     return (
-        db.session.query(
-            SalesInvoiceItem.sales_invoice_id.label("invoice_id"),
-            func.sum(SalesInvoiceItem.quantity * SalesInvoiceItem.unit_price).label("gross_amount"),
-        )
+        db.session.query(*columns)
         .group_by(SalesInvoiceItem.sales_invoice_id)
         .subquery()
     )
@@ -122,7 +125,7 @@ def _build_period_trend(from_date, to_date, granularity="month"):
         key = f"{int(row.year):04d}-{int(row.month):02d}"
         return f"{key}-{int(row.day):02d}" if granularity == "day" else key
 
-    totals = _invoice_total_subquery()
+    totals = _invoice_total_subquery(include_quantity=True)
     invoice_filters = _completed_invoice_filters(from_date, to_date)
     invoice_columns, invoice_groups = period_columns(SalesInvoice.sold_at)
     revenue_rows = (
@@ -130,18 +133,9 @@ def _build_period_trend(from_date, to_date, granularity="month"):
             *invoice_columns,
             func.count(SalesInvoice.id).label("orders"),
             func.coalesce(func.sum(totals.c.gross_amount - SalesInvoice.discount_amount), 0).label("revenue"),
+            func.coalesce(func.sum(totals.c.quantity), 0).label("quantity"),
         )
         .join(totals, totals.c.invoice_id == SalesInvoice.id)
-        .filter(*invoice_filters, SalesInvoice.sold_at.isnot(None))
-        .group_by(*invoice_groups)
-        .all()
-    )
-    quantity_rows = (
-        db.session.query(
-            *invoice_columns,
-            func.coalesce(func.sum(SalesInvoiceItem.quantity), 0).label("quantity"),
-        )
-        .join(SalesInvoice, SalesInvoice.id == SalesInvoiceItem.sales_invoice_id)
         .filter(*invoice_filters, SalesInvoice.sold_at.isnot(None))
         .group_by(*invoice_groups)
         .all()
@@ -190,7 +184,7 @@ def _build_period_trend(from_date, to_date, granularity="month"):
     }
     quantity_by_period = {
         period_key(row): int(row.quantity or 0)
-        for row in quantity_rows
+        for row in revenue_rows
     }
     paid_by_period = {
         period_key(row): float(row.paid or 0)
@@ -380,7 +374,8 @@ def _build_product_profit_rows(from_date, to_date):
         .order_by(ImportInvoice.imported_at, ImportInvoice.id, ImportInvoiceItem.id)
         .all()
     )
-    return calculate_product_profit_rows(sales, purchases)
+    # Both queries order by exactly the keys used by the profit calculator.
+    return calculate_product_profit_rows(sales, purchases, presorted=True)
 
 
 def _get_manager_sales_table_page(
@@ -397,15 +392,16 @@ def _get_manager_sales_table_page(
         rows = _build_customer_period_debts(from_date, to_date)
         key = 'debts'
     elif table == "revenue":
-        totals = _invoice_total_subquery()
+        totals = _invoice_total_subquery(include_quantity=True)
         invoice_filters = _completed_invoice_filters(from_date, to_date)
         area_id_expr = func.coalesce(SalesInvoice.sales_area_id, Customer.sales_area_id)
-        area_expr = func.coalesce(SalesArea.name, literal("ChÆ°a xÃ¡c Ä‘á»‹nh"))
+        area_expr = func.coalesce(SalesArea.name, literal("Chưa xác định"))
         revenue_rows = (
             db.session.query(
                 area_expr.label("area"),
                 func.count(SalesInvoice.id).label("orders"),
                 func.coalesce(func.sum(totals.c.gross_amount - SalesInvoice.discount_amount), 0).label("revenue"),
+                func.coalesce(func.sum(totals.c.quantity), 0).label("quantity"),
             )
             .join(Customer, Customer.id == SalesInvoice.customer_id)
             .join(totals, totals.c.invoice_id == SalesInvoice.id)
@@ -415,31 +411,18 @@ def _get_manager_sales_table_page(
             .order_by(func.sum(totals.c.gross_amount - SalesInvoice.discount_amount).desc())
             .all()
         )
-        quantity_rows = (
-            db.session.query(
-                area_expr.label("area"),
-                func.sum(SalesInvoiceItem.quantity).label("quantity"),
-            )
-            .join(SalesInvoice, SalesInvoice.id == SalesInvoiceItem.sales_invoice_id)
-            .join(Customer, Customer.id == SalesInvoice.customer_id)
-            .outerjoin(SalesArea, SalesArea.id == area_id_expr)
-            .filter(*invoice_filters)
-            .group_by(area_expr)
-            .all()
-        )
-        quantity_by_area = {row.area: int(row.quantity or 0) for row in quantity_rows}
         rows = [
             {
                 "area": row.area,
                 "orders": int(row.orders or 0),
                 "revenue": float(row.revenue or 0),
-                "quantity": quantity_by_area.get(row.area, 0),
+                "quantity": int(row.quantity or 0),
             }
             for row in revenue_rows
         ]
         key = "revenue_table"
     elif table == "inventory":
-        products = Product.query.order_by(Product.name.asc()).all()
+        products = db.session.query(Product.id, Product.name, Product.unit).order_by(Product.name.asc()).all()
         inventory_by_product = product_dao.calculate_inventory_for_products(
             [product.id for product in products],
             warehouse_id=inventory_warehouse_id,
@@ -632,7 +615,7 @@ def get_manager_sales_analytics_service(
         for row in revenue_rows
     ]
 
-    products = Product.query.order_by(Product.name.asc()).all()
+    products = db.session.query(Product.id, Product.name, Product.unit).order_by(Product.name.asc()).all()
     central_warehouse_id = get_central_warehouse().id
     inventory_by_product = product_dao.calculate_inventory_for_products(
         [product.id for product in products],

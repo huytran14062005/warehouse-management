@@ -118,7 +118,7 @@ def create_import_invoice():
 def record_supplier_payment(invoice_id):
     invoice = ImportInvoice.query.get(invoice_id)
     if not invoice:
-        raise NotFoundError("Phiáº¿u nháº­p khÃ´ng tá»“n táº¡i")
+        raise NotFoundError("Phiếu nhập không tồn tại")
     ensure_warehouse_access(request.employee_id, invoice.warehouse_id)
 
     data = request.get_json(silent=True) or {}
@@ -130,7 +130,7 @@ def record_supplier_payment(invoice_id):
         note=data.get("note", ""),
     )
     return jsonify({
-        "message": "Ghi nháº­n thanh toÃ¡n nhÃ  cung cáº¥p thÃ nh cÃ´ng",
+        "message": "Ghi nhận thanh toán nhà cung cấp thành công",
         "invoice": serialize_import_invoice(updated_invoice),
         "payment": {
             "id": payment.id,

@@ -160,7 +160,7 @@ def adjust_company_fund(employee_id, method, new_balance, expected_balance, reas
     return get_company_funds()
 
 
-def record_fund_movement(method, direction, amount, source_type, source_id, employee_id, description, note=None, occurred_at=None):
+def record_fund_movement(method, direction, amount, source_type, source_id, employee_id, description, note=None, occurred_at=None, entry_type=None):
     """Append one entry in the caller's transaction; never commit here.
 
     Historical payments are represented by the manager's opening balance and
@@ -186,7 +186,7 @@ def record_fund_movement(method, direction, amount, source_type, source_id, empl
         raise ValidationError("Số dư quỹ vượt giới hạn cho phép")
     fund.balance = next_balance
     entry = CompanyFundEntry(
-        method=method, direction=direction, entry_type=source_type,
+        method=method, direction=direction, entry_type=entry_type or source_type,
         amount=amount, balance_after=next_balance,
         source_type=source_type, source_id=source_id, employee_id=employee_id,
         description=description, note=note,

@@ -14,11 +14,17 @@ def get_or_create_supplier(name, address, phone=None):
         Supplier.address == address,
     ).first()
     if supplier is None:
-        supplier = next((
-            existing for existing in Supplier.query.all()
-            if existing.name.strip().casefold() == name.casefold()
-            and existing.address.strip().casefold() == address.casefold()
-        ), None)
+        # Keep Python's Unicode casefold/strip matching and the existing query
+        # order, but avoid materializing the entire supplier table at once.
+        rows = iter(Supplier.query.yield_per(500))
+        try:
+            for existing in rows:
+                if (existing.name.strip().casefold() == name.casefold()
+                        and existing.address.strip().casefold() == address.casefold()):
+                    supplier = existing
+                    break
+        finally:
+            rows.close()
     if supplier:
         return supplier, False
 

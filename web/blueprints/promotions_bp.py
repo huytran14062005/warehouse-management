@@ -7,9 +7,11 @@ from web.services.promotion_service import (
     create_promotion,
     delete_promotion,
     list_promotions,
+    list_promotions_page,
     serialize_promotion,
     update_promotion,
 )
+from web.utils.pagination import build_pagination, parse_paging_args
 
 
 promotions_bp = Blueprint("promotions", __name__, url_prefix="/api/promotions")
@@ -31,20 +33,27 @@ def get_promotions():
     subtotal = request.args.get("subtotal")
     total_quantity = request.args.get("total_quantity")
     evaluate = subtotal not in (None, "") and total_quantity not in (None, "")
-    promotions = list_promotions(include_inactive=include_inactive)
-    return jsonify(
-        {
-            "promotions": [
-                serialize_promotion(
-                    promotion,
-                    subtotal=subtotal if evaluate else None,
-                    total_quantity=total_quantity if evaluate else None,
-                )
-                for promotion in promotions
-            ],
-            "total": len(promotions),
-        }
-    ), 200
+    paged = "page" in request.args or "per_page" in request.args
+    if paged:
+        page, per_page = parse_paging_args(request.args.get("page"), request.args.get("per_page"))
+        promotions, total = list_promotions_page(include_inactive, page, per_page)
+    else:
+        promotions = list_promotions(include_inactive=include_inactive)
+        total = len(promotions)
+    result = {
+        "promotions": [
+            serialize_promotion(
+                promotion,
+                subtotal=subtotal if evaluate else None,
+                total_quantity=total_quantity if evaluate else None,
+            )
+            for promotion in promotions
+        ],
+        "total": total,
+    }
+    if paged:
+        result["pagination"] = build_pagination(page, per_page, total)
+    return jsonify(result), 200
 
 
 @promotions_bp.route("", methods=["POST"])

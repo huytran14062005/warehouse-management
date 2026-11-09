@@ -14,8 +14,9 @@ from sqlalchemy.exc import IntegrityError
 
 from web import db
 from web.models import (
-    ExpenseCategory, ImportInvoice, ImportInvoiceItem, InvoiceStatus, OperatingExpense,
-    PaymentMethod, PricingCycle, PricingPolicy, Product, SalesInvoice, SalesInvoiceItem,
+    CompanyFundEntry, ExpenseCategory, ExpenseType, FundEntryType, ImportInvoice,
+    ImportInvoiceItem, InvoiceStatus, OperatingExpense, PaymentMethod, PricingCycle,
+    PricingPolicy, Product, SalesInvoice, SalesInvoiceItem,
     vietnam_payment_time,
 )
 from web.services.company_fund_service import record_fund_movement
@@ -27,7 +28,7 @@ CATEGORIES = {
     "fuel": "Xăng xe",
     "vehicle_repair": "Sửa xe",
     "lodging": "Nhà nghỉ",
-    "sales_salary": "Lương nhân viên bán hàng",
+    "sales_salary": "Lương nhân viên",
     "overtime": "Tiền tăng ca",
     "depreciation": "Hao mòn, khấu hao",
     "other": "Chi phí bán hàng khác",
@@ -66,6 +67,10 @@ def _category_label(code, custom_labels=None):
         return custom_labels.get(code)
     category = db.session.get(ExpenseCategory, code)
     return category.name if category else None
+
+
+def expense_type_for(category):
+    return ExpenseType.FIXED_SALARY if category == "sales_salary" else ExpenseType.INCIDENTAL
 
 
 CENT = Decimal("0.01")
@@ -113,7 +118,7 @@ def parse_page(value):
     return page
 
 
-def create_expense(employee_id, payload):
+def _expense_details(payload, existing=None):
     category = str(payload.get("category") or "").strip()
     category_label = _category_label(category)
     if category_label is None:
@@ -136,12 +141,27 @@ def create_expense(employee_id, payload):
             raise ValidationError("Mã đơn hàng không hợp lệ")
         if invoice_id <= 0 or not db.session.get(SalesInvoice, invoice_id):
             raise ValidationError("Đơn hàng liên quan không tồn tại")
+    legacy_salary_link = (
+        existing is not None and existing.category == "sales_salary"
+        and existing.invoice_id == invoice_id
+    )
+    if expense_type_for(category) == ExpenseType.FIXED_SALARY and invoice_id is not None and not legacy_salary_link:
+        raise ValidationError("Lương nhân viên là chi phí chung, không gắn với đơn bán")
+    return {
+        "category": category, "category_label": category_label, "amount": amount,
+        "occurred_on": occurred_on, "description": description, "invoice_id": invoice_id,
+    }
+
+
+def create_expense(employee_id, payload):
+    details = _expense_details(payload)
     payment_method = payload.get("payment_method") or None
     if payment_method not in (None, PaymentMethod.CASH.value, PaymentMethod.BANK_TRANSFER.value):
         raise ValidationError("Phương thức thanh toán không hợp lệ")
     expense = OperatingExpense(
-        category=category, amount=amount, occurred_on=occurred_on,
-        invoice_id=invoice_id, description=description,
+        category=details["category"], amount=details["amount"],
+        occurred_on=details["occurred_on"], invoice_id=details["invoice_id"],
+        description=details["description"],
         payment_method=payment_method, created_by_id=employee_id,
     )
     try:
@@ -149,10 +169,55 @@ def create_expense(employee_id, payload):
         db.session.flush()
         if payment_method:
             record_fund_movement(
-                payment_method, "out", amount, "operating_expense", expense.id,
-                employee_id, f"{category_label} #{expense.id}", description,
+                payment_method, "out", details["amount"], "operating_expense", expense.id,
+                employee_id, f"{details['category_label']} #{expense.id}", details["description"],
                 occurred_at=vietnam_payment_time(),
             )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+    return serialize_expense(expense)
+
+
+def update_expense(employee_id, expense_id, payload):
+    try:
+        expense = OperatingExpense.query.filter_by(id=expense_id).with_for_update().first()
+        if expense is None:
+            raise NotFoundError("Khoản chi không tồn tại")
+        if expense.voided_at:
+            raise ValidationError("Không thể sửa khoản chi đã hủy", status_code=409)
+        if "payment_method" in payload and payload["payment_method"] != expense.payment_method:
+            raise ValidationError("Trạng thái ghi quỹ được thay đổi bằng thao tác Ghi đã chi hoặc Hủy khoản chi")
+        details = _expense_details(payload, expense)
+        old_amount = money(expense.amount)
+        difference = details["amount"] - old_amount
+        if difference and expense.payment_method:
+            reason = str(payload.get("reason") or "").strip()
+            if not reason or len(reason) > 500:
+                raise ValidationError("Cần nhập lý do sửa số tiền đã chi, tối đa 500 ký tự")
+            previous_revisions = db.session.query(CompanyFundEntry.source_type).filter(
+                CompanyFundEntry.source_id == expense.id,
+                CompanyFundEntry.source_type.like("expense_edit_%"),
+            ).all()
+            prefix = "expense_edit_"
+            revision = max(
+                (int(source[len(prefix):]) for (source,) in previous_revisions
+                 if source.startswith(prefix) and source[len(prefix):].isdecimal()),
+                default=0,
+            ) + 1
+            record_fund_movement(
+                expense.payment_method, "out" if difference > 0 else "in", abs(difference),
+                f"{prefix}{revision}", expense.id, employee_id,
+                f"Điều chỉnh khoản chi #{expense.id}", reason,
+                occurred_at=vietnam_payment_time(),
+                entry_type=FundEntryType.OPERATING_EXPENSE_ADJUSTMENT.value,
+            )
+        expense.category = details["category"]
+        expense.amount = details["amount"]
+        expense.occurred_on = details["occurred_on"]
+        expense.invoice_id = details["invoice_id"]
+        expense.description = details["description"]
         db.session.commit()
     except Exception:
         db.session.rollback()
@@ -163,6 +228,7 @@ def create_expense(employee_id, payload):
 def serialize_expense(row, category_labels=None):
     return {
         "id": row.id, "category": row.category,
+        "expense_type": expense_type_for(row.category).value,
         "category_label": _category_label(row.category, category_labels) or row.category,
         "amount": float(row.amount), "occurred_on": row.occurred_on.isoformat(),
         "invoice_id": row.invoice_id, "description": row.description,
@@ -222,12 +288,18 @@ def pay_expense(employee_id, expense_id, payment_method):
     return serialize_expense(expense)
 
 
-def list_expenses(from_value=None, to_value=None, page_value=None):
+def list_expenses(from_value=None, to_value=None, page_value=None, expense_type=None):
     start, end = parse_period(from_value, to_value)
     page = parse_page(page_value)
+    if expense_type not in (None, ExpenseType.INCIDENTAL.value, ExpenseType.FIXED_SALARY.value):
+        raise ValidationError("Nhóm chi phí không hợp lệ")
     query = OperatingExpense.query.filter(
         OperatingExpense.occurred_on >= start, OperatingExpense.occurred_on <= end,
     )
+    if expense_type == ExpenseType.FIXED_SALARY.value:
+        query = query.filter(OperatingExpense.category == "sales_salary")
+    elif expense_type == ExpenseType.INCIDENTAL.value:
+        query = query.filter(OperatingExpense.category != "sales_salary")
     total = query.count()
     rows = query.order_by(OperatingExpense.occurred_on.desc(), OperatingExpense.id.desc()).offset((page - 1) * 20).limit(20).all()
     custom_codes = {row.category for row in rows if row.category not in CATEGORIES}
@@ -351,8 +423,17 @@ def _pricing_row(product, policy, unit_cost, expense_total, planned_value):
 
 
 def _pricing_inputs():
-    ids = [product_id for (product_id,) in db.session.query(Product.id).all()]
-    policies = {row.product_id: row for row in PricingPolicy.query.all()}
+    product_policies = db.session.query(
+        Product.id.label("id"),
+        PricingPolicy.product_id.label("policy_product_id"),
+        PricingPolicy.planned_quantity,
+        PricingPolicy.markup_percent.label("markup_percent"),
+        PricingPolicy.desired_profit_per_unit,
+    ).outerjoin(PricingPolicy, PricingPolicy.product_id == Product.id).all()
+    ids = [row.id for row in product_policies]
+    policies = {
+        row.id: row for row in product_policies if row.policy_product_id is not None
+    }
     recent_start = datetime.combine(vietnam_payment_time().date() - timedelta(days=89), datetime.min.time())
     recent_costs = _purchase_costs(ids, start=recent_start)
     fallback_costs = _purchase_costs([pid for pid in ids if pid not in recent_costs])
@@ -363,25 +444,28 @@ def _pricing_inputs():
                              for pid in ids if costs[pid] is not None), Decimal("0"))
     start = _pricing_cycle_start()
     end = vietnam_payment_time().date()
-    _, operating_expenses = _expense_totals(start, end)
+    expenses_by_category, operating_expenses = _expense_totals(start, end)
     shipping = _shipping_total(start, end)
-    return policies, costs, planned_value, start, operating_expenses, shipping
+    return policies, costs, planned_value, start, expenses_by_category, operating_expenses, shipping
 
 
 def pricing_catalog(page_value=None, keyword=None):
     page = parse_page(page_value)
     keyword = str(keyword or "").strip()[:100]
-    policies, costs, planned_value, start, operating_expenses, shipping = _pricing_inputs()
+    policies, costs, planned_value, start, expenses_by_category, operating_expenses, shipping = _pricing_inputs()
     query = Product.query
     if keyword:
         query = query.filter(Product.name.ilike(f"%{keyword}%"))
     total = query.count()
     products = query.order_by(Product.name, Product.id).offset((page - 1) * 20).limit(20).all()
     expense_total = operating_expenses + shipping
+    salary_expenses = expenses_by_category.get("sales_salary", Decimal("0"))
     return {
         "products": [_pricing_row(product, policies.get(product.id), costs.get(product.id), expense_total, planned_value) for product in products],
         "pagination": build_pagination(page, 20, total),
         "pricing_operating_expenses": float(operating_expenses),
+        "pricing_salary_expenses": float(salary_expenses),
+        "pricing_incidental_expenses": float(operating_expenses - salary_expenses),
         "pricing_shipping": float(shipping),
         "pricing_period_start": start.isoformat(),
         "pricing_planned_value": str(planned_value),
@@ -439,7 +523,7 @@ def apply_suggested_price(product_id, expected_price, expected_suggested_price):
         raise ValidationError("Giá hiện tại không hợp lệ")
     if expected != money(product.default_sale_price):
         raise ValidationError("Giá sản phẩm đã thay đổi; hãy tải lại đề xuất", status_code=409)
-    policies, costs, planned_value, _, operating_expenses, shipping = _pricing_inputs()
+    policies, costs, planned_value, _, _, operating_expenses, shipping = _pricing_inputs()
     unit_cost = costs.get(product_id)
     if unit_cost is None:
         raise ValidationError("Chưa có giá nhập để đề xuất giá bán")

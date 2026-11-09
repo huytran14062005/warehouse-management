@@ -113,8 +113,9 @@ def cached_query(scope, parameters, ttl_seconds, load):
 
     result = load()
     try:
-        if _generation(client) == generation:
-            client.set(key, current_app.json.dumps(result), ttl=ttl_seconds)
+        # A generation rotated while load() ran makes this key unreachable.
+        # The next reader uses the new generation, so another GET is unnecessary.
+        client.set(key, current_app.json.dumps(result), ttl=ttl_seconds)
     except Exception:
         current_app.logger.warning("Cache write unavailable; returning MySQL result")
     return result

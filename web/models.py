@@ -58,11 +58,17 @@ class PaymentMethod(UserEnum):
     BANK_TRANSFER = "bank_transfer"
 
 
+class ExpenseType(UserEnum):
+    INCIDENTAL = "incidental"
+    FIXED_SALARY = "fixed_salary"
+
+
 class FundEntryType(UserEnum):
     OPENING = "opening"
     CUSTOMER_RECEIPT = "customer_receipt"
     SUPPLIER_PAYMENT = "supplier_payment"
     DELIVERY_SHIPPING = "delivery_shipping"
+    OPERATING_EXPENSE_ADJUSTMENT = "operating_expense_adjustment"
 
 
 class DamageReportStatus(UserEnum):

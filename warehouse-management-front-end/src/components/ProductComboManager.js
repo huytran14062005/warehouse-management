@@ -21,8 +21,18 @@ function getCalculatedComboPrice(items, products) {
   }, 0));
 }
 
+function normalizeComboName(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("vi")
+    .replace(/đ/g, "d");
+}
+
 function ProductComboManager({ onClose }) {
   const [combos, setCombos] = useState([]);
+  const [searchInput, setSearchInput] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
   const [products, setProducts] = useState([]);
   const [draft, setDraft] = useState(newDraft);
   const [editingId, setEditingId] = useState(null);
@@ -31,6 +41,11 @@ function ProductComboManager({ onClose }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useNotificationState();
   const [notice, setNotice] = useNotificationState();
+
+  useEffect(() => {
+    const timer = setTimeout(() => setSearchTerm(normalizeComboName(searchInput.trim())), 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   useEffect(() => {
     let active = true;
@@ -120,6 +135,10 @@ function ProductComboManager({ onClose }) {
       const savedCombo = response.data?.combo;
       setCombos((current) => [...current.filter((combo) => combo.id !== savedCombo.id), savedCombo]
         .sort((first, second) => first.name.localeCompare(second.name, "vi")));
+      if (!editingId) {
+        setSearchInput("");
+        setSearchTerm("");
+      }
       setEditingId(savedCombo.id);
       setNotice(editingId ? "Đã cập nhật combo." : "Đã tạo combo. Nhân viên có thể chọn bộ này khi lập đơn.");
     } catch (requestError) {
@@ -156,6 +175,9 @@ function ProductComboManager({ onClose }) {
   const displayedSalePrice = draft.sale_price == null
     ? (calculatedPrice ? String(calculatedPrice) : "")
     : draft.sale_price;
+  const filteredCombos = searchTerm
+    ? combos.filter((combo) => normalizeComboName(combo.name).includes(searchTerm))
+    : combos;
 
   return createPortal(
     <div className="combo-manager-overlay">
@@ -174,12 +196,21 @@ function ProductComboManager({ onClose }) {
           <aside className="combo-manager-sidebar">
             <div className="combo-manager-sidebar-heading">
               <strong>Combo đã tạo</strong>
-              <span>{combos.length}</span>
+              <span title={searchTerm ? `Tổng cộng ${combos.length} combo` : undefined}>{filteredCombos.length}</span>
             </div>
             <button type="button" className="combo-manager-new" onClick={startNew}>+ Tạo combo mới</button>
-            {loading ? <p className="combo-manager-muted">Đang tải combo...</p> : combos.length ? (
+            <input
+              type="search"
+              className="combo-manager-search"
+              placeholder="Tìm combo theo tên"
+              aria-label="Tìm combo theo tên"
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+              maxLength={150}
+            />
+            {loading ? <p className="combo-manager-muted">Đang tải combo...</p> : filteredCombos.length ? (
               <div className="combo-manager-list">
-                {combos.map((combo) => (
+                {filteredCombos.map((combo) => (
                   <div key={combo.id} className={`combo-manager-list-item${editingId === combo.id ? " is-selected" : ""}`}>
                     <button type="button" onClick={() => startEdit(combo)}>
                       <strong>{combo.name}</strong>
@@ -198,7 +229,7 @@ function ProductComboManager({ onClose }) {
                   </div>
                 ))}
               </div>
-            ) : <p className="combo-manager-muted">Chưa có combo. Tạo bộ đầu tiên ở bên phải.</p>}
+            ) : <p className="combo-manager-muted">{combos.length ? "Không tìm thấy combo phù hợp." : "Chưa có combo. Tạo bộ đầu tiên ở bên phải."}</p>}
           </aside>
 
           <form className="combo-manager-form" onSubmit={save}>

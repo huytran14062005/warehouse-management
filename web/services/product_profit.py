@@ -19,20 +19,18 @@ def _rounded(value):
     return value.quantize(CENT, rounding=ROUND_HALF_UP)
 
 
-def calculate_product_profit_rows(sale_lines, import_lines):
+def calculate_product_profit_rows(sale_lines, import_lines, *, presorted=False):
     """Return one row per product, including missing-cost coverage.
 
     Both inputs are lightweight rows with named attributes. Completed sales are
     selected by the caller using the report's sale-date filter. Import rows may
     come from any warehouse because product cost is measured company-wide.
     """
-    sales = sorted(
-        sale_lines,
-        key=lambda row: (row.sold_at, row.invoice_id, row.line_id),
+    sales = sale_lines if presorted else sorted(
+        sale_lines, key=lambda row: (row.sold_at, row.invoice_id, row.line_id),
     )
-    purchases = sorted(
-        import_lines,
-        key=lambda row: (row.imported_at, row.import_id, row.import_line_id),
+    purchases = import_lines if presorted else sorted(
+        import_lines, key=lambda row: (row.imported_at, row.import_id, row.import_line_id),
     )
     purchase_index = 0
     purchase_totals = {}

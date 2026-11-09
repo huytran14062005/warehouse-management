@@ -6,7 +6,8 @@ from web.models import EmployeeRole
 from web.services.pricing_service import (
     apply_suggested_price, create_expense, create_expense_category,
     list_expense_categories, list_expenses, pricing_catalog,
-    pay_expense, profitability_report, save_pricing_cycle, save_pricing_policy, void_expense,
+    pay_expense, profitability_report, save_pricing_cycle, save_pricing_policy,
+    update_expense, void_expense,
 )
 from web.utils.query_cache import cached_query
 
@@ -39,6 +40,7 @@ def expenses():
     params = request.args
     return jsonify(cached_query("pricing-expenses", params.to_dict(flat=True), 30, lambda: list_expenses(
         params.get("from_date"), params.get("to_date"), params.get("page"),
+        params.get("expense_type"),
     ))), 200
 
 
@@ -49,6 +51,15 @@ def expenses():
 def add_expense():
     expense = create_expense(request.employee_id, request.get_json(silent=True) or {})
     return jsonify({"expense": expense, "message": "Đã ghi nhận chi phí"}), 201
+
+
+@pricing_bp.route("/expenses/<int:expense_id>", methods=["PUT"])
+@verify_token
+@verify_role(EmployeeRole.QUAN_LY)
+@handle_api_errors
+def edit_expense(expense_id):
+    expense = update_expense(request.employee_id, expense_id, request.get_json(silent=True) or {})
+    return jsonify({"expense": expense, "message": "Đã cập nhật khoản chi"}), 200
 
 
 @pricing_bp.route("/expenses/<int:expense_id>/void", methods=["POST"])

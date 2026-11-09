@@ -13,7 +13,7 @@ const CATEGORIES = {
   fuel: "Xăng xe",
   vehicle_repair: "Sửa xe",
   lodging: "Nhà nghỉ",
-  sales_salary: "Lương nhân viên bán hàng",
+  sales_salary: "Lương nhân viên",
   overtime: "Tiền tăng ca",
   depreciation: "Hao mòn, khấu hao",
   other: "Chi phí bán hàng khác",
@@ -49,14 +49,24 @@ function formatExpenseDate(value) {
 }
 
 function PricingRow({ row, onSave, onApply, busy }) {
-  const [profit, setProfit] = useState(String(row.desired_profit_per_unit ?? ""));
-  const [plannedQuantity, setPlannedQuantity] = useState(String(row.planned_quantity));
+  const [profit, setProfit] = useState(
+    String(row.desired_profit_per_unit ?? ""),
+  );
+  const [plannedQuantity, setPlannedQuantity] = useState(
+    String(row.planned_quantity),
+  );
   useEffect(() => {
     setProfit(String(row.desired_profit_per_unit ?? ""));
     setPlannedQuantity(String(row.planned_quantity));
   }, [row.desired_profit_per_unit, row.planned_quantity]);
-  const changed = Number(profit) !== row.desired_profit_per_unit || plannedQuantity !== String(row.planned_quantity);
-  const valid = profit !== "" && Number(profit) >= 0 && /^[0-9]+$/.test(plannedQuantity) && /[1-9]/.test(plannedQuantity);
+  const changed =
+    Number(profit) !== row.desired_profit_per_unit ||
+    plannedQuantity !== String(row.planned_quantity);
+  const valid =
+    profit !== "" &&
+    Number(profit) >= 0 &&
+    /^[0-9]+$/.test(plannedQuantity) &&
+    /[1-9]/.test(plannedQuantity);
   return (
     <tr>
       <th scope="row">
@@ -85,7 +95,9 @@ function PricingRow({ row, onSave, onApply, busy }) {
           pattern="[0-9]*"
           aria-label={`Sản lượng dự kiến ${row.name}`}
           value={plannedQuantity}
-          onChange={(event) => setPlannedQuantity(event.target.value.replace(/\D/g, ""))}
+          onChange={(event) =>
+            setPlannedQuantity(event.target.value.replace(/\D/g, ""))
+          }
         />
       </td>
       <td>
@@ -110,7 +122,12 @@ function PricingRow({ row, onSave, onApply, busy }) {
           <button
             type="button"
             disabled={busy || !changed || !valid}
-            onClick={() => onSave(row.product_id, { planned_quantity: plannedQuantity, desired_profit_per_unit: Number(profit) })}
+            onClick={() =>
+              onSave(row.product_id, {
+                planned_quantity: plannedQuantity,
+                desired_profit_per_unit: Number(profit),
+              })
+            }
           >
             Lưu kế hoạch
           </button>
@@ -148,11 +165,14 @@ export default function PricingManagement() {
     from_date: monthStart(),
     to_date: businessDate(),
   });
+  const [expenseType, setExpenseType] = useState("incidental");
   const [category, setCategory] = useState("fuel");
   const [categories, setCategories] = useState(() =>
     Object.entries(CATEGORIES).map(([value, label]) => ({ value, label })),
   );
   const [expenseModalOpen, setExpenseModalOpen] = useState(false);
+  const [editingExpense, setEditingExpense] = useState(null);
+  const [editReason, setEditReason] = useState("");
   const [addingCategory, setAddingCategory] = useState(false);
   const [categoryName, setCategoryName] = useState("");
   const [expenseError, setExpenseError] = useState("");
@@ -179,6 +199,8 @@ export default function PricingManagement() {
     products: [],
     pagination: { total_pages: 1 },
     pricing_operating_expenses: 0,
+    pricing_salary_expenses: 0,
+    pricing_incidental_expenses: 0,
     pricing_shipping: 0,
     pricing_period_start: "",
     pricing_planned_value: 0,
@@ -194,13 +216,22 @@ export default function PricingManagement() {
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const formIsSalary =
+    (editingExpense?.expense_type || expenseType) === "fixed_salary";
+  const incidentCategories = categories.filter(
+    (item) => item.value !== "sales_salary",
+  );
+  const paidAmountChanged = Boolean(
+    editingExpense?.payment_method &&
+    Number(amount) !== Number(editingExpense.amount),
+  );
 
   const loadExpenses = useCallback(async () => {
     const response = await authApis().get(endpoints.pricingExpenses, {
-      params: { ...period, page: expensePage },
+      params: { ...period, page: expensePage, expense_type: expenseType },
     });
     setExpenses(response.data);
-  }, [period, expensePage]);
+  }, [period, expensePage, expenseType]);
 
   const loadCategories = useCallback(async () => {
     const response = await authApis().get(endpoints.pricingExpenseCategories);
@@ -225,6 +256,7 @@ export default function PricingManagement() {
   useEffect(() => {
     if (!isManager) return;
     setLoadingExpenses(true);
+    setExpenses({ expenses: [], pagination: { total_pages: 1 } });
     loadExpenses()
       .catch((requestError) => setError(getApiError(requestError)))
       .finally(() => setLoadingExpenses(false));
@@ -249,75 +281,131 @@ export default function PricingManagement() {
   }, [keywordDraft, keyword]);
 
   useEffect(() => {
-    if (!expenseModalOpen) return undefined;
+    if (!expenseModalOpen || formIsSalary) return undefined;
     let active = true;
     setInvoiceLoading(true);
     setInvoiceSearchError("");
-    const timer = setTimeout(async () => {
-      try {
-        const response = await authApis().get(endpoints.salesInvoices, {
-          params: { page: 1, per_page: 20, keyword: invoiceSearch.trim() || undefined },
-        });
-        if (active) setInvoiceResults(response.data.invoices || []);
-      } catch (requestError) {
-        if (active) {
-          setInvoiceResults([]);
-          setInvoiceSearchError(getApiError(requestError));
+    const timer = setTimeout(
+      async () => {
+        try {
+          const response = await authApis().get(endpoints.salesInvoices, {
+            params: {
+              page: 1,
+              per_page: 20,
+              keyword: invoiceSearch.trim() || undefined,
+            },
+          });
+          if (active) setInvoiceResults(response.data.invoices || []);
+        } catch (requestError) {
+          if (active) {
+            setInvoiceResults([]);
+            setInvoiceSearchError(getApiError(requestError));
+          }
+        } finally {
+          if (active) setInvoiceLoading(false);
         }
-      } finally {
-        if (active) setInvoiceLoading(false);
-      }
-    }, invoiceSearch.trim() ? 250 : 0);
+      },
+      invoiceSearch.trim() ? 250 : 0,
+    );
     return () => {
       active = false;
       clearTimeout(timer);
     };
-  }, [expenseModalOpen, invoiceSearch]);
+  }, [expenseModalOpen, formIsSalary, invoiceSearch]);
 
   const invoiceOptions = [
     { value: "", label: "Không gắn đơn (chi phí chung)" },
     ...(!invoiceSearch.trim() && selectedInvoice ? [selectedInvoice] : []),
     ...invoiceResults
-      .filter((invoice) => invoice.id !== selectedInvoice?.value || invoiceSearch.trim())
+      .filter(
+        (invoice) =>
+          invoice.id !== selectedInvoice?.value || invoiceSearch.trim(),
+      )
       .map((invoice) => ({
         value: invoice.id,
         label: `${invoice.note?.trim() || `Đơn #${invoice.id}`} - ${invoice.customer?.full_name || "Khách hàng"}`,
       })),
   ];
 
+  const openExpenseModal = (row = null) => {
+    setEditingExpense(row);
+    setCategory(
+      row?.category ||
+        (expenseType === "fixed_salary" ? "sales_salary" : "fuel"),
+    );
+    setAmount(row ? String(row.amount) : "");
+    setOccurredOn(row?.occurred_on || businessDate());
+    setDescription(row?.description || "");
+    setInvoiceId(row?.invoice_id ? String(row.invoice_id) : "");
+    setSelectedInvoice(
+      row?.invoice_id
+        ? { value: row.invoice_id, label: `Đơn #${row.invoice_id}` }
+        : null,
+    );
+    setInvoiceSearch("");
+    setPaymentMethod(row?.payment_method || "");
+    setEditReason("");
+    setExpenseError("");
+    setExpenseMessage("");
+    setAddingCategory(false);
+    setExpenseModalOpen(true);
+  };
+
+  const closeExpenseModal = () => {
+    setExpenseModalOpen(false);
+    setEditingExpense(null);
+    setAddingCategory(false);
+    setCategoryName("");
+  };
+
   const submitExpense = async () => {
-    if (invoiceSearch.trim()) {
+    if (!formIsSalary && invoiceSearch.trim()) {
       setExpenseError("Chọn một đơn trong danh sách hoặc chọn chi phí chung.");
       return;
     }
-    if (!category || !amount || !occurredOn || !description.trim()) {
-      setExpenseError(
-        "Nhập đầy đủ loại, số tiền, ngày và nội dung chi phí.",
-      );
+    if (
+      (!formIsSalary && !category) ||
+      !amount ||
+      !occurredOn ||
+      !description.trim()
+    ) {
+      setExpenseError("Nhập đầy đủ loại, số tiền, ngày và nội dung chi phí.");
+      return;
+    }
+    if (paidAmountChanged && !editReason.trim()) {
+      setExpenseError("Nhập lý do sửa số tiền đã chi để lưu vào sổ quỹ.");
       return;
     }
     setBusy(true);
     setExpenseError("");
     setSuccess("");
     try {
-      await authApis().post(endpoints.pricingExpenses, {
-        category,
+      const payload = {
+        category: formIsSalary ? "sales_salary" : category,
         amount: Number(amount),
         occurred_on: occurredOn,
-        invoice_id: invoiceId || null,
+        invoice_id: formIsSalary
+          ? editingExpense?.invoice_id || null
+          : invoiceId || null,
         description: description.trim(),
-        payment_method: paymentMethod || null,
-      });
-      setAmount("");
-      setDescription("");
-      setInvoiceId("");
-      setSelectedInvoice(null);
-      setInvoiceSearch("");
-      setPaymentMethod("");
-      setExpenseModalOpen(false);
-      setAddingCategory(false);
-      setExpenseMessage("");
-      setSuccess("Đã ghi nhận chi phí.");
+      };
+      if (editingExpense) {
+        await authApis().put(endpoints.pricingExpense(editingExpense.id), {
+          ...payload,
+          reason: paidAmountChanged ? editReason.trim() : undefined,
+        });
+      } else {
+        await authApis().post(endpoints.pricingExpenses, {
+          ...payload,
+          payment_method: paymentMethod || null,
+        });
+      }
+      closeExpenseModal();
+      setSuccess(
+        editingExpense
+          ? "Đã cập nhật khoản chi và tính lại giá đề xuất."
+          : "Đã ghi nhận chi phí.",
+      );
       try {
         await Promise.all([loadExpenses(), loadCatalog()]);
       } catch (refreshError) {
@@ -360,7 +448,9 @@ export default function PricingManagement() {
     setSuccess("");
     try {
       await authApis().put(endpoints.pricingPolicy(productId), policy);
-      setSuccess("Đã lưu sản lượng dự kiến và tiền lời. Giá đề xuất đã tính lại.");
+      setSuccess(
+        "Đã lưu sản lượng dự kiến và tiền lời. Giá đề xuất đã tính lại.",
+      );
       await loadCatalog();
     } catch (requestError) {
       setError(getApiError(requestError));
@@ -375,7 +465,9 @@ export default function PricingManagement() {
     setError("");
     setSuccess("");
     try {
-      await authApis().put(endpoints.pricingCycle, { start_date: cycleStartDraft });
+      await authApis().put(endpoints.pricingCycle, {
+        start_date: cycleStartDraft,
+      });
       setSuccess("Đã cập nhật kỳ tính giá.");
       await loadCatalog();
     } catch (requestError) {
@@ -460,7 +552,12 @@ export default function PricingManagement() {
         <h1>Chi phí &amp; giá bán</h1>
       </header>
       <AutoDismissMessage message={error} className="pricing-error" />
-      <AutoDismissMessage message={success} type="success" role="status" className="pricing-success" />
+      <AutoDismissMessage
+        message={success}
+        type="success"
+        role="status"
+        className="pricing-success"
+      />
 
       <section
         className="pricing-panel"
@@ -468,28 +565,49 @@ export default function PricingManagement() {
       >
         <div className="pricing-section-head">
           <div>
-            <h2 id="pricing-expense-heading">Chi phí phát sinh</h2>
+            <h2 id="pricing-expense-heading">Chi phí kinh doanh</h2>
             <p>
-              Gắn mã đơn nếu chi phí chỉ thuộc đơn đó. Để trống nếu đây là chi
-              phí chung trong kỳ.
+              Ghi riêng chi phí phát sinh và lương nhân viên. Cả hai được phân
+              bổ vào giá bán đề xuất trong kỳ tính giá.
             </p>
           </div>
           <button
             type="button"
             className="pricing-primary"
-            onClick={() => {
-              setExpenseError("");
-              setExpenseMessage("");
-              setExpenseModalOpen(true);
-            }}
+            onClick={() => openExpenseModal()}
           >
-            + Ghi chi phí
+            {expenseType === "fixed_salary" ? "+ Ghi lương" : "+ Ghi chi phí"}
           </button>
         </div>
-        <p className="pricing-hint">
-          Phí giao bên thứ ba đã có trên đơn bán được tính tự động. Không nhập
-          lại tại đây. Khoản chi ghi quỹ sẽ làm giảm số dư quỹ ngay khi lưu.
-        </p>
+        <div
+          className="pricing-expense-tabs"
+          role="group"
+          aria-label="Nhóm chi phí"
+        >
+          <button
+            type="button"
+            className={expenseType === "incidental" ? "is-active" : ""}
+            aria-pressed={expenseType === "incidental"}
+            onClick={() => {
+              setExpensePage(1);
+              setExpenseType("incidental");
+            }}
+          >
+            Chi phí phát sinh
+          </button>
+          <button
+            type="button"
+            className={expenseType === "fixed_salary" ? "is-active" : ""}
+            aria-pressed={expenseType === "fixed_salary"}
+            onClick={() => {
+              setExpensePage(1);
+              setExpenseType("fixed_salary");
+            }}
+          >
+            Lương nhân viên (cố định)
+          </button>
+        </div>
+
         <form
           className="pricing-period"
           onSubmit={(event) => {
@@ -556,6 +674,13 @@ export default function PricingManagement() {
                       <span title={row.void_reason || ""}>Đã hủy</span>
                     ) : (
                       <div className="pricing-row-actions">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => openExpenseModal(row)}
+                        >
+                          Sửa
+                        </button>
                         {!row.payment_method && (
                           <button
                             type="button"
@@ -588,7 +713,9 @@ export default function PricingManagement() {
                   <td colSpan="7">
                     {loadingExpenses
                       ? "Đang tải chi phí..."
-                      : "Chưa có chi phí trong kỳ này."}
+                      : expenseType === "fixed_salary"
+                        ? "Chưa có lương nhân viên trong khoảng ngày này."
+                        : "Chưa có chi phí phát sinh trong khoảng ngày này."}
                   </td>
                 </tr>
               )}
@@ -611,8 +738,8 @@ export default function PricingManagement() {
           <div>
             <h2 id="pricing-catalog-heading">Giá bán đề xuất</h2>
             <p>
-              Giá đề xuất = Giá mua + phí đưa hàng về kho + chi phí kinh doanh phân bổ + tiền lời mong muốn;
-              làm tròn lên 1.000 đ.
+              Giá đề xuất = Giá mua + phí đưa hàng về kho + chi phí kinh doanh
+              phân bổ + tiền lời mong muốn; làm tròn lên 1.000 đ.
             </p>
           </div>
           <form
@@ -633,32 +760,67 @@ export default function PricingManagement() {
           </form>
         </div>
         <p className="pricing-hint">
-          Chi phí chung từ ngày bắt đầu kỳ đến hôm nay, gồm các khoản chi chưa hủy và phí giao bên thứ ba,
-          được phân bổ theo giá trị nhập dự kiến (giá nhập đã gồm phí về kho × sản lượng dự kiến).
-          Không cần đơn bán hoàn thành. Sản lượng mặc định là 100 cho mỗi sản phẩm; hãy chỉnh theo kế hoạch thực tế.
-          Tiền lời ban đầu được quy đổi từ % lãi cũ (hoặc 20% nếu chưa đặt); lưu kế hoạch để cố định số tiền lời trên mỗi đơn vị.
+          Chi phí từ ngày bắt đầu kỳ đến hôm nay, gồm lương nhân viên, chi phí
+          phát sinh chưa hủy và phí giao bên thứ ba, được phân bổ theo giá trị
+          nhập dự kiến (giá nhập đã gồm phí về kho × sản lượng dự kiến). Không
+          cần đơn bán hoàn thành. Sản lượng mặc định là 100 cho mỗi sản phẩm;
+          hãy chỉnh theo kế hoạch thực tế. Tiền lời ban đầu được quy đổi từ %
+          lãi cũ (hoặc 20% nếu chưa đặt); lưu kế hoạch để cố định số tiền lời
+          trên mỗi đơn vị.
         </p>
         <form className="pricing-cycle-form" onSubmit={saveCycle}>
           <label htmlFor="pricing-cycle-start">Tính chi phí từ ngày</label>
-          <input id="pricing-cycle-start" type="date" value={cycleStartDraft} max={businessDate()}
-            onChange={(event) => setCycleStartDraft(event.target.value)} required />
-          <button type="submit" disabled={busy || !cycleStartDraft || cycleStartDraft === catalog.pricing_period_start}>
+          <input
+            id="pricing-cycle-start"
+            type="date"
+            value={cycleStartDraft}
+            max={businessDate()}
+            onChange={(event) => setCycleStartDraft(event.target.value)}
+            required
+          />
+          <button
+            type="submit"
+            disabled={
+              busy ||
+              !cycleStartDraft ||
+              cycleStartDraft === catalog.pricing_period_start
+            }
+          >
             Lưu kỳ tính giá
           </button>
-          <span>
-            Tổng chi phí kỳ này: {formatCurrency((catalog.pricing_operating_expenses || 0) + (catalog.pricing_shipping || 0))}
-          </span>
+          <div className="pricing-cost-summary">
+            <span>
+              Lương: {formatCurrency(catalog.pricing_salary_expenses || 0)}
+            </span>
+            <span>
+              Phát sinh:{" "}
+              {formatCurrency(catalog.pricing_incidental_expenses || 0)}
+            </span>
+            <span>
+              Giao bên thứ ba: {formatCurrency(catalog.pricing_shipping || 0)}
+            </span>
+            <strong>
+              Tổng kỳ này:{" "}
+              {formatCurrency(
+                (catalog.pricing_operating_expenses || 0) +
+                  (catalog.pricing_shipping || 0),
+              )}
+            </strong>
+          </div>
         </form>
         <p className="pricing-hint">
-          Chi phí đã ghi sẽ tiếp tục nằm trong kỳ này cho đến khi bạn chủ động đổi ngày bắt đầu.
-          Chỉ bắt đầu kỳ mới khi đã xem xét các chi phí cũ đã được bù đắp.
+          Chi phí đã ghi sẽ tiếp tục nằm trong kỳ này cho đến khi bạn chủ động
+          đổi ngày bắt đầu. Chỉ bắt đầu kỳ mới khi đã xem xét các chi phí cũ đã
+          được bù đắp.
         </p>
         <div className="pricing-table-wrap">
           <table>
             <thead>
               <tr>
                 <th>Sản phẩm</th>
-                <th title="Bình quân từ phiếu nhập, gồm phí đưa hàng về kho được chia theo giá trị từng dòng.">Giá nhập về kho</th>
+                <th title="Bình quân từ phiếu nhập, gồm phí đưa hàng về kho được chia theo giá trị từng dòng.">
+                  Giá nhập về kho
+                </th>
                 <th>Chi phí / đơn vị</th>
                 <th>Sản lượng dự kiến</th>
                 <th>Tiền lời / đơn vị</th>
@@ -702,40 +864,44 @@ export default function PricingManagement() {
       <ConfirmDialog
         open={expenseModalOpen}
         className="pricing-expense-dialog"
-        title="Ghi chi phí phát sinh"
-        confirmLabel="Ghi nhận chi phí"
+        title={`${editingExpense ? "Sửa" : "Ghi"} ${formIsSalary ? "lương nhân viên" : "chi phí phát sinh"}`}
+        confirmLabel={editingExpense ? "Lưu thay đổi" : "Ghi nhận chi phí"}
         onConfirm={submitExpense}
-        onCancel={() => {
-          setExpenseModalOpen(false);
-          setAddingCategory(false);
-          setCategoryName("");
-        }}
+        onCancel={closeExpenseModal}
         loading={busy}
       >
         <div className="pricing-expense-form">
-          <div className="pricing-category-field">
-            <label>
-              Loại chi phí
-              <SearchableDropdown
-                value={category}
-                onChange={setCategory}
-                options={categories}
-                placeholder="Chọn loại chi phí"
-                ariaLabel="Loại chi phí"
-              />
-            </label>
-            <button
-              type="button"
-              onClick={() => {
-                setAddingCategory((current) => !current);
-                setExpenseError("");
-              }}
-              disabled={busy}
-            >
-              + Thêm loại chi phí
-            </button>
-          </div>
-          {addingCategory && (
+          {formIsSalary ? (
+            <p className="pricing-form-note">
+              {editingExpense?.invoice_id
+                ? `Khoản lương cũ đang gắn đơn #${editingExpense.invoice_id}; thông tin này được giữ nguyên khi sửa.`
+                : "Lương là chi phí chung trong kỳ, không gắn với đơn bán."}
+            </p>
+          ) : (
+            <div className="pricing-category-field">
+              <label>
+                Loại chi phí
+                <SearchableDropdown
+                  value={category}
+                  onChange={setCategory}
+                  options={incidentCategories}
+                  placeholder="Chọn loại chi phí"
+                  ariaLabel="Loại chi phí"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  setAddingCategory((current) => !current);
+                  setExpenseError("");
+                }}
+                disabled={busy}
+              >
+                + Thêm loại chi phí
+              </button>
+            </div>
+          )}
+          {!formIsSalary && addingCategory && (
             <div className="pricing-new-category">
               <label>
                 Tên loại chi phí mới
@@ -773,34 +939,38 @@ export default function PricingManagement() {
               required
             />
           </label>
-          <label>
-            Đơn liên quan (nếu có)
-            <SearchableDropdown
-              value={invoiceId}
-              onChange={(value, label) => {
-                setInvoiceId(value);
-                setSelectedInvoice(value ? { value, label } : null);
-                setInvoiceSearch("");
-              }}
-              options={invoiceOptions}
-              searchValue={invoiceSearch}
-              onSearchChange={setInvoiceSearch}
-              searching={invoiceLoading}
-              emptyLabel={invoiceSearchError || "Không tìm thấy đơn hàng."}
-              placeholder="Tìm tên đơn, tên khách hoặc số đơn"
-              ariaLabel="Tìm đơn liên quan"
-            />
-          </label>
-          <label>
-            Ghi quỹ
-            <SearchableDropdown
-              value={paymentMethod}
-              onChange={setPaymentMethod}
-              options={PAYMENT_METHOD_OPTIONS}
-              placeholder="Chọn trạng thái ghi quỹ"
-              ariaLabel="Ghi quỹ"
-            />
-          </label>
+          {!formIsSalary && (
+            <label>
+              Đơn liên quan (nếu có)
+              <SearchableDropdown
+                value={invoiceId}
+                onChange={(value, label) => {
+                  setInvoiceId(value);
+                  setSelectedInvoice(value ? { value, label } : null);
+                  setInvoiceSearch("");
+                }}
+                options={invoiceOptions}
+                searchValue={invoiceSearch}
+                onSearchChange={setInvoiceSearch}
+                searching={invoiceLoading}
+                emptyLabel={invoiceSearchError || "Không tìm thấy đơn hàng."}
+                placeholder="Tìm tên đơn, tên khách hoặc số đơn"
+                ariaLabel="Tìm đơn liên quan"
+              />
+            </label>
+          )}
+          {!editingExpense && (
+            <label>
+              Ghi quỹ
+              <SearchableDropdown
+                value={paymentMethod}
+                onChange={setPaymentMethod}
+                options={PAYMENT_METHOD_OPTIONS}
+                placeholder="Chọn trạng thái ghi quỹ"
+                ariaLabel="Ghi quỹ"
+              />
+            </label>
+          )}
           <label className="pricing-description">
             Nội dung chi phí
             <textarea
@@ -808,10 +978,33 @@ export default function PricingManagement() {
               onChange={(event) => setDescription(event.target.value)}
               maxLength={500}
               rows={3}
-              placeholder="Ví dụ: Xăng chuyến giao đơn 23"
+              placeholder={
+                formIsSalary
+                  ? "Ví dụ: Tổng lương nhân viên tháng này"
+                  : "Ví dụ: Xăng chuyến giao đơn 23"
+              }
               required
             />
           </label>
+          {editingExpense && (
+            <p className="pricing-form-note">
+              {editingExpense.payment_method
+                ? "Khoản đã ghi quỹ. Nếu sửa số tiền, quỹ sẽ tự điều chỉnh phần chênh lệch."
+                : "Khoản chưa ghi quỹ. Dùng nút Ghi đã chi trong danh sách khi thanh toán."}
+            </p>
+          )}
+          {paidAmountChanged && (
+            <label className="pricing-description">
+              Lý do sửa số tiền đã chi
+              <textarea
+                value={editReason}
+                onChange={(event) => setEditReason(event.target.value)}
+                maxLength={500}
+                rows={2}
+                required
+              />
+            </label>
+          )}
           {expenseError && (
             <p className="pricing-form-error" role="alert">
               {expenseError}

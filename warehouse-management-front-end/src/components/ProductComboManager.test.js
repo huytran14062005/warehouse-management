@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { authApis, endpoints } from "../configs/Apis";
 import ProductComboManager from "./ProductComboManager";
@@ -62,4 +62,34 @@ test("shows combo creation success above the mobile dialog", async () => {
   expect(notification).toHaveTextContent("Đã tạo combo");
   expect(notification).toHaveClass("app-notification-success");
   expect(notification.parentElement).toBe(document.body);
+});
+
+test("filters combo names after 300 ms, ignoring Vietnamese accents and case", async () => {
+  const combos = [
+    { id: 1, name: "Combo Hủy Diệt", items: [], sale_price: 47000 },
+    { id: 2, name: "Combo ba vải xoài", items: [], sale_price: 40000 },
+  ];
+  authApis.mockReturnValue({
+    get: jest.fn((url) => Promise.resolve({
+      data: url === endpoints.productCombos ? { combos } : { products: [] },
+    })),
+  });
+
+  jest.useFakeTimers();
+  try {
+    render(<ProductComboManager onClose={jest.fn()} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText("Combo Hủy Diệt")).toBeInTheDocument();
+    const search = screen.getByRole("searchbox", { name: "Tìm combo theo tên" });
+
+    fireEvent.change(search, { target: { value: "HUY DIET" } });
+    expect(screen.getByText("Combo ba vải xoài")).toBeInTheDocument();
+    act(() => jest.advanceTimersByTime(299));
+    expect(screen.getByText("Combo ba vải xoài")).toBeInTheDocument();
+    act(() => jest.advanceTimersByTime(1));
+    expect(screen.getByText("Combo Hủy Diệt")).toBeInTheDocument();
+    expect(screen.queryByText("Combo ba vải xoài")).not.toBeInTheDocument();
+  } finally {
+    jest.useRealTimers();
+  }
 });

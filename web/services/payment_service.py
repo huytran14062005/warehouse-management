@@ -25,12 +25,12 @@ def validate_payment_amount(value, field_name="Số tiền thanh toán"):
 def parse_payment_method(value, required=True):
     if value in (None, ""):
         if required:
-            raise ValidationError("Vui lÃ²ng chá»n phÆ°Æ¡ng thá»©c thanh toÃ¡n")
+            raise ValidationError("Vui lòng chọn phương thức thanh toán")
         return None
     try:
         return value if isinstance(value, PaymentMethod) else PaymentMethod(str(value).strip().lower())
     except ValueError:
-        raise ValidationError("PhÆ°Æ¡ng thá»©c thanh toÃ¡n khÃ´ng há»£p lá»‡")
+        raise ValidationError("Phương thức thanh toán không hợp lệ")
 
 
 def _allocate_payment_to_open_invoices(customer_id, payment_amount):

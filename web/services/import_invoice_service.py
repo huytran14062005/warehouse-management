@@ -250,12 +250,12 @@ def _supplier_paid_total(invoice):
 
 
 def _validate_supplier_payment(invoice_total, amount, payment_method):
-    amount = validate_money_amount(amount, "Sá»‘ tiá»n tráº£ nhÃ  cung cáº¥p")
+    amount = validate_money_amount(amount, "Số tiền trả nhà cung cấp")
     if amount <= 0:
         return None
     payment_method = parse_payment_method(payment_method)
     if amount > invoice_total:
-        raise ValidationError("Sá»‘ tiá»n tráº£ khÃ´ng Ä‘Æ°á»£c vÆ°á»£t quÃ¡ tá»•ng tiá»n phiáº¿u nháº­p")
+        raise ValidationError("Số tiền trả không được vượt quá tổng tiền phiếu nhập")
     return {"amount": amount, "payment_method": payment_method, "note": None}
 
 
@@ -449,14 +449,14 @@ def record_supplier_payment_service(invoice_id, employee_id, amount, payment_met
     # both observe the same remaining balance and overpay the supplier.
     invoice = ImportInvoice.query.with_for_update().filter_by(id=invoice_id).first()
     if not invoice:
-        raise NotFoundError("Phiáº¿u nháº­p khÃ´ng tá»“n táº¡i")
+        raise NotFoundError("Phiếu nhập không tồn tại")
 
     invoice_total = _calculate_import_total(invoice)
     paid_amount = _supplier_paid_total(invoice)
     remaining_amount = invoice_total - paid_amount
     payment = _validate_supplier_payment(remaining_amount, amount, payment_method)
     if not payment:
-        raise ValidationError("Sá»‘ tiá»n tráº£ nhÃ  cung cáº¥p pháº£i lá»›n hÆ¡n hoáº·c báº±ng 500")
+        raise ValidationError("Số tiền trả nhà cung cấp phải lớn hơn hoặc bằng 500")
     payment["note"] = str(note or "").strip() or None
     payment_record = SupplierPayment(
         supplier_id=invoice.supplier_id,
@@ -493,7 +493,7 @@ def update_import_invoice_service(invoice_id, employee_id, warehouse_id, supplie
         raise NotFoundError("Nhân viên không tồn tại")
 
     if invoice.payments:
-        raise ValidationError("KhÃ´ng thá»ƒ sá»­a phiáº¿u nháº­p Ä‘Ã£ phÃ¡t sinh thanh toÃ¡n cho nhÃ  cung cáº¥p")
+        raise ValidationError("Không thể sửa phiếu nhập đã phát sinh thanh toán cho nhà cung cấp")
 
     # Authorize the existing document before accepting a client-supplied
     # warehouse_id. Otherwise a warehouse-scoped employee could edit a
@@ -536,8 +536,8 @@ def update_import_invoice_service(invoice_id, employee_id, warehouse_id, supplie
             old_stock = old_stock_by_product[product_id]
             if old_stock["available_stock"] - old_quantity < 0:
                 raise ValidationError(
-                    f"KhÃ´ng thá»ƒ chuyá»ƒn phiáº¿u nháº­p vÃ¬ sáº£n pháº©m '{old_product_names[product_id]}' "
-                    f"Ä‘Ã£ Ä‘Æ°á»£c báº£n hoáº·c xuáº¥t khá»i kho cÅ©."
+                    f"Không thể chuyển phiếu nhập vì sản phẩm '{old_product_names[product_id]}' "
+                    f"đã được bán hoặc xuất khỏi kho cũ."
                 )
     
                                     
@@ -595,7 +595,7 @@ def delete_import_invoice_service(invoice_id):
 
                                                           
     if invoice.payments:
-        raise ValidationError("KhÃ´ng thá»ƒ xÃ³a phiáº¿u nháº­p Ä‘Ã£ phÃ¡t sinh thanh toÃ¡n cho nhÃ  cung cáº¥p")
+        raise ValidationError("Không thể xóa phiếu nhập đã phát sinh thanh toán cho nhà cung cấp")
 
     stock_by_product = product_dao.calculate_available_stock_for_items_at_warehouse(
         [item.product_id for item in invoice.items],

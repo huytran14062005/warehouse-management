@@ -19,6 +19,9 @@ const ENTRY_TYPE_LABELS = {
   supplier_payment: "Trả tiền nhà cung cấp",
   delivery_shipping: "Phí giao hàng",
   balance_adjustment: "Điều chỉnh số dư",
+  operating_expense: "Chi phí kinh doanh",
+  operating_expense_void: "Hoàn khoản chi",
+  operating_expense_adjustment: "Điều chỉnh khoản chi",
 };
 
 export default function CompanyFunds() {
