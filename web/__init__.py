@@ -60,13 +60,15 @@ def ensure_business_columns():
     if _business_schema_ready or not request.path.startswith("/api/"):
         return
     from sqlalchemy import BigInteger, inspect
-    from web.models import ImportInvoice, PricingCycle, PricingPolicy, SalesInvoiceItem
+    from web.models import ImportInvoice, OperatingExpense, PricingCycle, PricingPolicy, SalesInvoice, SalesInvoiceItem
 
     inspector = inspect(db.engine)
     columns = (
         (SalesInvoiceItem.__tablename__, "combo_id", "INT NULL"),
         (ImportInvoice.__tablename__, "inbound_fee", "DECIMAL(14, 2) NOT NULL DEFAULT 0"),
         (PricingPolicy.__tablename__, "desired_profit_per_unit", "DECIMAL(14, 2) NULL"),
+        (OperatingExpense.__tablename__, "is_abnormal", "BOOLEAN NOT NULL DEFAULT 0"),
+        (SalesInvoice.__tablename__, "return_pending", "BOOLEAN NOT NULL DEFAULT 0"),
     )
     if any(not inspector.has_table(table) for table, _, _ in columns):
         return
@@ -110,6 +112,16 @@ def ensure_business_columns():
     except Exception:
         if not inspect(db.engine).has_table(PricingCycle.__tablename__):
             raise
+    if "planned_salary_amount" not in {entry["name"] for entry in inspect(db.engine).get_columns(PricingCycle.__tablename__)}:
+        try:
+            with db.engine.begin() as connection:
+                connection.exec_driver_sql(
+                    "ALTER TABLE pricing_cycles ADD COLUMN planned_salary_amount DECIMAL(14, 2) NULL"
+                )
+        except Exception:
+            if "planned_salary_amount" not in {entry["name"] for entry in inspect(db.engine).get_columns(PricingCycle.__tablename__)}:
+                raise
+        changed = True
     if changed:
         db.session.remove()
     _business_schema_ready = True

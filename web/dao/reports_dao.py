@@ -18,7 +18,7 @@ from web.models import (
     Warehouse,
 )
 from web.dao.product_dao import calculate_inventory_for_products
-from web.services.inventory_policy import STOCK_DEDUCTING_SALES_STATUSES
+from web.services.inventory_policy import stock_deducting_sales_filter
 
 
 def get_inventory_report(warehouse_id=None, product_id=None, keyword=None):
@@ -63,7 +63,7 @@ def get_movements_report(from_date, to_date, warehouse_id=None):
         selectinload(SalesInvoice.warehouse),
         selectinload(SalesInvoice.created_by_employee),
     ).filter(
-        SalesInvoice.status.in_(STOCK_DEDUCTING_SALES_STATUSES),
+        stock_deducting_sales_filter(),
         SalesInvoice.sale_source == SaleSource.CENTRAL_WAREHOUSE,
     )
     
@@ -222,7 +222,7 @@ def get_movements_report_aggregated(from_date, to_date, warehouse_id=None):
     """Aggregate movement history in SQL; retain one row per catalog product."""
     import_filters = []
     sale_filters = [
-        SalesInvoice.status.in_(STOCK_DEDUCTING_SALES_STATUSES),
+        stock_deducting_sales_filter(),
         SalesInvoice.sale_source == SaleSource.CENTRAL_WAREHOUSE,
     ]
     damage_filters = [DamageReport.status != DamageReportStatus.REJECTED]

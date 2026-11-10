@@ -114,6 +114,7 @@ class PricingCycle(db.Model):
 
     id = Column(Integer, primary_key=True)
     start_date = Column(Date, nullable=False)
+    planned_salary_amount = Column(Numeric(14, 2), nullable=True)
     updated_at = Column(DateTime, nullable=False, default=vietnam_payment_time)
     updated_by_id = Column(Integer, ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False)
 
@@ -133,6 +134,7 @@ class OperatingExpense(BaseModel):
     invoice_id = Column(Integer, ForeignKey("sales_invoices.id", ondelete="RESTRICT"), nullable=True)
     description = Column(String(500), nullable=False)
     payment_method = Column(String(20), nullable=True)
+    is_abnormal = Column(Boolean, nullable=False, default=False, server_default="0")
     created_at = Column(DateTime, nullable=False, default=vietnam_payment_time)
     created_by_id = Column(Integer, ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False)
     voided_at = Column(DateTime, nullable=True)
@@ -585,6 +587,7 @@ class SalesInvoice(BaseModel):
     shipping_charged_at = Column(DateTime, nullable=True)
     cancel_requested = Column(Boolean, nullable=False, default=False)
     cancel_note = Column(Text)
+    return_pending = Column(Boolean, nullable=False, default=False, server_default="0")
     
                      
     discount_amount = Column(Numeric(14, 2), nullable=False, default=0)

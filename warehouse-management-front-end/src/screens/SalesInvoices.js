@@ -702,6 +702,7 @@ export function SalesInvoiceDetail({
   canRequestCancel,
   canCancelDirect,
   canManageStatus,
+  canConfirmReturn,
   canComplete,
   canApproveCancel,
   canManageDueDate,
@@ -717,6 +718,7 @@ export function SalesInvoiceDetail({
   onCancelDraft,
   onCancelRequest,
   onCancelDirect,
+  onConfirmReturn,
   onAdvanceStatus,
   onComplete,
   onApproveCancel,
@@ -1209,6 +1211,7 @@ export function SalesInvoiceDetail({
                           accepted: "Đã nhận xử lý",
                           completed: "Kế toán hoàn thành đơn",
                           cancelled: "Đã hủy đơn",
+                          return_received: "Đã nhận đủ hàng hoàn về kho",
                         }[event.action] || event.action}
                       </span>
                       <time dateTime={event.occurred_at}>
@@ -1355,6 +1358,18 @@ export function SalesInvoiceDetail({
               {invoice.delivery_note ? ` · ${invoice.delivery_note}` : ""}
             </p>
           )}
+          {invoice.return_pending && (
+            <div className="sales-detail-actions">
+              <span className="sales-cancel-requested">
+                Chờ nhận đủ hàng hoàn; số hàng này chưa được cộng lại vào tồn kho.
+              </span>
+              {canConfirmReturn && (
+                <button type="button" onClick={onConfirmReturn} disabled={actionLoading}>
+                  Xác nhận đã nhận đủ hàng hoàn
+                </button>
+              )}
+            </div>
+          )}
           {canApproveCancel && hasActiveCancelRequest(invoice) && (
             <div className="sales-detail-actions">
               {!isCompletedStatus(invoice.status) && (
@@ -1398,6 +1413,10 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
     }
   })();
   const canUseEmployeeStock = activeUser.role === "nhân viên bán hàng";
+  const noteDraftKey = activeUser.id
+    ? `sales-invoice-note:${activeUser.id}:${invoice?.id || "new"}`
+    : null;
+  const savedNote = invoice?.note || "";
   const [customers, setCustomers] = useState([]);
   const [salesAreas, setSalesAreas] = useState([]);
   const [salesAreasLoading, setSalesAreasLoading] = useState(false);
@@ -1444,7 +1463,17 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
   const [promotionOptions, setPromotionOptions] = useState([]);
   const [promotionPickerOpen, setPromotionPickerOpen] = useState(false);
   const [promotionsLoading, setPromotionsLoading] = useState(false);
-  const [note, setNote] = useState(invoice?.note || "");
+  const [note, setNote] = useState(() => {
+    if (!noteDraftKey) return savedNote;
+    try {
+      const draft = JSON.parse(sessionStorage.getItem(noteDraftKey));
+      return draft?.baseNote === savedNote && typeof draft.note === "string"
+        ? draft.note
+        : savedNote;
+    } catch {
+      return savedNote;
+    }
+  });
   const [productSearchResults, setProductSearchResults] = useState({});
   const [productSearchLoading, setProductSearchLoading] = useState({});
   const [comboDropdownSamples, setComboDropdownSamples] = useState({});
@@ -1460,6 +1489,19 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
   const customerSearchTouchedRef = useRef(false);
   const productSearchTimerRefs = useRef({});
   const productSearchRequestRefs = useRef({});
+
+  useEffect(() => {
+    if (!noteDraftKey) return;
+    try {
+      if (note === savedNote) {
+        sessionStorage.removeItem(noteDraftKey);
+      } else {
+        sessionStorage.setItem(noteDraftKey, JSON.stringify({ baseNote: savedNote, note }));
+      }
+    } catch {
+      // The form still works when browser storage is unavailable.
+    }
+  }, [note, noteDraftKey, savedNote]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2141,6 +2183,13 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
             payload,
           )
         : await authApis().post(endpoints.salesInvoices, payload);
+      if (noteDraftKey) {
+        try {
+          sessionStorage.removeItem(noteDraftKey);
+        } catch {
+          // The order has already been saved successfully.
+        }
+      }
       onSaved(response.data?.invoice);
     } catch (requestError) {
       setFormError(getApiError(requestError));
@@ -2748,6 +2797,7 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
               rows="3"
               value={note}
               onChange={(event) => setNote(event.target.value)}
+              disabled={saving}
               placeholder="Nhập ghi chú cho đơn hàng"
             />
           </label>
@@ -2867,6 +2917,7 @@ function SalesInvoices() {
   const canRequestCancel = currentUser.role === "nhân viên bán hàng";
   const canCancelDirect = currentUser.role === "quản lý";
   const canManageStatus = ["thủ kho", "quản lý"].includes(currentUser.role);
+  const canConfirmReturn = canManageStatus;
   const canSubmitWarehouse = ["nhân viên bán hàng", "quản lý"].includes(
     currentUser.role,
   );
@@ -3434,7 +3485,12 @@ function SalesInvoices() {
     try {
       setActionLoading(true);
       setActionError("");
-      if (
+      if (confirmAction === "confirm-return") {
+        const response = await authApis().post(
+          endpoints.salesInvoiceConfirmReturn(selectedInvoice.id),
+        );
+        setSelectedInvoice(response.data?.invoice || selectedInvoice);
+      } else if (
         confirmAction === "cancel-draft" ||
         confirmAction === "cancel-manager"
       ) {
@@ -3850,6 +3906,11 @@ function SalesInvoices() {
                             Chờ duyệt hủy
                           </span>
                         )}
+                        {invoice.return_pending && (
+                          <span className="sales-cancel-request-badge">
+                            Chờ hàng hoàn
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td>
@@ -3921,6 +3982,7 @@ function SalesInvoices() {
             canRequestCancel={canRequestCancel}
             canCancelDirect={canCancelDirect}
             canManageStatus={canManageStatus}
+            canConfirmReturn={canConfirmReturn}
             canComplete={canCompleteSales}
             currentUserId={currentUser.id}
             canRecordPayment={canRecordPayment}
@@ -3940,6 +4002,7 @@ function SalesInvoices() {
             onCancelDraft={handleCancelDraft}
             onCancelRequest={handleCancelRequest}
             onCancelDirect={handleCancelDirect}
+            onConfirmReturn={() => setConfirmAction("confirm-return")}
             onAdvanceStatus={(nextStatus) => {
               if (
                 nextStatus === "đang giao" &&
@@ -3970,6 +4033,8 @@ function SalesInvoices() {
         title={
           confirmAction === "dispatch-third-party"
             ? "Bàn giao cho dịch vụ vận chuyển?"
+            : confirmAction === "confirm-return"
+              ? "Xác nhận đã nhận đủ hàng hoàn?"
             : confirmAction === "cancel-draft"
               ? "Hủy đơn nháp?"
               : isManagerCancel
@@ -3983,12 +4048,18 @@ function SalesInvoices() {
         message={
           confirmAction === "dispatch-third-party"
             ? `Đơn #${selectedInvoice?.id || ""} sẽ chuyển sang Đang giao. Phí ${formatCurrency(selectedInvoice?.shipping_fee)} sẽ được trừ từ quỹ ${selectedInvoice?.shipping_fund_method === "cash" ? "tiền mặt" : "chuyển khoản"}.`
+            : confirmAction === "confirm-return"
+              ? "Chỉ xác nhận khi đã nhận đủ toàn bộ hàng trong đơn. Sau đó số hàng này mới được cộng vào tồn kho."
             : confirmAction === "cancel-draft"
               ? "Bạn có chắc muốn hủy đơn nháp này không?"
               : isManagerCancel
-                ? "Bạn có chắc muốn hủy đơn này với quyền quản lý không?"
+                ? selectedInvoice?.status === "đang giao"
+                  ? "Hủy đơn đang giao? Hàng sẽ chờ xác nhận nhận lại đủ trước khi cộng vào tồn kho."
+                  : "Bạn có chắc muốn hủy đơn này với quyền quản lý không?"
                 : isCancelApproval
-                  ? "Bạn có chắc muốn duyệt hủy đơn này không?"
+                  ? selectedInvoice?.status === "đang giao"
+                    ? "Duyệt hủy đơn đang giao? Hàng sẽ chờ xác nhận nhận lại đủ trước khi cộng vào tồn kho."
+                    : "Bạn có chắc muốn duyệt hủy đơn này không?"
                   : isCancelRejection
                     ? "Bạn có chắc muốn từ chối yêu cầu hủy đơn này không?"
                     : "Bạn có chắc muốn gửi yêu cầu hủy đơn này không?"
@@ -3996,6 +4067,8 @@ function SalesInvoices() {
         confirmLabel={
           confirmAction === "dispatch-third-party"
             ? "Xác nhận bàn giao"
+            : confirmAction === "confirm-return"
+              ? "Đã nhận đủ hàng"
             : confirmAction === "cancel-draft"
               ? "Hủy đơn"
               : isManagerCancel
@@ -4007,7 +4080,7 @@ function SalesInvoices() {
                     : "Gửi yêu cầu"
         }
         cancelLabel="Quay lại"
-        danger={!isCancelApproval && confirmAction !== "dispatch-third-party"}
+        danger={!isCancelApproval && !["dispatch-third-party", "confirm-return"].includes(confirmAction)}
         loading={actionLoading}
         onConfirm={executeConfirmedAction}
         onCancel={() => setConfirmAction(null)}

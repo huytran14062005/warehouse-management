@@ -11,11 +11,14 @@ import "../css/PricingManagement.css";
 
 const CATEGORIES = {
   fuel: "Xăng xe",
+  utilities: "Điện nước",
   vehicle_repair: "Sửa xe",
+  maintenance: "Bảo trì",
+  shrinkage: "Hao hụt",
   lodging: "Nhà nghỉ",
   sales_salary: "Lương nhân viên",
   overtime: "Tiền tăng ca",
-  depreciation: "Hao mòn, khấu hao",
+  depreciation: "Khấu hao xe, thiết bị",
   other: "Chi phí bán hàng khác",
 };
 
@@ -48,25 +51,33 @@ function formatExpenseDate(value) {
   return year && month && day ? `${day}-${month}-${year}` : "—";
 }
 
+function formatExpenseMonth(value) {
+  const [year, month] = String(value || "").split("-");
+  return year && month ? `${month}/${year}` : "—";
+}
+
 function PricingRow({ row, onSave, onApply, busy }) {
-  const [profit, setProfit] = useState(
-    String(row.desired_profit_per_unit ?? ""),
-  );
+  const [profit, setProfit] = useState(String(row.markup_percent ?? "20"));
   const [plannedQuantity, setPlannedQuantity] = useState(
     String(row.planned_quantity),
   );
   useEffect(() => {
-    setProfit(String(row.desired_profit_per_unit ?? ""));
+    setProfit(String(row.markup_percent ?? "20"));
     setPlannedQuantity(String(row.planned_quantity));
-  }, [row.desired_profit_per_unit, row.planned_quantity]);
+  }, [row.markup_percent, row.planned_quantity]);
   const changed =
-    Number(profit) !== row.desired_profit_per_unit ||
+    row.legacy_fixed_profit ||
+    Number(profit) !== row.markup_percent ||
     plannedQuantity !== String(row.planned_quantity);
+  const normalizedQuantity = plannedQuantity.replace(/^0+/, "");
   const valid =
-    profit !== "" &&
-    Number(profit) >= 0 &&
+    /^\d+(?:\.\d{1,2})?$/.test(profit) &&
+    Number(profit) < 100 &&
     /^[0-9]+$/.test(plannedQuantity) &&
-    /[1-9]/.test(plannedQuantity);
+    normalizedQuantity.length > 0 &&
+    (normalizedQuantity.length < 19 ||
+      (normalizedQuantity.length === 19 &&
+        normalizedQuantity <= "9223372036854775807"));
   return (
     <tr>
       <th scope="row">
@@ -88,6 +99,11 @@ function PricingRow({ row, onSave, onApply, busy }) {
         )}
       </td>
       <td>
+        {row.full_cost_per_unit == null
+          ? "—"
+          : formatCurrency(row.full_cost_per_unit)}
+      </td>
+      <td>
         <input
           className="pricing-plan-input"
           type="text"
@@ -104,11 +120,28 @@ function PricingRow({ row, onSave, onApply, busy }) {
         <input
           type="number"
           min="0"
+          max="99.99"
           step="0.01"
-          aria-label={`Tiền lời mong muốn mỗi ${row.unit} của ${row.name}`}
+          aria-label={`Phần trăm lãi trên COST của ${row.name}`}
           value={profit}
           onChange={(event) => setProfit(event.target.value)}
         />
+        {row.legacy_fixed_profit && (
+          <small className="pricing-legacy-note">
+            Kế hoạch tiền lời cũ: lưu % trước khi áp dụng giá.
+          </small>
+        )}
+      </td>
+      <td
+        title={
+          row.actual_markup_percent == null
+            ? undefined
+            : `Lãi thực sau làm tròn: ${row.actual_markup_percent}% trên COST`
+        }
+      >
+        {row.actual_profit_per_unit == null
+          ? "—"
+          : formatCurrency(row.actual_profit_per_unit)}
       </td>
       <td>
         <strong>
@@ -116,6 +149,15 @@ function PricingRow({ row, onSave, onApply, busy }) {
             ? "—"
             : formatCurrency(row.suggested_price)}
         </strong>
+      </td>
+      <td className="pricing-current-price">
+        <strong>{formatCurrency(row.current_price)}</strong>
+        {row.profit_at_current_price_per_unit < 0 && (
+          <small className="pricing-cost-loss">
+            Giá đang áp dụng thấp hơn COST{" "}
+            {formatCurrency(-row.profit_at_current_price_per_unit)}/đơn vị
+          </small>
+        )}
       </td>
       <td>
         <div className="pricing-row-actions">
@@ -125,7 +167,7 @@ function PricingRow({ row, onSave, onApply, busy }) {
             onClick={() =>
               onSave(row.product_id, {
                 planned_quantity: plannedQuantity,
-                desired_profit_per_unit: Number(profit),
+                markup_percent: Number(profit),
               })
             }
           >
@@ -137,6 +179,7 @@ function PricingRow({ row, onSave, onApply, busy }) {
             disabled={
               busy ||
               changed ||
+              row.legacy_fixed_profit ||
               row.suggested_price == null ||
               row.suggested_price === row.current_price
             }
@@ -186,9 +229,11 @@ export default function PricingManagement() {
   const [invoiceLoading, setInvoiceLoading] = useState(false);
   const [invoiceSearchError, setInvoiceSearchError] = useState("");
   const [description, setDescription] = useState("");
+  const [isAbnormal, setIsAbnormal] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("");
   const [expensePage, setExpensePage] = useState(1);
   const [catalogPage, setCatalogPage] = useState(1);
+  const [costMode, setCostMode] = useState("actual");
   const [keywordDraft, setKeywordDraft] = useState("");
   const [keyword, setKeyword] = useState("");
   const [expenses, setExpenses] = useState({
@@ -199,13 +244,26 @@ export default function PricingManagement() {
     products: [],
     pagination: { total_pages: 1 },
     pricing_operating_expenses: 0,
+    pricing_shared_expenses: 0,
+    pricing_allocated_expenses: 0,
+    pricing_actual_shared_expenses: 0,
+    pricing_direct_expenses: 0,
+    pricing_abnormal_expenses: 0,
     pricing_salary_expenses: 0,
     pricing_incidental_expenses: 0,
     pricing_shipping: 0,
     pricing_period_start: "",
+    pricing_period_end: "",
+    pricing_planned_salary_amount: null,
+    pricing_estimated_salary: 0,
+    pricing_salary_confirmed: false,
+    pricing_average_3m_expenses: 0,
+    pricing_average_3m_available: false,
+    pricing_cost_warnings: [],
     pricing_planned_value: 0,
   });
-  const [cycleStartDraft, setCycleStartDraft] = useState("");
+  const [monthlyProfit, setMonthlyProfit] = useState(null);
+  const [plannedSalaryDraft, setPlannedSalaryDraft] = useState("");
   const [applyRow, setApplyRow] = useState(null);
   const [voidRow, setVoidRow] = useState(null);
   const [voidReason, setVoidReason] = useState("");
@@ -240,11 +298,25 @@ export default function PricingManagement() {
 
   const loadCatalog = useCallback(async () => {
     const response = await authApis().get(endpoints.pricingCatalog, {
-      params: { page: catalogPage, keyword },
+      params: { page: catalogPage, keyword, cost_mode: costMode },
     });
     setCatalog(response.data);
-    setCycleStartDraft(response.data.pricing_period_start || "");
-  }, [catalogPage, keyword]);
+  }, [catalogPage, keyword, costMode]);
+
+  useEffect(() => {
+    setPlannedSalaryDraft(
+      catalog.pricing_planned_salary_amount == null
+        ? ""
+        : String(catalog.pricing_planned_salary_amount),
+    );
+  }, [catalog.pricing_planned_salary_amount]);
+
+  const loadMonthlyProfit = useCallback(async () => {
+    const response = await authApis().get(endpoints.pricingProfitability, {
+      params: { from_date: monthStart(), to_date: businessDate(), page: 1 },
+    });
+    setMonthlyProfit(response.data);
+  }, []);
 
   useEffect(() => {
     if (!isManager) return;
@@ -269,6 +341,13 @@ export default function PricingManagement() {
       .catch((requestError) => setError(getApiError(requestError)))
       .finally(() => setLoadingCatalog(false));
   }, [isManager, loadCatalog]);
+
+  useEffect(() => {
+    if (!isManager) return;
+    loadMonthlyProfit().catch((requestError) =>
+      setError(getApiError(requestError)),
+    );
+  }, [isManager, loadMonthlyProfit]);
 
   useEffect(() => {
     const nextKeyword = keywordDraft.trim();
@@ -334,8 +413,16 @@ export default function PricingManagement() {
         (expenseType === "fixed_salary" ? "sales_salary" : "fuel"),
     );
     setAmount(row ? String(row.amount) : "");
+    if (
+      !row &&
+      expenseType === "fixed_salary" &&
+      catalog.pricing_planned_salary_amount != null
+    ) {
+      setAmount(String(catalog.pricing_planned_salary_amount));
+    }
     setOccurredOn(row?.occurred_on || businessDate());
     setDescription(row?.description || "");
+    setIsAbnormal(Boolean(row?.is_abnormal));
     setInvoiceId(row?.invoice_id ? String(row.invoice_id) : "");
     setSelectedInvoice(
       row?.invoice_id
@@ -388,6 +475,7 @@ export default function PricingManagement() {
           ? editingExpense?.invoice_id || null
           : invoiceId || null,
         description: description.trim(),
+        is_abnormal: formIsSalary ? false : isAbnormal,
       };
       if (editingExpense) {
         await authApis().put(endpoints.pricingExpense(editingExpense.id), {
@@ -403,11 +491,15 @@ export default function PricingManagement() {
       closeExpenseModal();
       setSuccess(
         editingExpense
-          ? "Đã cập nhật khoản chi và tính lại giá đề xuất."
-          : "Đã ghi nhận chi phí.",
+          ? editingExpense.payment_method
+            ? "Đã cập nhật khoản chi đã thanh toán và tính lại giá đề xuất."
+            : "Đã cập nhật khoản chưa chi; giá đề xuất chưa tính khoản này."
+          : paymentMethod
+            ? "Đã ghi khoản chi và tính lại giá đề xuất."
+            : "Đã ghi khoản chưa chi; giá đề xuất chưa tính khoản này.",
       );
       try {
-        await Promise.all([loadExpenses(), loadCatalog()]);
+        await Promise.all([loadExpenses(), loadCatalog(), loadMonthlyProfit()]);
       } catch (refreshError) {
         setError(getApiError(refreshError));
       }
@@ -449,7 +541,7 @@ export default function PricingManagement() {
     try {
       await authApis().put(endpoints.pricingPolicy(productId), policy);
       setSuccess(
-        "Đã lưu sản lượng dự kiến và tiền lời. Giá đề xuất đã tính lại.",
+        "Đã lưu sản lượng dự kiến và % lãi trên COST. Giá đề xuất đã tính lại.",
       );
       await loadCatalog();
     } catch (requestError) {
@@ -459,16 +551,19 @@ export default function PricingManagement() {
     }
   };
 
-  const saveCycle = async (event) => {
+  const saveSalaryPlan = async (event) => {
     event.preventDefault();
     setBusy(true);
     setError("");
     setSuccess("");
     try {
       await authApis().put(endpoints.pricingCycle, {
-        start_date: cycleStartDraft,
+        planned_salary_amount:
+          plannedSalaryDraft === "" ? null : plannedSalaryDraft,
       });
-      setSuccess("Đã cập nhật kỳ tính giá.");
+      setSuccess(
+        "Đã lưu lương kế hoạch để tham khảo. Giá đề xuất chỉ tính lương khi đã thanh toán.",
+      );
       await loadCatalog();
     } catch (requestError) {
       setError(getApiError(requestError));
@@ -486,6 +581,7 @@ export default function PricingManagement() {
       await authApis().post(endpoints.pricingApply(applyRow.product_id), {
         expected_price: applyRow.current_price,
         expected_suggested_price: applyRow.suggested_price,
+        cost_mode: applyRow.cost_mode,
       });
       setSuccess(`Đã cập nhật giá bán mặc định của ${applyRow.name}.`);
       setApplyRow(null);
@@ -512,7 +608,7 @@ export default function PricingManagement() {
       setSuccess(
         "Đã hủy khoản chi. Nếu đã chi tiền, số dư quỹ đã được hoàn lại.",
       );
-      await Promise.all([loadExpenses(), loadCatalog()]);
+      await Promise.all([loadExpenses(), loadCatalog(), loadMonthlyProfit()]);
     } catch (requestError) {
       setError(getApiError(requestError));
     } finally {
@@ -530,8 +626,8 @@ export default function PricingManagement() {
         payment_method: payMethod,
       });
       setPayRow(null);
-      setSuccess("Đã ghi khoản chi vào sổ quỹ.");
-      await loadExpenses();
+      setSuccess("Đã thanh toán và tính lại giá đề xuất.");
+      await Promise.all([loadExpenses(), loadCatalog()]);
     } catch (requestError) {
       setError(getApiError(requestError));
     } finally {
@@ -567,8 +663,8 @@ export default function PricingManagement() {
           <div>
             <h2 id="pricing-expense-heading">Chi phí kinh doanh</h2>
             <p>
-              Ghi riêng chi phí phát sinh và lương nhân viên. Cả hai được phân
-              bổ vào giá bán đề xuất trong kỳ tính giá.
+              Lương và chi phí phát sinh chỉ được tính vào giá đề xuất sau khi
+              đã thanh toán. Khoản bất thường vẫn vào báo cáo nhưng không tính giá.
             </p>
           </div>
           <button
@@ -604,7 +700,7 @@ export default function PricingManagement() {
               setExpenseType("fixed_salary");
             }}
           >
-            Lương nhân viên (cố định)
+            Lương nhân viên (thực tế)
           </button>
         </div>
 
@@ -641,10 +737,10 @@ export default function PricingManagement() {
             <thead>
               <tr>
                 <th>Ngày</th>
-                <th>Loại</th>
+                <th>Loại chi phí</th>
                 <th>Nội dung chi phí</th>
                 <th>Đơn</th>
-                <th>Ghi quỹ</th>
+                <th>Thanh toán / tính giá</th>
                 <th>Số tiền</th>
                 <th>Trạng thái</th>
               </tr>
@@ -656,17 +752,46 @@ export default function PricingManagement() {
                   className={row.voided_at ? "pricing-voided-row" : ""}
                 >
                   <td>{formatExpenseDate(row.occurred_on)}</td>
-                  <td>{row.category_label}</td>
+                  <td>
+                    {row.category_label}
+                    {row.is_abnormal && (
+                      <small className="pricing-abnormal-note">
+                        Bất thường
+                      </small>
+                    )}
+                  </td>
                   <td>{row.description}</td>
                   <td>
                     {row.invoice_id ? `#${row.invoice_id}` : "Chi phí chung"}
                   </td>
                   <td>
-                    {row.payment_method === "cash"
-                      ? "Tiền mặt"
-                      : row.payment_method === "bank_transfer"
-                        ? "Chuyển khoản"
-                        : "Chưa chi"}
+                    <span className="pricing-payment-method">
+                      {row.payment_method === "cash"
+                        ? "Tiền mặt"
+                        : row.payment_method === "bank_transfer"
+                          ? "Chuyển khoản"
+                          : "Chưa thanh toán"}
+                    </span>
+                    <small
+                      className={`pricing-price-status ${
+                        row.voided_at
+                          ? "is-voided"
+                          : row.is_abnormal
+                            ? "is-excluded"
+                            : row.payment_method
+                              ? "is-included"
+                              : "is-pending"
+                      }`}
+                      title="Giá đề xuất dùng chi phí theo tháng phát sinh; chế độ bình quân dùng 3 tháng trước."
+                    >
+                      {row.voided_at
+                        ? "Đã hủy · không tính giá"
+                        : row.is_abnormal
+                          ? "Bất thường · không tính giá"
+                          : row.payment_method
+                            ? "Đã chi · tính giá"
+                            : "Chưa chi · chưa tính giá"}
+                    </small>
                   </td>
                   <td>{formatCurrency(row.amount)}</td>
                   <td>
@@ -738,8 +863,8 @@ export default function PricingManagement() {
           <div>
             <h2 id="pricing-catalog-heading">Giá bán đề xuất</h2>
             <p>
-              Giá đề xuất = Giá mua + phí đưa hàng về kho + chi phí kinh doanh
-              phân bổ + tiền lời mong muốn; làm tròn lên 1.000 đ.
+              COST đầy đủ = Giá nhập về kho + chi phí chung phân bổ. Giá đề xuất
+              = COST đầy đủ × (1 + % lãi / 100); làm tròn lên 1.000 đ.
             </p>
           </div>
           <form
@@ -759,60 +884,95 @@ export default function PricingManagement() {
             <button type="submit">Tìm</button>
           </form>
         </div>
-        <p className="pricing-hint">
-          Chi phí từ ngày bắt đầu kỳ đến hôm nay, gồm lương nhân viên, chi phí
-          phát sinh chưa hủy và phí giao bên thứ ba, được phân bổ theo giá trị
-          nhập dự kiến (giá nhập đã gồm phí về kho × sản lượng dự kiến). Không
-          cần đơn bán hoàn thành. Sản lượng mặc định là 100 cho mỗi sản phẩm;
-          hãy chỉnh theo kế hoạch thực tế. Tiền lời ban đầu được quy đổi từ %
-          lãi cũ (hoặc 20% nếu chưa đặt); lưu kế hoạch để cố định số tiền lời
-          trên mỗi đơn vị.
-        </p>
-        <form className="pricing-cycle-form" onSubmit={saveCycle}>
-          <label htmlFor="pricing-cycle-start">Tính chi phí từ ngày</label>
-          <input
-            id="pricing-cycle-start"
-            type="date"
-            value={cycleStartDraft}
-            max={businessDate()}
-            onChange={(event) => setCycleStartDraft(event.target.value)}
-            required
-          />
-          <button
-            type="submit"
-            disabled={
-              busy ||
-              !cycleStartDraft ||
-              cycleStartDraft === catalog.pricing_period_start
-            }
-          >
-            Lưu kỳ tính giá
-          </button>
-          <div className="pricing-cost-summary">
-            <span>
-              Lương: {formatCurrency(catalog.pricing_salary_expenses || 0)}
-            </span>
-            <span>
-              Phát sinh:{" "}
-              {formatCurrency(catalog.pricing_incidental_expenses || 0)}
-            </span>
-            <span>
-              Giao bên thứ ba: {formatCurrency(catalog.pricing_shipping || 0)}
-            </span>
-            <strong>
-              Tổng kỳ này:{" "}
-              {formatCurrency(
-                (catalog.pricing_operating_expenses || 0) +
-                  (catalog.pricing_shipping || 0),
-              )}
-            </strong>
+        <form className="pricing-cycle-form" onSubmit={saveSalaryPlan}>
+          <div className="pricing-controls">
+            <div className="pricing-period-card">
+              <span>Chi phí tháng</span>
+              <strong>
+                Tháng {formatExpenseMonth(catalog.pricing_period_start)}
+              </strong>
+            </div>
+            <label className="pricing-control" htmlFor="pricing-cost-mode">
+              Chi phí dùng tính giá
+              <select
+                id="pricing-cost-mode"
+                value={costMode}
+                onChange={(event) => setCostMode(event.target.value)}
+              >
+                <option value="actual">Chi phí tháng này</option>
+                <option
+                  value="average_3m"
+                  disabled={!catalog.pricing_average_3m_available}
+                >
+                  Bình quân 3 tháng trước
+                </option>
+              </select>
+            </label>
+            <div className="pricing-control pricing-salary-control">
+              <label
+                htmlFor="pricing-salary-plan"
+                title="Chỉ để tham khảo; không tính vào COST cho đến khi ghi chi lương thực tế"
+              >
+                Lương kế hoạch tham khảo (đ/tháng)
+              </label>
+              <span className="pricing-salary-input">
+                <input
+                  id="pricing-salary-plan"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={plannedSalaryDraft}
+                  onChange={(event) =>
+                    setPlannedSalaryDraft(event.target.value)
+                  }
+                  placeholder="Chưa thiết lập"
+                />
+                <button
+                  type="submit"
+                  disabled={
+                    busy ||
+                    (plannedSalaryDraft !== "" &&
+                      (!Number.isFinite(Number(plannedSalaryDraft)) ||
+                        Number(plannedSalaryDraft) < 0)) ||
+                    plannedSalaryDraft ===
+                      (catalog.pricing_planned_salary_amount == null
+                        ? ""
+                        : String(catalog.pricing_planned_salary_amount))
+                  }
+                >
+                  Lưu
+                </button>
+              </span>
+            </div>
+          </div>
+          <div className="pricing-snapshot">
+            <div className="pricing-metric">
+              <span title="Gồm chi phí đã thanh toán (chung và gắn đơn) cùng phí giao bên thứ ba; không gồm khoản bất thường hoặc lương kế hoạch">
+                Tổng chi phí tính giá
+              </span>
+              <strong>
+                {formatCurrency(catalog.pricing_allocated_expenses || 0)}
+              </strong>
+            </div>
+            {monthlyProfit && (
+              <div className="pricing-metric">
+                <span title="Báo cáo lãi/lỗ gồm chi phí đã ghi, kể cả khoản chưa thanh toán; không cộng lương kế hoạch">
+                  Lãi/lỗ tháng này (ước tính)
+                </span>
+                <strong>
+                  {monthlyProfit.estimated_operating_profit == null
+                    ? "Chưa đủ giá vốn"
+                    : formatCurrency(monthlyProfit.estimated_operating_profit)}
+                </strong>
+              </div>
+            )}
           </div>
         </form>
-        <p className="pricing-hint">
-          Chi phí đã ghi sẽ tiếp tục nằm trong kỳ này cho đến khi bạn chủ động
-          đổi ngày bắt đầu. Chỉ bắt đầu kỳ mới khi đã xem xét các chi phí cũ đã
-          được bù đắp.
-        </p>
+        {(catalog.pricing_cost_warnings || []).map((warning) => (
+          <p className="pricing-cost-warning" key={warning} role="status">
+            {warning}
+          </p>
+        ))}
         <div className="pricing-table-wrap">
           <table>
             <thead>
@@ -822,9 +982,12 @@ export default function PricingManagement() {
                   Giá nhập về kho
                 </th>
                 <th>Chi phí / đơn vị</th>
+                <th>COST đầy đủ</th>
                 <th>Sản lượng dự kiến</th>
-                <th>Tiền lời / đơn vị</th>
+                <th>% lãi trên COST</th>
+                <th>Lãi dự kiến / đơn vị</th>
                 <th>Giá đề xuất</th>
+                <th title="Giá bán mặc định hiện tại của sản phẩm">Giá bán đang áp dụng</th>
                 <th>Thao tác</th>
               </tr>
             </thead>
@@ -834,13 +997,15 @@ export default function PricingManagement() {
                   key={row.product_id}
                   row={row}
                   onSave={savePolicy}
-                  onApply={setApplyRow}
+                  onApply={(rowToApply) =>
+                    setApplyRow({ ...rowToApply, cost_mode: costMode })
+                  }
                   busy={busy}
                 />
               ))}
               {!catalog.products.length && (
                 <tr>
-                  <td colSpan="7">
+                  <td colSpan="10">
                     {loadingCatalog
                       ? "Đang tải giá đề xuất..."
                       : "Chưa có sản phẩm phù hợp."}
@@ -875,7 +1040,7 @@ export default function PricingManagement() {
             <p className="pricing-form-note">
               {editingExpense?.invoice_id
                 ? `Khoản lương cũ đang gắn đơn #${editingExpense.invoice_id}; thông tin này được giữ nguyên khi sửa.`
-                : "Lương là chi phí chung trong kỳ, không gắn với đơn bán."}
+                : "Ghi tổng lương thực tế của tháng. Mức kế hoạch chỉ là gợi ý, không tự ghi chi phí hoặc ghi quỹ."}
             </p>
           ) : (
             <div className="pricing-category-field">
@@ -971,6 +1136,17 @@ export default function PricingManagement() {
               />
             </label>
           )}
+          {!formIsSalary && (
+            <label className="pricing-abnormal-checkbox">
+              <input
+                type="checkbox"
+                checked={isAbnormal}
+                onChange={(event) => setIsAbnormal(event.target.checked)}
+              />
+              Khoản bất thường: vẫn ghi chi phí thực tế nhưng không phân bổ vào
+              giá đề xuất
+            </label>
+          )}
           <label className="pricing-description">
             Nội dung chi phí
             <textarea
@@ -1050,7 +1226,8 @@ export default function PricingManagement() {
         <div className="pricing-void-dialog">
           <label>
             Lý do hủy
-            <input
+            <textarea
+              rows={4}
               value={voidReason}
               onChange={(event) => setVoidReason(event.target.value)}
               maxLength={500}
@@ -1061,6 +1238,7 @@ export default function PricingManagement() {
       </ConfirmDialog>
       <ConfirmDialog
         open={Boolean(payRow)}
+        className="pricing-void-confirm pricing-pay-confirm"
         title="Ghi đã chi tiền?"
         message={
           payRow
@@ -1068,6 +1246,7 @@ export default function PricingManagement() {
             : ""
         }
         confirmLabel="Ghi đã chi"
+        confirmDisabled={!payMethod}
         onConfirm={payExpense}
         onCancel={() => setPayRow(null)}
         loading={busy}
@@ -1075,13 +1254,17 @@ export default function PricingManagement() {
         <div className="pricing-void-dialog">
           <label>
             Chi từ quỹ
-            <SearchableDropdown
+            <select
               value={payMethod}
-              onChange={setPayMethod}
-              options={PAID_FROM_OPTIONS}
-              placeholder="Chọn quỹ"
-              ariaLabel="Chi từ quỹ"
-            />
+              onChange={(event) => setPayMethod(event.target.value)}
+              disabled={busy}
+            >
+              {PAID_FROM_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
       </ConfirmDialog>

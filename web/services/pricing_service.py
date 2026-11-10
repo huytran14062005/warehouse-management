@@ -5,7 +5,7 @@ for product analysis; other expenses remain period costs. Purchase cost is a
 weighted import estimate, not a perpetual inventory valuation.
 """
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_HALF_UP, localcontext
 from uuid import uuid4
 
@@ -26,11 +26,14 @@ from web.utils.pagination import build_pagination
 
 CATEGORIES = {
     "fuel": "Xăng xe",
+    "utilities": "Điện nước",
     "vehicle_repair": "Sửa xe",
+    "maintenance": "Bảo trì",
+    "shrinkage": "Hao hụt",
     "lodging": "Nhà nghỉ",
     "sales_salary": "Lương nhân viên",
     "overtime": "Tiền tăng ca",
-    "depreciation": "Hao mòn, khấu hao",
+    "depreciation": "Khấu hao xe, thiết bị",
     "other": "Chi phí bán hàng khác",
 }
 
@@ -147,9 +150,15 @@ def _expense_details(payload, existing=None):
     )
     if expense_type_for(category) == ExpenseType.FIXED_SALARY and invoice_id is not None and not legacy_salary_link:
         raise ValidationError("Lương nhân viên là chi phí chung, không gắn với đơn bán")
+    is_abnormal = payload.get("is_abnormal", existing.is_abnormal if existing else False)
+    if not isinstance(is_abnormal, bool):
+        raise ValidationError("Đánh dấu chi phí bất thường không hợp lệ")
+    if category == "sales_salary" and is_abnormal:
+        raise ValidationError("Lương thực tế không được đánh dấu là chi phí bất thường")
     return {
         "category": category, "category_label": category_label, "amount": amount,
         "occurred_on": occurred_on, "description": description, "invoice_id": invoice_id,
+        "is_abnormal": is_abnormal,
     }
 
 
@@ -162,6 +171,7 @@ def create_expense(employee_id, payload):
         category=details["category"], amount=details["amount"],
         occurred_on=details["occurred_on"], invoice_id=details["invoice_id"],
         description=details["description"],
+        is_abnormal=details["is_abnormal"],
         payment_method=payment_method, created_by_id=employee_id,
     )
     try:
@@ -218,6 +228,7 @@ def update_expense(employee_id, expense_id, payload):
         expense.occurred_on = details["occurred_on"]
         expense.invoice_id = details["invoice_id"]
         expense.description = details["description"]
+        expense.is_abnormal = details["is_abnormal"]
         db.session.commit()
     except Exception:
         db.session.rollback()
@@ -232,6 +243,7 @@ def serialize_expense(row, category_labels=None):
         "category_label": _category_label(row.category, category_labels) or row.category,
         "amount": float(row.amount), "occurred_on": row.occurred_on.isoformat(),
         "invoice_id": row.invoice_id, "description": row.description,
+        "is_abnormal": bool(row.is_abnormal),
         "payment_method": row.payment_method, "created_at": row.created_at.isoformat(),
         "created_by_id": row.created_by_id,
         "voided_at": row.voided_at.isoformat() if row.voided_at else None,
@@ -324,6 +336,34 @@ def _expense_totals(start, end):
     return by_category, sum(by_category.values(), Decimal("0"))
 
 
+def _pricing_expense_totals(start, end):
+    """Use paid operating costs for pricing, keeping unusual costs separate."""
+    shared_flag = OperatingExpense.invoice_id.is_(None)
+    rows = db.session.query(
+        OperatingExpense.category, shared_flag.label("is_shared"),
+        OperatingExpense.is_abnormal,
+        func.sum(OperatingExpense.amount),
+    ).filter(
+        OperatingExpense.voided_at.is_(None),
+        OperatingExpense.payment_method.in_((PaymentMethod.CASH.value, PaymentMethod.BANK_TRANSFER.value)),
+        OperatingExpense.occurred_on >= start, OperatingExpense.occurred_on <= end,
+    ).group_by(OperatingExpense.category, shared_flag, OperatingExpense.is_abnormal).all()
+    shared_by_category = {}
+    shared_total = Decimal("0")
+    direct_total = Decimal("0")
+    abnormal_total = Decimal("0")
+    for category, is_shared, is_abnormal, amount in rows:
+        amount = money(amount)
+        if is_abnormal:
+            abnormal_total += amount
+        elif is_shared:
+            shared_by_category[category] = shared_by_category.get(category, Decimal("0")) + amount
+            shared_total += amount
+        else:
+            direct_total += amount
+    return shared_by_category, shared_total, direct_total, abnormal_total
+
+
 def _shipping_total(start, end):
     return money(db.session.query(func.sum(SalesInvoice.shipping_fee)).filter(
         SalesInvoice.delivery_method == "third_party",
@@ -332,38 +372,49 @@ def _shipping_total(start, end):
     ).scalar())
 
 
+def _month_start(day):
+    return day.replace(day=1)
+
+
+def _shift_months(month_start, count):
+    month_index = month_start.year * 12 + month_start.month - 1 + count
+    return date(month_index // 12, month_index % 12 + 1, 1)
+
+
 def _pricing_cycle_start():
-    """Keep shared costs in scope until a manager explicitly starts a new cycle."""
-    saved = db.session.get(PricingCycle, 1)
-    if saved:
-        return saved.start_date
-    first_expense = db.session.query(func.min(OperatingExpense.occurred_on)).filter(
-        OperatingExpense.voided_at.is_(None),
-    ).scalar()
-    first_shipping = db.session.query(func.min(SalesInvoice.shipping_charged_at)).filter(
-        SalesInvoice.delivery_method == "third_party",
-        SalesInvoice.shipping_fee.isnot(None),
-    ).scalar()
-    dates = [date for date in (first_expense, first_shipping.date() if first_shipping else None) if date]
-    return min(dates) if dates else vietnam_payment_time().date()
+    """Pricing uses the current calendar month; old cumulative cycles stay archived."""
+    return _month_start(vietnam_payment_time().date())
 
 
 def save_pricing_cycle(employee_id, payload):
-    try:
-        start_date = datetime.strptime(str(payload.get("start_date")), "%Y-%m-%d").date()
-    except (TypeError, ValueError):
-        raise ValidationError("Ngày bắt đầu kỳ tính giá không hợp lệ")
-    if start_date > vietnam_payment_time().date():
-        raise ValidationError("Ngày bắt đầu kỳ tính giá không được ở tương lai")
+    start_date = _pricing_cycle_start()
+    if "start_date" in payload and str(payload["start_date"]) != start_date.isoformat():
+        raise ValidationError("Kỳ tính giá hiện tự động bắt đầu từ đầu tháng hiện tại")
     cycle = db.session.get(PricingCycle, 1)
+    planned_salary = cycle.planned_salary_amount if cycle else None
+    if "planned_salary_amount" in payload:
+        value = payload["planned_salary_amount"]
+        if value in (None, ""):
+            planned_salary = None
+        else:
+            try:
+                planned_salary = Decimal(str(value))
+            except (TypeError, ValueError, InvalidOperation):
+                raise ValidationError("Mức lương kế hoạch không hợp lệ")
+            if (not planned_salary.is_finite() or planned_salary < 0
+                    or planned_salary > Decimal("999999999999.99")
+                    or planned_salary.as_tuple().exponent < -2):
+                raise ValidationError("Mức lương kế hoạch phải từ 0 đồng và có tối đa 2 chữ số thập phân")
     if cycle is None:
         cycle = PricingCycle(id=1, updated_by_id=employee_id)
         db.session.add(cycle)
     cycle.start_date = start_date
+    cycle.planned_salary_amount = planned_salary
     cycle.updated_at = vietnam_payment_time()
     cycle.updated_by_id = employee_id
     db.session.commit()
-    return {"start_date": start_date.isoformat()}
+    return {"start_date": start_date.isoformat(),
+            "planned_salary_amount": float(planned_salary) if planned_salary is not None else None}
 
 
 def _purchase_costs(product_ids, start=None, end=None):
@@ -395,14 +446,15 @@ def _purchase_costs(product_ids, start=None, end=None):
 def _pricing_row(product, policy, unit_cost, expense_total, planned_value):
     planned_quantity = policy.planned_quantity if policy else 100
     markup = money(policy.markup_percent) if policy else DEFAULT_MARKUP
-    desired_profit = (
-        money(policy.desired_profit_per_unit)
-        if policy and policy.desired_profit_per_unit is not None
-        else rounded(unit_cost * markup / 100) if unit_cost is not None else None
-    )
+    legacy_fixed_profit = bool(policy and policy.desired_profit_per_unit is not None)
     current_price = money(product.default_sale_price)
     suggested = None
     expense_per_unit = None
+    full_cost = None
+    desired_profit = None
+    actual_profit = None
+    actual_markup = None
+    current_price_profit = None
     if unit_cost is not None and planned_value > 0:
         # SKU share = planned quantity * unit cost / all planned purchase value.
         # Dividing that share by planned quantity leaves this per-unit amount.
@@ -410,19 +462,40 @@ def _pricing_row(product, policy, unit_cost, expense_total, planned_value):
             context.prec = 60
             expense_per_unit = (expense_total * unit_cost / planned_value).quantize(CENT, rounding=ROUND_CEILING)
     if unit_cost is not None and expense_per_unit is not None:
-        raw_price = unit_cost + expense_per_unit + desired_profit
-        suggested = int((raw_price / 1000).to_integral_value(rounding=ROUND_CEILING) * 1000)
+        with localcontext() as context:
+            context.prec = 60
+            full_cost = unit_cost + expense_per_unit
+            if legacy_fixed_profit:
+                # Show the old fixed-profit plan until a manager explicitly saves a %.
+                desired_profit = money(policy.desired_profit_per_unit)
+                raw_price = full_cost + desired_profit
+                if full_cost > 0:
+                    markup = (desired_profit * 100 / full_cost).quantize(CENT, rounding=ROUND_HALF_UP)
+            else:
+                desired_profit = rounded(full_cost * markup / 100)
+                raw_price = full_cost * (Decimal("1") + markup / 100)
+            suggested = int((raw_price / 1000).to_integral_value(rounding=ROUND_CEILING) * 1000)
+            actual_profit = Decimal(suggested) - full_cost
+            actual_markup = rounded(actual_profit * 100 / full_cost) if full_cost > 0 else None
+            current_price_profit = current_price - full_cost
     return {
         "product_id": product.id, "name": product.name, "unit": product.unit,
         "current_price": float(current_price), "estimated_unit_cost": float(unit_cost) if unit_cost is not None else None,
         "expense_per_unit": float(expense_per_unit) if expense_per_unit is not None else None,
+        "full_cost_per_unit": float(full_cost) if full_cost is not None else None,
         "markup_percent": float(markup), "planned_quantity": str(planned_quantity),
         "desired_profit_per_unit": float(desired_profit) if desired_profit is not None else None,
+        "actual_profit_per_unit": float(actual_profit) if actual_profit is not None else None,
+        "actual_markup_percent": float(actual_markup) if actual_markup is not None else None,
+        "profit_at_current_price_per_unit": float(current_price_profit) if current_price_profit is not None else None,
+        "legacy_fixed_profit": legacy_fixed_profit,
         "suggested_price": suggested,
     }
 
 
-def _pricing_inputs():
+def _pricing_inputs(cost_mode="actual"):
+    if cost_mode not in ("actual", "average_3m"):
+        raise ValidationError("Nguồn chi phí tính giá không hợp lệ")
     product_policies = db.session.query(
         Product.id.label("id"),
         PricingPolicy.product_id.label("policy_product_id"),
@@ -444,67 +517,109 @@ def _pricing_inputs():
                              for pid in ids if costs[pid] is not None), Decimal("0"))
     start = _pricing_cycle_start()
     end = vietnam_payment_time().date()
-    expenses_by_category, operating_expenses = _expense_totals(start, end)
+    expenses_by_category, actual_shared, direct_expenses, abnormal_expenses = _pricing_expense_totals(start, end)
+    actual_salary = expenses_by_category.get("sales_salary", Decimal("0"))
+    cycle = db.session.get(PricingCycle, 1)
+    planned_salary = money(cycle.planned_salary_amount) if cycle and cycle.planned_salary_amount is not None else None
     shipping = _shipping_total(start, end)
-    return policies, costs, planned_value, start, expenses_by_category, operating_expenses, shipping
+    # Only paid operating costs affect the suggested price. Planned salary is
+    # reference data, not an expense or a payment.
+    current_estimate = actual_shared + direct_expenses + shipping
+    previous_start = _shift_months(start, -3)
+    historical_end = start - timedelta(days=1)
+    _, historical_shared, historical_direct, _ = _pricing_expense_totals(previous_start, historical_end)
+    historical_shipping = _shipping_total(previous_start, historical_end)
+    historical_eligible = historical_shared + historical_direct + historical_shipping
+    average_available = historical_eligible > 0
+    average_shared = historical_eligible / Decimal("3")
+    if cost_mode == "average_3m" and not average_available:
+        raise ValidationError("Chưa có chi phí của 3 tháng trước để tính bình quân")
+    shared_expenses = average_shared if cost_mode == "average_3m" else current_estimate
+    warnings = []
+    if actual_salary == 0:
+        if cost_mode == "average_3m":
+            warnings.append("Chưa có lương đã thanh toán tháng này; giá đề xuất đang dùng chi phí đã thanh toán bình quân 3 tháng trước.")
+        elif planned_salary is not None:
+            warnings.append("Chưa có lương đã thanh toán tháng này; lương kế hoạch chỉ để tham khảo, chưa tính vào COST.")
+        else:
+            warnings.append("Chưa có lương đã thanh toán tháng này; COST có thể chưa đủ chi phí.")
+    if abnormal_expenses:
+        warnings.append("Có chi phí bất thường được ghi nhận nhưng không phân bổ vào giá đề xuất.")
+    if average_available and current_estimate > average_shared:
+        warnings.append("Tổng chi phí tính giá tháng này cao hơn bình quân 3 tháng trước; hãy xem xét trước khi áp dụng giá mới.")
+    return {
+        "policies": policies, "costs": costs, "planned_value": planned_value,
+        "start": start, "end": end, "by_category": expenses_by_category,
+        "actual_shared": actual_shared, "shared_expenses": shared_expenses,
+        "eligible_expenses": shared_expenses,
+        "direct_expenses": direct_expenses, "abnormal_expenses": abnormal_expenses,
+        "shipping": shipping, "planned_salary": planned_salary,
+        "estimated_salary": Decimal("0"),
+        "actual_salary": actual_salary,
+        "average_shared": average_shared, "average_available": average_available,
+        "cost_mode": cost_mode, "warnings": warnings,
+    }
 
 
-def pricing_catalog(page_value=None, keyword=None):
+def pricing_catalog(page_value=None, keyword=None, cost_mode="actual"):
     page = parse_page(page_value)
     keyword = str(keyword or "").strip()[:100]
-    policies, costs, planned_value, start, expenses_by_category, operating_expenses, shipping = _pricing_inputs()
+    inputs = _pricing_inputs(cost_mode or "actual")
     query = Product.query
     if keyword:
         query = query.filter(Product.name.ilike(f"%{keyword}%"))
     total = query.count()
     products = query.order_by(Product.name, Product.id).offset((page - 1) * 20).limit(20).all()
-    expense_total = operating_expenses + shipping
-    salary_expenses = expenses_by_category.get("sales_salary", Decimal("0"))
+    salary_expenses = inputs["actual_salary"]
     return {
-        "products": [_pricing_row(product, policies.get(product.id), costs.get(product.id), expense_total, planned_value) for product in products],
+        "products": [_pricing_row(product, inputs["policies"].get(product.id), inputs["costs"].get(product.id), inputs["shared_expenses"], inputs["planned_value"]) for product in products],
         "pagination": build_pagination(page, 20, total),
-        "pricing_operating_expenses": float(operating_expenses),
+        "pricing_operating_expenses": float(inputs["actual_shared"] + inputs["direct_expenses"] + inputs["abnormal_expenses"]),
+        "pricing_shared_expenses": float(inputs["shared_expenses"]),
+        "pricing_allocated_expenses": float(inputs["eligible_expenses"]),
+        "pricing_actual_shared_expenses": float(inputs["actual_shared"]),
+        "pricing_direct_expenses": float(inputs["direct_expenses"]),
+        "pricing_abnormal_expenses": float(inputs["abnormal_expenses"]),
         "pricing_salary_expenses": float(salary_expenses),
-        "pricing_incidental_expenses": float(operating_expenses - salary_expenses),
-        "pricing_shipping": float(shipping),
-        "pricing_period_start": start.isoformat(),
-        "pricing_planned_value": str(planned_value),
+        "pricing_planned_salary_amount": float(inputs["planned_salary"]) if inputs["planned_salary"] is not None else None,
+        "pricing_estimated_salary": float(inputs["estimated_salary"]),
+        "pricing_salary_confirmed": bool(salary_expenses),
+        "pricing_incidental_expenses": float(inputs["actual_shared"] - salary_expenses),
+        "pricing_shipping": float(inputs["shipping"]),
+        "pricing_period_start": inputs["start"].isoformat(),
+        "pricing_period_end": inputs["end"].isoformat(),
+        "pricing_average_3m_expenses": float(inputs["average_shared"]),
+        "pricing_average_3m_available": inputs["average_available"],
+        "pricing_cost_mode": inputs["cost_mode"],
+        "pricing_cost_warnings": inputs["warnings"],
+        "pricing_planned_value": str(inputs["planned_value"]),
     }
 
 
 def save_pricing_policy(employee_id, product_id, payload):
     if not db.session.get(Product, product_id):
         raise NotFoundError("Sản phẩm không tồn tại")
-    if "desired_profit_per_unit" in payload:
-        try:
-            profit = Decimal(str(payload["desired_profit_per_unit"]))
-            planned_text = str(payload["planned_quantity"]).strip()
-            if not planned_text.isascii() or not planned_text.isdecimal():
-                raise ValueError
-            planned_quantity = int(planned_text)
-        except (KeyError, TypeError, ValueError, InvalidOperation):
-            raise ValidationError("Tiền lời hoặc sản lượng dự kiến không hợp lệ")
-        if not profit.is_finite() or profit < 0 or profit > Decimal("999999999999.99") or profit.as_tuple().exponent < -2:
-            raise ValidationError("Tiền lời mong muốn phải từ 0 đồng và có tối đa 2 chữ số thập phân")
-        if planned_quantity <= 0 or planned_quantity > MAX_PLANNED_QUANTITY:
-            raise ValidationError("Sản lượng dự kiến phải lớn hơn 0 và nằm trong giới hạn lưu trữ của hệ thống")
-    else:
-        try:
-            markup = Decimal(str(payload.get("markup_percent")))
-        except (TypeError, ValueError, InvalidOperation):
-            raise ValidationError("Tỷ lệ lãi trên giá nhập không hợp lệ")
-        if not markup.is_finite() or markup < 0 or markup > 90 or markup.as_tuple().exponent < -2:
-            raise ValidationError("Tỷ lệ lãi trên giá nhập phải từ 0% đến 90%")
     policy = db.session.get(PricingPolicy, product_id)
+    try:
+        markup = Decimal(str(payload["markup_percent"]))
+        planned_text = str(payload.get(
+            "planned_quantity", policy.planned_quantity if policy else 100,
+        )).strip()
+        if not planned_text.isascii() or not planned_text.isdecimal():
+            raise ValueError
+        planned_quantity = int(planned_text)
+    except (KeyError, TypeError, ValueError, InvalidOperation):
+        raise ValidationError("Tỷ lệ lãi trên COST hoặc sản lượng dự kiến không hợp lệ")
+    if not markup.is_finite() or markup < 0 or markup >= 100 or markup.as_tuple().exponent < -2:
+        raise ValidationError("Tỷ lệ lãi trên COST phải từ 0% đến dưới 100%, tối đa 2 chữ số thập phân")
+    if planned_quantity <= 0 or planned_quantity > MAX_PLANNED_QUANTITY:
+        raise ValidationError("Sản lượng dự kiến phải lớn hơn 0 và nằm trong giới hạn lưu trữ của hệ thống")
     if policy is None:
         policy = PricingPolicy(product_id=product_id, updated_by_id=employee_id)
         db.session.add(policy)
-    if "desired_profit_per_unit" in payload:
-        policy.desired_profit_per_unit = profit
-        policy.planned_quantity = planned_quantity
-    else:
-        policy.markup_percent = markup
-        policy.desired_profit_per_unit = None
+    policy.markup_percent = markup
+    policy.desired_profit_per_unit = None
+    policy.planned_quantity = planned_quantity
     policy.updated_by_id = employee_id
     policy.updated_at = vietnam_payment_time()
     db.session.commit()
@@ -513,7 +628,7 @@ def save_pricing_policy(employee_id, product_id, payload):
             "desired_profit_per_unit": float(policy.desired_profit_per_unit) if policy.desired_profit_per_unit is not None else None}
 
 
-def apply_suggested_price(product_id, expected_price, expected_suggested_price):
+def apply_suggested_price(product_id, expected_price, expected_suggested_price, cost_mode="actual"):
     product = db.session.get(Product, product_id)
     if not product:
         raise NotFoundError("Sản phẩm không tồn tại")
@@ -523,11 +638,13 @@ def apply_suggested_price(product_id, expected_price, expected_suggested_price):
         raise ValidationError("Giá hiện tại không hợp lệ")
     if expected != money(product.default_sale_price):
         raise ValidationError("Giá sản phẩm đã thay đổi; hãy tải lại đề xuất", status_code=409)
-    policies, costs, planned_value, _, _, operating_expenses, shipping = _pricing_inputs()
-    unit_cost = costs.get(product_id)
+    inputs = _pricing_inputs(cost_mode or "actual")
+    unit_cost = inputs["costs"].get(product_id)
     if unit_cost is None:
         raise ValidationError("Chưa có giá nhập để đề xuất giá bán")
-    proposal = _pricing_row(product, policies.get(product_id), unit_cost, operating_expenses + shipping, planned_value)
+    proposal = _pricing_row(product, inputs["policies"].get(product_id), unit_cost, inputs["shared_expenses"], inputs["planned_value"])
+    if proposal["legacy_fixed_profit"]:
+        raise ValidationError("Hãy lưu tỷ lệ lãi trên COST cho kế hoạch giá cũ trước khi áp dụng", status_code=409)
     try:
         expected_suggestion = int(expected_suggested_price)
     except (TypeError, ValueError):

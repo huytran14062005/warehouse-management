@@ -19,7 +19,7 @@ from web.models import (
     StockTransferItem,
     Warehouse,
 )
-from web.services.inventory_policy import STOCK_DEDUCTING_SALES_STATUSES
+from web.services.inventory_policy import stock_deducting_sales_filter
 from web.services.inventory_settings_service import get_low_stock_percentage
 from web.utils.pagination import apply_pagination
 from .stock_allocation import allocate_field_movements_to_transfers
@@ -143,10 +143,9 @@ def _inventory_for_products(product_ids, warehouse_id=None, exclude_invoice_id=N
         .join(Warehouse, SalesInvoice.warehouse_id == Warehouse.id)
         .filter(
             SalesInvoiceItem.product_id.in_(product_ids),
-            # Once an order leaves draft, its goods are considered sold from
-            # the central warehouse. Draft and cancelled orders do not reduce
-            # stock and therefore are intentionally excluded here.
-            SalesInvoice.status.in_(STOCK_DEDUCTING_SALES_STATUSES),
+            # Goods from a dispatched cancellation remain out of stock until
+            # the warehouse confirms the full return.
+            stock_deducting_sales_filter(),
             SalesInvoice.sale_source == SaleSource.CENTRAL_WAREHOUSE,
         )
     )

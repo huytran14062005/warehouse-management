@@ -356,10 +356,23 @@ def _build_product_profit_rows(from_date, to_date):
     if not sales:
         return []
 
+    purchase_invoice_totals = (
+        db.session.query(
+            ImportInvoiceItem.import_invoice_id.label("invoice_id"),
+            func.sum(func.coalesce(
+                ImportInvoiceItem.line_total,
+                ImportInvoiceItem.quantity * ImportInvoiceItem.unit_price,
+            )).label("amount"),
+        )
+        .group_by(ImportInvoiceItem.import_invoice_id)
+        .subquery()
+    )
     purchases = (
         db.session.query(
             ImportInvoice.id.label("import_id"),
             ImportInvoice.imported_at,
+            ImportInvoice.inbound_fee,
+            purchase_invoice_totals.c.amount.label("invoice_purchase_total"),
             ImportInvoiceItem.id.label("import_line_id"),
             ImportInvoiceItem.product_id,
             ImportInvoiceItem.quantity,
@@ -367,6 +380,7 @@ def _build_product_profit_rows(from_date, to_date):
             ImportInvoiceItem.line_total,
         )
         .join(ImportInvoice, ImportInvoice.id == ImportInvoiceItem.import_invoice_id)
+        .join(purchase_invoice_totals, purchase_invoice_totals.c.invoice_id == ImportInvoice.id)
         .filter(
             ImportInvoiceItem.product_id.in_({row.product_id for row in sales}),
             ImportInvoice.imported_at <= sales[-1].sold_at,

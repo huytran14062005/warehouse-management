@@ -24,6 +24,7 @@
     "predeploy": "npm run build",
     "deploy": "gh-pages -d build",
     "test": "react-scripts test",
+    "test:e2e": "python ../tests/e2e_run.py",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {
@@ -45,6 +46,7 @@
     ]
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.0",
     "gh-pages": "^6.3.0"
   }
 }

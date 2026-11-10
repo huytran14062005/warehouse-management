@@ -415,6 +415,23 @@ def _validate_sales_items(items):
     return normalized
 
 
+def _validate_saved_sales_items(items):
+    """Validate saved amounts without re-pricing an agreed order at completion."""
+    combo_totals = {}
+    for index, item in enumerate(items, start=1):
+        quantity = validate_positive_quantity(item.quantity, f"Số lượng (item {index})")
+        price = validate_money_amount(
+            item.unit_price,
+            f"Đơn giá (item {index})",
+            allow_zero=item.combo_id is not None,
+            minimum=None if item.combo_id is not None else MIN_MONEY_AMOUNT,
+        )
+        if item.combo_id is not None:
+            combo_totals[item.combo_id] = combo_totals.get(item.combo_id, Decimal("0")) + price * quantity
+    if any(total <= 0 for total in combo_totals.values()):
+        raise ValidationError("Giá combo đã lưu phải lớn hơn 0")
+
+
 def _validate_items_available_in_warehouse(items, warehouse_id, exclude_invoice_id=None):
     """Ensure a draft order can be fulfilled with the warehouse's current stock.
 
@@ -707,6 +724,7 @@ def serialize_sales_invoice(invoice):
         "days_overdue": payment_due["days_overdue"],
         "cancel_requested": has_active_cancel_request(invoice),
         "cancel_note": invoice.cancel_note,
+        "return_pending": bool(invoice.return_pending),
         "note": invoice.note,
         "customer": {
             "id": invoice.customer.id,
@@ -1056,16 +1074,10 @@ def complete_sales_invoice_service(invoice_id, employee_id, payment_amount=0, pa
             "Vui lòng xử lý yêu cầu hủy trước."
         )
 
-    # The default price may have changed while a central-warehouse order was
-    # still a draft or in delivery. Check the agreed range at completion too.
-    _validate_sales_items([
-        {
-            "product_id": item.product_id,
-            "quantity": int(item.quantity),
-            "unit_price": item.unit_price,
-        }
-        for item in invoice.items
-    ])
+    # Draft creation/editing already checks the then-current catalog and combo.
+    # Completion must honor the saved prices, even if default prices or combo
+    # definitions changed while the order was being delivered.
+    _validate_saved_sales_items(invoice.items)
 
                                             
     try:
@@ -1273,6 +1285,7 @@ def serialize_invoice_summary(invoice):
         "delivery_method": invoice.delivery_method,
         "delivered_at": invoice.delivered_at.isoformat() if invoice.delivered_at else None,
         "cancel_requested": has_active_cancel_request(invoice),
+        "return_pending": bool(invoice.return_pending),
         "sale_source": invoice.sale_source.value,
         "payment_status": invoice.payment_status.value,
         "paid_amount": float(invoice.paid_amount),
@@ -1886,6 +1899,10 @@ def cancel_invoice_service(invoice_id, employee_id):
     
                              
     try:
+        invoice.return_pending = (
+            invoice.status == InvoiceStatus.DELIVERING
+            and invoice.sale_source == SaleSource.CENTRAL_WAREHOUSE
+        )
         invoice.status = InvoiceStatus.CANCELLED
         invoice.cancel_requested = False
         invoice.current_assignee_id = None
@@ -1907,6 +1924,28 @@ def cancel_invoice_service(invoice_id, employee_id):
     except Exception as ex:
         db.session.rollback()
         raise Exception(f"Lỗi hủy đơn hàng: {str(ex)}")
+
+
+def confirm_sales_invoice_return_service(invoice_id, employee_id):
+    """Restock a cancelled dispatched order only after the full return arrives."""
+    employee = db.session.get(Employee, employee_id)
+    if not employee or employee.role not in {EmployeeRole.THU_KHO, EmployeeRole.QUAN_LY}:
+        raise ForbiddenError("Chỉ thủ kho hoặc quản lý được xác nhận hàng hoàn")
+    try:
+        invoice = SalesInvoice.query.filter_by(id=invoice_id).with_for_update().first()
+        if not invoice:
+            raise NotFoundError("Đơn hàng không tồn tại")
+        ensure_warehouse_access(employee_id, invoice.warehouse_id)
+        if invoice.status != InvoiceStatus.CANCELLED or not invoice.return_pending:
+            raise ValidationError("Đơn không có hàng hoàn đang chờ xác nhận", status_code=409)
+        invoice.return_pending = False
+        _log_workflow_event(invoice, employee_id, "return_received", "Đã nhận đủ hàng hoàn về kho")
+        db.session.commit()
+        _notify_invoice_changed(invoice.id)
+        return dao.get_sales_invoice_by_id(invoice.id)
+    except Exception:
+        db.session.rollback()
+        raise
 
 
 def request_cancel_invoice_service(invoice_id, employee_id, cancel_note):
@@ -2073,6 +2112,10 @@ def approve_cancel_request_service(invoice_id, manager_id, approved, note=""):
     
     try:
         if approved:
+            invoice.return_pending = (
+                invoice.status == InvoiceStatus.DELIVERING
+                and invoice.sale_source == SaleSource.CENTRAL_WAREHOUSE
+            )
             invoice.status = InvoiceStatus.CANCELLED
             invoice.cancel_requested = False
             invoice.current_assignee_id = None

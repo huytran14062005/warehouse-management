@@ -9,6 +9,7 @@ from web.services.sales_invoice_service import (
     approve_discount_service,
     business_today,
     cancel_invoice_service,
+    confirm_sales_invoice_return_service,
     complete_sales_invoice_service,
     create_sales_invoice_service,
     get_pending_discount_invoices_service,
@@ -364,6 +365,18 @@ def cancel_invoice(invoice_id):
             "id": invoice.id,
             "status": invoice.status.value
         }
+    }), 200
+
+
+@sales_invoices_bp.route("/<int:invoice_id>/confirm-return", methods=["POST"])
+@verify_token
+@verify_role(EmployeeRole.THU_KHO, EmployeeRole.QUAN_LY)
+@handle_api_errors
+def confirm_sales_invoice_return(invoice_id):
+    invoice = confirm_sales_invoice_return_service(invoice_id, request.employee_id)
+    return jsonify({
+        "message": "Đã xác nhận nhận đủ hàng hoàn và cập nhật tồn kho",
+        "invoice": serialize_sales_invoice(invoice),
     }), 200
 
 

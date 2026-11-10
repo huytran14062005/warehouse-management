@@ -220,3 +220,6 @@ __marimo__/
 .streamlit/secrets.toml
 
 .idea/
+tests/.e2e-data/
+warehouse-management-front-end/test-results/
+warehouse-management-front-end/playwright-report/

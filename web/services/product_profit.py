@@ -44,13 +44,22 @@ def calculate_product_profit_rows(sale_lines, import_lines, *, presorted=False):
             and purchases[purchase_index].imported_at <= invoice.sold_at
         ):
             purchase = purchases[purchase_index]
+            line_amount = (
+                _money(purchase.line_total) if purchase.line_total is not None
+                else int(purchase.quantity) * _money(purchase.unit_price)
+            )
+            invoice_amount = _money(getattr(purchase, "invoice_purchase_total", None))
+            inbound_fee = _money(getattr(purchase, "inbound_fee", None))
+            landed_amount = (
+                line_amount + line_amount * inbound_fee / invoice_amount
+                if invoice_amount > 0 else line_amount
+            )
             quantity, amount = purchase_totals.get(
                 purchase.product_id, (0, Decimal("0"))
             )
             purchase_totals[purchase.product_id] = (
                 quantity + int(purchase.quantity),
-                amount + (_money(purchase.line_total) if purchase.line_total is not None
-                          else int(purchase.quantity) * _money(purchase.unit_price)),
+                amount + landed_amount,
             )
             purchase_index += 1
 

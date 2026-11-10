@@ -87,7 +87,7 @@ def pay_recorded_expense(expense_id):
 def catalog():
     params = request.args
     return jsonify(cached_query("pricing-catalog", params.to_dict(flat=True), 30, lambda: pricing_catalog(
-        params.get("page"), params.get("keyword"),
+        params.get("page"), params.get("keyword"), params.get("cost_mode"),
     ))), 200
 
 
@@ -114,7 +114,10 @@ def update_cycle():
 @handle_api_errors
 def apply_price(product_id):
     payload = request.get_json(silent=True) or {}
-    result = apply_suggested_price(product_id, payload.get("expected_price"), payload.get("expected_suggested_price"))
+    result = apply_suggested_price(
+        product_id, payload.get("expected_price"),
+        payload.get("expected_suggested_price"), payload.get("cost_mode"),
+    )
     return jsonify(result), 200
 
 

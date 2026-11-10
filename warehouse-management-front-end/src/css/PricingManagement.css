@@ -35,29 +35,49 @@
 .pricing-new-category { padding: 12px; border: 1px solid #d9e2ec; border-radius: 6px; background: #f8fafc; }
 .pricing-expense-dialog .pricing-form-error, .pricing-expense-dialog .pricing-form-success { grid-column: 1 / -1; margin: 0; font-size: 13px; }
 .pricing-expense-dialog .pricing-form-note { grid-column: 1 / -1; margin: 0; color: #52657a; font-size: 13px; line-height: 1.5; }
+.pricing-expense-dialog .pricing-abnormal-checkbox { grid-column: 1 / -1; display: flex; align-items: flex-start; gap: 9px; font-size: 13px; line-height: 1.5; }
+.pricing-expense-dialog .pricing-abnormal-checkbox input { width: 16px; min-height: 16px; height: 16px; margin: 2px 0 0; flex: none; }
 .pricing-expense-dialog .pricing-form-error { color: #9f3d3d; }
 .pricing-expense-dialog .pricing-form-success { color: #26704b; }
 .pricing-hint { margin: 14px 0; color: #647a90; font-size: 12px; line-height: 1.5; }
-.pricing-cycle-form { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 18px 0 8px; padding: 14px; border: 1px solid #d9e2ec; border-radius: 6px; background: #f8fafc; }
-.pricing-cycle-form label { color: #0b3158; font-size: 13px; font-weight: 600; }
-.pricing-cycle-form span { margin-left: auto; color: #52657a; font-size: 13px; }
-.pricing-cost-summary { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-left: auto; color: #52657a; font-size: 13px; }
-.pricing-cycle-form .pricing-cost-summary span { margin-left: 0; }
-.pricing-cost-summary strong { color: #0b3158; }
-.pricing-page .pricing-cycle-form button { color: #fff; border-color: #0b3158; background: #0b3158; }
+.pricing-cycle-form { margin: 14px 0 10px; padding: 16px; border: 1px solid #d9e2ec; border-radius: 8px; background: #f8fafc; }
+.pricing-controls { display: grid; grid-template-columns: minmax(150px, .7fr) minmax(220px, 1fr) minmax(280px, 1.2fr); gap: 16px; align-items: end; }
+.pricing-period-card, .pricing-control { display: grid; gap: 7px; min-width: 0; color: #52657a; font-size: 12px; font-weight: 600; }
+.pricing-period-card { align-self: center; }
+.pricing-period-card strong { color: #0b3158; font-size: 16px; }
+.pricing-control select, .pricing-salary-input input { width: 100%; box-sizing: border-box; }
+.pricing-salary-input { display: flex; gap: 8px; min-width: 0; }
+.pricing-salary-input input { min-width: 0; }
+.pricing-page .pricing-salary-input button { flex: none; min-width: 64px; }
+.pricing-snapshot { display: flex; flex-wrap: wrap; gap: 8px 32px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #dce6ef; }
+.pricing-metric { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 9px; min-width: 0; }
+.pricing-metric span { color: #647a90; font-size: 12px; }
+.pricing-metric strong { color: #0b3158; font-size: 15px; overflow-wrap: anywhere; }
+.pricing-cost-warning { margin: 8px 0; padding: 9px 12px; border: 1px solid #ecd29b; border-radius: 5px; background: #fff9ea; color: #815b13; font-size: 12px; }
+.pricing-abnormal-note { display: block; margin-top: 3px; color: #a46416; font-size: 11px; }
+.pricing-cost-loss { display: block; max-width: 180px; margin-top: 5px; color: #af3e35; font-size: 11px; line-height: 1.35; white-space: normal; }
+.pricing-page .pricing-salary-input button { color: #fff; border-color: #0b3158; background: #0b3158; }
 .pricing-warning { color: #946018; font-size: 12px; }
 .pricing-error, .pricing-success { margin-bottom: 15px; padding: 11px 13px; border-radius: 5px; font-size: 13px; }
 .pricing-error { color: #9f3d3d; border: 1px solid #e5b4b4; background: #fff1f1; }
 .pricing-success { color: #26704b; border: 1px solid #a9d5bd; background: #eef9f2; }
 .pricing-table-wrap { width: 100%; margin-top: 14px; overflow-x: auto; }
-.pricing-table-wrap table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.pricing-table-wrap th, .pricing-table-wrap td { padding: 11px 10px; border-bottom: 1px solid #edf1f5; text-align: left; vertical-align: middle; }
+.pricing-table-wrap table { width: 100%; min-width: 1250px; border-collapse: collapse; font-size: 12px; }
+.pricing-table-wrap th, .pricing-table-wrap td { padding: 10px 8px; border-bottom: 1px solid #edf1f5; text-align: left; vertical-align: middle; }
 .pricing-table-wrap thead th { background: #f7f9fb; color: #52657a; white-space: nowrap; }
-.pricing-table-wrap tbody th { min-width: 150px; color: #0b3158; }
+.pricing-table-wrap tbody th { min-width: 130px; color: #0b3158; }
 .pricing-table-wrap tbody th small { display: block; margin-top: 3px; color: #71849a; font-weight: 400; }
+.pricing-table-wrap .pricing-legacy-note { display: block; max-width: 150px; margin-top: 5px; color: #946018; font-size: 11px; line-height: 1.35; white-space: normal; }
 .pricing-table-wrap td { white-space: nowrap; }
-.pricing-table-wrap td input { box-sizing: border-box; width: 110px; }
-.pricing-table-wrap td input.pricing-plan-input { width: 170px; }
+.pricing-table-wrap td input { box-sizing: border-box; width: 100px; }
+.pricing-table-wrap td input.pricing-plan-input { width: 145px; }
+.pricing-table-wrap td.pricing-current-price { min-width: 130px; }
+.pricing-payment-method { display: block; }
+.pricing-price-status { display: block; width: fit-content; max-width: 180px; margin-top: 4px; padding: 3px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; line-height: 1.35; white-space: normal; }
+.pricing-price-status.is-included { background: #eaf6ef; color: #247149; }
+.pricing-price-status.is-pending { background: #fff4dc; color: #8a621c; }
+.pricing-price-status.is-excluded { background: #fff0e0; color: #9b581d; }
+.pricing-price-status.is-voided { background: #eef1f4; color: #697b8b; }
 .pricing-row-actions { display: flex; gap: 6px; }
 .pricing-row-actions button { white-space: nowrap; font-size: 11px; }
 .pricing-voided-row { color: #8997a5; background: #fafbfc; }
@@ -66,9 +86,14 @@
 .pricing-void-confirm > p { margin-bottom: 22px; font-size: 14px; line-height: 1.6; }
 .pricing-void-dialog label { display: grid; gap: 8px; color: #52657a; font-size: 13px; font-weight: 600; }
 .pricing-void-dialog input { box-sizing: border-box; width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid #cbd7e2; border-radius: 6px; color: #1b2d40; font: inherit; font-size: 14px; }
-.pricing-void-confirm .pricing-void-dialog input:focus { border-color: #0b3158; outline: 2px solid rgba(11, 49, 88, .16); outline-offset: 1px; }
+.pricing-void-dialog textarea { box-sizing: border-box; width: 100%; min-height: 100px; padding: 10px 12px; border: 1px solid #cbd7e2; border-radius: 6px; color: #1b2d40; font: inherit; font-size: 14px; line-height: 1.5; resize: vertical; }
+.pricing-pay-confirm .pricing-void-dialog select { box-sizing: border-box; width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid #cbd7e2; border-radius: 6px; background: #fff; color: #1b2d40; font: inherit; font-size: 14px; }
+.pricing-pay-confirm .pricing-void-dialog select:focus { border-color: #0b3158; outline: 2px solid rgba(11, 49, 88, .16); outline-offset: 1px; }
+.pricing-void-confirm .pricing-void-dialog :is(input, textarea):focus { border-color: #0b3158; outline: 2px solid rgba(11, 49, 88, .16); outline-offset: 1px; }
 .pricing-void-confirm .confirm-dialog-actions { justify-content: flex-end; gap: 10px; margin-top: 24px; padding-top: 18px; border-top: 1px solid #e8edf2; }
 .pricing-void-confirm .confirm-dialog-actions button { min-height: 40px; }
 @media (max-width: 480px) { .pricing-void-confirm { padding: 22px 20px; } .pricing-void-confirm .confirm-dialog-actions { flex-direction: row; } .pricing-void-confirm .confirm-dialog-actions button { width: auto; } }
 @media (max-width: 768px) { .pricing-page { width: calc(100% - 24px); padding-top: 24px; } .pricing-panel { padding: 15px; } .pricing-expense-form { grid-template-columns: 1fr; } .pricing-expense-form .pricing-description { grid-column: auto; } .pricing-period, .pricing-search { width: 100%; } .pricing-period label { flex: 1 1 130px; } .pricing-search input { flex: 1; min-width: 0; } }
+@media (max-width: 900px) { .pricing-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); } .pricing-salary-control { grid-column: 1 / -1; } }
+@media (max-width: 560px) { .pricing-controls { grid-template-columns: 1fr; } .pricing-salary-control { grid-column: auto; } .pricing-cycle-form { padding: 12px; } }
 @media (max-width: 600px) { .pricing-expense-dialog .pricing-expense-form { grid-template-columns: 1fr; } .pricing-expense-dialog .pricing-description { grid-column: 1; } .pricing-category-field, .pricing-new-category { flex-direction: column; align-items: stretch; } }

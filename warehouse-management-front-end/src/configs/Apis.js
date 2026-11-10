@@ -40,6 +40,7 @@ export const endpoints = {
   approveSalesInvoiceDiscount: (invoiceId) => `/sales-invoices/${invoiceId}/approve-discount`,
   salesInvoiceDetail: (invoiceId) => `/sales-invoices/${invoiceId}`,
   salesInvoiceCancelRequest: (invoiceId) => `/sales-invoices/${invoiceId}/cancel-request`,
+  salesInvoiceConfirmReturn: (invoiceId) => `/sales-invoices/${invoiceId}/confirm-return`,
   salesInvoiceStatus: (invoiceId) => `/sales-invoices/${invoiceId}/status`,
   completeSalesInvoice: (invoiceId) => `/sales-invoices/${invoiceId}/complete`,
   salesInvoicePayments: (invoiceId) => `/sales-invoices/${invoiceId}/payments`,
