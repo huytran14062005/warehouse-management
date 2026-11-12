@@ -8,7 +8,6 @@ if __package__ in (None, ""):
 from web import app
 from web.realtime import socketio
 
-
 if __name__ == "__main__":
     if app.config["IS_PRODUCTION"]:
         raise RuntimeError("Use a production application server instead of the development server")
