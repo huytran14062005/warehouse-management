@@ -61,7 +61,7 @@ function formatExpenseMonth(value) {
   return year && month ? `${month}/${year}` : "—";
 }
 
-function PricingRow({ row, onSave, onApply, busy, costMode }) {
+export function PricingRow({ row, onSave, onApply, busy, costMode }) {
   const [profit, setProfit] = useState(String(row.markup_percent ?? "20"));
   const [plannedQuantity, setPlannedQuantity] = useState(
     String(row.planned_quantity),
@@ -94,6 +94,7 @@ function PricingRow({ row, onSave, onApply, busy, costMode }) {
     /^\d{1,15}(?:\.\d{1,3})?$/.test(plannedQuantity) &&
     Number(plannedQuantity) > 0;
   const showDetails = async () => {
+    if (detailsLoading) return;
     if (details) { setDetails(null); return; }
     setDetailsLoading(true);
     setDetailsError("");
@@ -108,9 +109,24 @@ function PricingRow({ row, onSave, onApply, busy, costMode }) {
   };
   return (
     <>
-    <tr>
+    <tr
+      className={`pricing-product-row${details ? " is-expanded" : ""}`}
+      tabIndex={0}
+      aria-label={`${row.name}: nhấn Enter để xem chi phí chung và chi phí đơn/chuyến`}
+      onClick={(event) => {
+        if (!event.target.closest?.("input, select, button, a, textarea, label")) {
+          showDetails();
+        }
+      }}
+      onKeyDown={(event) => {
+        if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
+          event.preventDefault();
+          showDetails();
+        }
+      }}
+    >
       <th scope="row">
-        <strong>{row.name}</strong>
+        <strong><span className="pricing-row-indicator" aria-hidden="true">▸</span>{row.name}</strong>
         <small>/{row.unit}</small>
       </th>
       <td>
@@ -124,10 +140,10 @@ function PricingRow({ row, onSave, onApply, busy, costMode }) {
         {row.shared_expense_per_unit == null ? (
           <span className="pricing-warning">Chưa tính được</span>
         ) : (
-          <button type="button" onClick={showDetails} disabled={detailsLoading} title="Xem từng khoản chi phí chung">{formatUnitCost(row.shared_expense_per_unit)}</button>
+          <span className="pricing-cost-value">{formatUnitCost(row.shared_expense_per_unit)}</span>
         )}
       </td>
-      <td><button type="button" onClick={showDetails} disabled={detailsLoading} title="Xem chi phí đơn hàng/chuyến xe">{formatUnitCost(row.direct_expense_per_unit || 0)}</button></td>
+      <td><span className="pricing-cost-value">{formatUnitCost(row.direct_expense_per_unit || 0)}</span></td>
       <td>
         {row.full_cost_per_unit == null
           ? "—"
@@ -237,7 +253,8 @@ function PricingRow({ row, onSave, onApply, busy, costMode }) {
         </div>
       </td>
     </tr>
-    {(details || detailsError) && <tr><td colSpan="15">
+    {(details || detailsError || detailsLoading) && <tr className="pricing-detail-row"><td colSpan="15">
+      {detailsLoading && <span>Đang tải chi tiết chi phí…</span>}
       {detailsError && <span className="pricing-warning">{detailsError}</span>}
       {details && <div className="pricing-breakdown">
         <strong>Chi phí chung</strong>

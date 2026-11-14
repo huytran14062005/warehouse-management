@@ -73,6 +73,13 @@
 .pricing-table-wrap tbody th { min-width: 130px; color: #0b3158; }
 .pricing-table-wrap tbody th small { display: block; margin-top: 3px; color: #71849a; font-weight: 400; }
 .pricing-table-wrap tbody td small { display: block; margin-top: 3px; color: #71849a; }
+.pricing-table-wrap .pricing-product-row { cursor: pointer; }
+.pricing-table-wrap .pricing-product-row:hover, .pricing-table-wrap .pricing-product-row.is-expanded { background: #f2f7fb; }
+.pricing-table-wrap .pricing-product-row:focus-visible { outline: 2px solid #1d68c9; outline-offset: -2px; }
+.pricing-row-indicator { display: inline-block; margin-right: 6px; color: #587b9b; transition: transform .15s ease; }
+.pricing-product-row.is-expanded .pricing-row-indicator { transform: rotate(90deg); }
+.pricing-cost-value { color: #0b3158; font-weight: 600; }
+.pricing-table-wrap .pricing-detail-row td { background: #f8fbfd; white-space: normal; }
 .pricing-table-wrap .pricing-legacy-note { display: block; max-width: 150px; margin-top: 5px; color: #946018; font-size: 11px; line-height: 1.35; white-space: normal; }
 .pricing-table-wrap td { white-space: nowrap; }
 .pricing-table-wrap td input { box-sizing: border-box; width: 100px; }
