@@ -5,9 +5,22 @@ from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 
 from web import dao, db
-from web.models import Employee, EmployeeRole, Product, ProductRequest, ProductRequestStatus
+from web.models import Employee, EmployeeRole, ImportInvoiceItem, OperatingExpense, Product, ProductRequest, ProductRequestStatus, SalesInvoiceItem
 from web.services.exceptions import NotFoundError, ValidationError
 from web.services.validators import require_text, validate_money_amount
+from web.services.unit_conversion import validate_conversions
+
+
+def _physical_measure(value, label):
+    if value in (None, ""):
+        return None
+    try:
+        result = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValidationError(f"{label} không hợp lệ")
+    if not result.is_finite() or result <= 0 or result > Decimal("99999999999.999") or result.as_tuple().exponent < -3:
+        raise ValidationError(f"{label} phải lớn hơn 0 và tối đa 3 chữ số thập phân")
+    return result
 from web.utils.pagination import parse_page, parse_per_page, parse_paging_args
 
 
@@ -66,6 +79,9 @@ def serialize_product_inventory(product, inventory):
         "id": product.id,
         "name": product.name,
         "unit": product.unit,
+        "unit_conversions": product.unit_conversions or {},
+        "weight_per_unit": float(product.weight_per_unit) if product.weight_per_unit is not None else None,
+        "volume_per_unit": float(product.volume_per_unit) if product.volume_per_unit is not None else None,
         "default_sale_price": float(product.default_sale_price),
         "total_imported": inventory["total_imported"],
         "total_sold": inventory["total_sold"],
@@ -185,7 +201,7 @@ def get_product_requests_service(status=ProductRequestStatus.PENDING.value):
     return query.all()
 
 
-def create_product_service(name, unit, default_sale_price=0, request_id=None):
+def create_product_service(name, unit, default_sale_price=0, request_id=None, unit_conversions=None, weight_per_unit=None, volume_per_unit=None):
     name = require_text(name, "Tên sản phẩm", max_length=255)
     unit = require_text(unit, "Đơn vị tính", max_length=50)
     price = validate_money_amount(
@@ -211,6 +227,9 @@ def create_product_service(name, unit, default_sale_price=0, request_id=None):
     product = Product(
         name=name,
         unit=unit,
+        unit_conversions=validate_conversions(unit_conversions, unit),
+        weight_per_unit=_physical_measure(weight_per_unit, "Trọng lượng mỗi đơn vị"),
+        volume_per_unit=_physical_measure(volume_per_unit, "Thể tích mỗi đơn vị"),
         default_sale_price=price,
     )
     db.session.add(product)
@@ -225,7 +244,7 @@ def create_product_service(name, unit, default_sale_price=0, request_id=None):
     return product, request
 
 
-def update_product_service(product_id, name, unit, default_sale_price=0):
+def update_product_service(product_id, name, unit, default_sale_price=0, unit_conversions=None, weight_per_unit=None, volume_per_unit=None):
     product = Product.query.get(product_id)
     if not product:
         raise NotFoundError("Sản phẩm không tồn tại")
@@ -244,9 +263,42 @@ def update_product_service(product_id, name, unit, default_sale_price=0):
     ).first()
     if duplicate:
         raise ValidationError("Tên sản phẩm đã tồn tại")
+    if unit != product.unit and (
+        db.session.query(ImportInvoiceItem.id).filter_by(product_id=product_id).first() or
+        db.session.query(SalesInvoiceItem.id).filter_by(product_id=product_id).first()
+    ):
+        raise ValidationError("Không thể đổi đơn vị cơ sở sau khi sản phẩm đã có nhập hoặc bán hàng")
+
+    next_conversions = validate_conversions(unit_conversions, unit) if unit_conversions is not None else product.unit_conversions or {}
+    if next_conversions != (product.unit_conversions or {}):
+        used_import_units = db.session.query(ImportInvoiceItem.entered_unit).filter(
+            ImportInvoiceItem.product_id == product_id, ImportInvoiceItem.entered_unit.isnot(None),
+        ).distinct().all()
+        used_sale_units = db.session.query(SalesInvoiceItem.entered_unit).filter(
+            SalesInvoiceItem.product_id == product_id, SalesInvoiceItem.entered_unit.isnot(None),
+        ).distinct().all()
+        for (used_unit,) in used_import_units + used_sale_units:
+            if used_unit != product.unit and next_conversions.get(used_unit) != (product.unit_conversions or {}).get(used_unit):
+                raise ValidationError(f"Không thể đổi quy cách {used_unit} đã dùng trong phiếu nhập hoặc đơn bán")
+    next_weight = _physical_measure(weight_per_unit, "Trọng lượng mỗi đơn vị") if weight_per_unit is not None else product.weight_per_unit
+    next_volume = _physical_measure(volume_per_unit, "Thể tích mỗi đơn vị") if volume_per_unit is not None else product.volume_per_unit
+    for basis, old, new in (("weight", product.weight_per_unit, next_weight),
+                            ("volume", product.volume_per_unit, next_volume)):
+        if old != new and db.session.query(OperatingExpense.id).join(
+            SalesInvoiceItem, SalesInvoiceItem.sales_invoice_id == OperatingExpense.invoice_id,
+        ).filter(SalesInvoiceItem.product_id == product_id,
+                 OperatingExpense.allocation_basis == basis,
+                 OperatingExpense.voided_at.is_(None)).first():
+            raise ValidationError("Không thể đổi trọng lượng/thể tích đã dùng để phân bổ chi phí đơn")
 
     product.name = name
     product.unit = unit
+    if unit_conversions is not None:
+        product.unit_conversions = next_conversions
+    if weight_per_unit is not None:
+        product.weight_per_unit = next_weight
+    if volume_per_unit is not None:
+        product.volume_per_unit = next_volume
     product.default_sale_price = price
     db.session.commit()
     return product

@@ -1,4 +1,5 @@
 import math
+from decimal import Decimal
 
 from sqlalchemy import func
 from sqlalchemy.orm import selectinload
@@ -13,8 +14,8 @@ from web.services.authorization import (
 )
 from web.services.validators import (
     validate_coercible_positive_integer as _positive_integer,
-    validate_strict_positive_integer as _positive_number,
 )
+from web.services.unit_conversion import positive_quantity as _positive_number
 from web.utils.pagination import parse_page as _parse_positive_int
 
 
@@ -66,7 +67,7 @@ def serialize_stock_transfer_summary(transfer, items_count, total_quantity):
         "employee_name": transfer.recipient_employee.full_name,
         "created_by": transfer.created_by_employee.full_name,
         "items_count": int(items_count or 0),
-        "total_quantity": int(total_quantity or 0),
+        "total_quantity": float(total_quantity or 0),
         "note": transfer.note,
     }
 
@@ -116,7 +117,7 @@ def _calculate_transfer_item_remaining(transfer, page_items):
         product_ids, employee_id=transfer.employee_id
     )
     return {
-        item.id: int(item.quantity or 0) - sold_by_item.get(item.id, 0) - damaged_by_item.get(item.id, 0)
+        item.id: float(item.quantity or 0) - sold_by_item.get(item.id, 0) - damaged_by_item.get(item.id, 0)
         for item in page_items
     }
 
@@ -133,18 +134,18 @@ def serialize_stock_transfer(transfer, items=None, items_count=None, total_quant
         "transferred_at": transfer.transferred_at.isoformat() if transfer.transferred_at else None,
         "employee_name": transfer.recipient_employee.full_name,
         "created_by": transfer.created_by_employee.full_name,
-        "total_quantity": int(total_quantity if total_quantity is not None else sum(int(item.quantity) for item in detail_items)),
+        "total_quantity": float(total_quantity if total_quantity is not None else sum(float(item.quantity) for item in detail_items)),
         "items_count": int(items_count if items_count is not None else len(detail_items)),
         "note": transfer.note,
         "items": [
             {
                 "product_id": item.product_id,
                 "product_name": item.product.name,
-                "quantity": int(item.quantity),
-                "transferred_quantity": int(item.quantity),
+                "quantity": float(item.quantity),
+                "transferred_quantity": float(item.quantity),
                 "sold_quantity": sold_by_item.get(item.id, 0),
                 "damaged_quantity": damaged_by_item.get(item.id, 0),
-                "remaining_quantity": int(remaining_by_item.get(item.id, item.quantity)),
+                "remaining_quantity": float(remaining_by_item.get(item.id, item.quantity)),
                 "unit": item.product.unit,
             }
             for item in detail_items
@@ -202,8 +203,9 @@ def serialize_employee_stock(employee_id, page_value=None, per_page_value=None):
                 "id": row["product"].id,
                 "name": row["product"].name,
                 "unit": row["product"].unit,
+                "unit_conversions": row["product"].unit_conversions or {},
                 "default_sale_price": float(row["product"].default_sale_price),
-                "quantity": int(row["quantity"]),
+                "quantity": float(row["quantity"]),
             }
             for row in rows
         ],
@@ -290,7 +292,7 @@ def create_stock_transfer_service(created_by_employee_id, employee_id, warehouse
             stock = locked_stocks.get(item["product_id"])
             if stock is None:
                 stock = dao.get_or_create_employee_stock(recipient.id, item["product_id"])
-            stock.quantity = int(stock.quantity) + item["quantity"]
+            stock.quantity = Decimal(str(stock.quantity)) + Decimal(str(item["quantity"]))
             db.session.add(
                 StockTransferItem(
                     stock_transfer_id=transfer.id,

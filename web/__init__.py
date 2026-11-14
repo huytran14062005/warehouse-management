@@ -59,14 +59,27 @@ def ensure_business_columns():
     global _business_schema_ready
     if _business_schema_ready or not request.path.startswith("/api/"):
         return
-    from sqlalchemy import BigInteger, inspect
-    from web.models import ImportInvoice, OperatingExpense, PricingCycle, PricingPolicy, SalesInvoice, SalesInvoiceItem
+    from sqlalchemy import Numeric, inspect
+    from web.models import EmployeeStock, ImportInvoice, ImportInvoiceItem, OperatingExpense, PricingCycle, PricingPolicy, Product, SalesInvoice, SalesInvoiceItem, StockTransferItem, DamageReportItem
 
     inspector = inspect(db.engine)
     columns = (
         (SalesInvoiceItem.__tablename__, "combo_id", "INT NULL"),
         (ImportInvoice.__tablename__, "inbound_fee", "DECIMAL(14, 2) NOT NULL DEFAULT 0"),
+        (ImportInvoice.__tablename__, "deductible_input_vat", "DECIMAL(14, 2) NOT NULL DEFAULT 0"),
         (PricingPolicy.__tablename__, "desired_profit_per_unit", "DECIMAL(14, 2) NULL"),
+        (PricingPolicy.__tablename__, "reference_price", "DECIMAL(14, 2) NULL"),
+        (PricingPolicy.__tablename__, "rounding_step", "INT NOT NULL DEFAULT 1000"),
+        (Product.__tablename__, "unit_conversions", "JSON NULL"),
+        (Product.__tablename__, "weight_per_unit", "DECIMAL(14, 3) NULL"),
+        (Product.__tablename__, "volume_per_unit", "DECIMAL(14, 3) NULL"),
+        (OperatingExpense.__tablename__, "allocation_basis", "VARCHAR(12) NOT NULL DEFAULT 'revenue'"),
+        (OperatingExpense.__tablename__, "trip_invoice_ids", "JSON NULL"),
+        (ImportInvoiceItem.__tablename__, "entered_unit", "VARCHAR(50) NULL"),
+        (ImportInvoiceItem.__tablename__, "entered_quantity", "DECIMAL(18, 3) NULL"),
+        (SalesInvoiceItem.__tablename__, "entered_unit", "VARCHAR(50) NULL"),
+        (SalesInvoiceItem.__tablename__, "entered_quantity", "DECIMAL(18, 3) NULL"),
+        (SalesInvoiceItem.__tablename__, "landed_unit_cost", "DECIMAL(18, 4) NULL"),
         (OperatingExpense.__tablename__, "is_abnormal", "BOOLEAN NOT NULL DEFAULT 0"),
         (SalesInvoice.__tablename__, "return_pending", "BOOLEAN NOT NULL DEFAULT 0"),
     )
@@ -86,15 +99,30 @@ def ensure_business_columns():
         changed = True
     dialect = db.engine.dialect.name
     if dialect in {"mysql", "postgresql"}:
+        for model in (ImportInvoiceItem, SalesInvoiceItem, EmployeeStock, StockTransferItem, DamageReportItem):
+            existing_type = next(entry["type"] for entry in inspect(db.engine).get_columns(model.__tablename__)
+                                 if entry["name"] == "quantity")
+            if isinstance(existing_type, Numeric) and existing_type.scale == 3:
+                continue
+            statement = (
+                f"ALTER TABLE {model.__tablename__} MODIFY COLUMN quantity DECIMAL(18, 3) NOT NULL"
+                + (" DEFAULT 0" if model is EmployeeStock else "")
+                if dialect == "mysql" else
+                f"ALTER TABLE {model.__tablename__} ALTER COLUMN quantity TYPE DECIMAL(18, 3)"
+            )
+            with db.engine.begin() as connection:
+                connection.exec_driver_sql(statement)
+            changed = True
+    if dialect in {"mysql", "postgresql"}:
         planned_type = next(
             entry["type"] for entry in inspect(db.engine).get_columns(PricingPolicy.__tablename__)
             if entry["name"] == "planned_quantity"
         )
-        if not isinstance(planned_type, BigInteger):
+        if not (isinstance(planned_type, Numeric) and planned_type.scale == 3):
             statement = (
-                "ALTER TABLE pricing_policies MODIFY COLUMN planned_quantity BIGINT NOT NULL DEFAULT 100"
+                "ALTER TABLE pricing_policies MODIFY COLUMN planned_quantity DECIMAL(22, 3) NOT NULL DEFAULT 100"
                 if dialect == "mysql" else
-                "ALTER TABLE pricing_policies ALTER COLUMN planned_quantity TYPE BIGINT"
+                "ALTER TABLE pricing_policies ALTER COLUMN planned_quantity TYPE DECIMAL(22, 3)"
             )
             try:
                 with db.engine.begin() as connection:
@@ -104,7 +132,7 @@ def ensure_business_columns():
                     entry["type"] for entry in inspect(db.engine).get_columns(PricingPolicy.__tablename__)
                     if entry["name"] == "planned_quantity"
                 )
-                if not isinstance(current_type, BigInteger):
+                if not (isinstance(current_type, Numeric) and current_type.scale == 3):
                     raise
             changed = True
     try:
@@ -120,6 +148,16 @@ def ensure_business_columns():
                 )
         except Exception:
             if "planned_salary_amount" not in {entry["name"] for entry in inspect(db.engine).get_columns(PricingCycle.__tablename__)}:
+                raise
+        changed = True
+    if "planned_revenue_amount" not in {entry["name"] for entry in inspect(db.engine).get_columns(PricingCycle.__tablename__)}:
+        try:
+            with db.engine.begin() as connection:
+                connection.exec_driver_sql(
+                    "ALTER TABLE pricing_cycles ADD COLUMN planned_revenue_amount DECIMAL(14, 2) NULL"
+                )
+        except Exception:
+            if "planned_revenue_amount" not in {entry["name"] for entry in inspect(db.engine).get_columns(PricingCycle.__tablename__)}:
                 raise
         changed = True
     if changed:

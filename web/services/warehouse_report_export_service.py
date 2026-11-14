@@ -25,7 +25,7 @@ def _text(value):
 
 
 def _status(row, percentage):
-    stock = int(row.get("current_stock") or 0)
+    stock = float(row.get("current_stock") or 0)
     imported = int(row.get("total_imported") or 0)
     if stock <= 0:
         return "Hết hàng"

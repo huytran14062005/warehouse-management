@@ -80,6 +80,7 @@ export const endpoints = {
   pricingExpenseVoid: (expenseId) => `/pricing/expenses/${expenseId}/void`,
   pricingExpensePay: (expenseId) => `/pricing/expenses/${expenseId}/pay`,
   pricingCatalog: "/pricing/catalog",
+  pricingBreakdown: (productId) => `/pricing/breakdown/${productId}`,
   pricingCycle: "/pricing/cycle",
   pricingPolicy: (productId) => `/pricing/policies/${productId}`,
   pricingApply: (productId) => `/pricing/apply/${productId}`,

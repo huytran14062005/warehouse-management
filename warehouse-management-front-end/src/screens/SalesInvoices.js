@@ -132,9 +132,10 @@ function getInvoiceEditorItems(invoiceItems) {
     return [{
       productId: String(item.product_id),
       productSearch: item.product_name || "",
-      unit: item.unit || "",
+      unit: item.entered_unit || item.unit || "",
+      unitConversions: item.unit_conversions || {},
       defaultPrice: item.default_sale_price != null ? String(item.default_sale_price) : "",
-      quantity: String(item.quantity),
+      quantity: String(item.entered_quantity ?? item.quantity),
       unitPrice: String(item.unit_price),
     }];
   });
@@ -952,7 +953,8 @@ export function SalesInvoiceDetail({
                       <tr key={item.id}>
                         <td>{item.product_name}</td>
                         <td>{item.unit || "—"}</td>
-                        <td>{formatQuantity(item.quantity)}</td>
+                        <td>{formatQuantity(item.quantity)}{item.entered_unit && item.entered_unit !== item.unit &&
+                          <small>Bán {formatQuantity(item.entered_quantity)} {item.entered_unit}</small>}</td>
                         <td>{formatCurrency(item.unit_price)}</td>
                         <td className="sales-money">
                           {formatCurrency(item.total)}
@@ -1676,11 +1678,11 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
 
   const subtotal = items.reduce(
     (total, item) =>
-      total + (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0),
+      total + (Number(item.quantity) || 0) * (Number(item.unitConversions?.[item.unit]) || 1) * (Number(item.unitPrice) || 0),
     0,
   );
   const totalQuantity = items.reduce(
-    (total, item) => total + (Number(item.quantity) || 0),
+    (total, item) => total + (Number(item.quantity) || 0) * (Number(item.unitConversions?.[item.unit]) || 1),
     0,
   );
   const originalPromotionId = invoice?.discount?.promotion?.id;
@@ -1848,6 +1850,7 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
           productId: value,
           productSearch: selectedProduct?.name || "",
           unit: selectedProduct?.unit || item.unit,
+          unitConversions: selectedProduct?.unit_conversions || {},
           defaultPrice:
             selectedProduct?.default_sale_price != null
               ? String(selectedProduct.default_sale_price)
@@ -2172,6 +2175,7 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
             {
               product_id: Number(item.productId),
               quantity: Number(item.quantity),
+              unit: item.unit || undefined,
               unit_price: Number(item.unitPrice),
             },
           ];
@@ -2574,8 +2578,8 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                   <ProductEntryField label="Số lượng">
                     <input
                       type="number"
-                      min="1"
-                      step="1"
+                      min="0.001"
+                      step="0.001"
                       value={item.quantity}
                       onChange={(event) =>
                         updateItem(index, "quantity", event.target.value)
@@ -2585,7 +2589,16 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
                       required
                     />
                   </ProductEntryField>
+                  {selectedProduct && <ProductEntryField label="Đơn vị bán">
+                    <select value={item.unit || selectedProduct.unit}
+                      onChange={(event) => updateItem(index, "unit", event.target.value)}>
+                      {[selectedProduct.unit, ...Object.keys(selectedProduct.unit_conversions || {})].map((unit) => (
+                        <option key={unit} value={unit}>{unit}</option>
+                      ))}
+                    </select>
+                  </ProductEntryField>}
                   <ProductEntryField label="Giá bán">
+                    {selectedProduct && <small>Giá mỗi {selectedProduct.unit}</small>}
                     <MoneyInput
                       value={item.unitPrice}
                       onChange={(value) =>

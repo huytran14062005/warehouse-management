@@ -68,7 +68,7 @@ def serialize_order_detail(order):
             "product_id": item.product_id,
             "product_name": item.product.name,
             "unit": item.product.unit,
-            "quantity": int(item.quantity),
+            "quantity": float(item.quantity),
             "unit_price": float(item.unit_price),
             "total": item_total
         })

@@ -13,7 +13,7 @@ def allocate_field_sales_to_transfers(lots, sales):
 
 def allocate_field_movements_to_transfers(lots, sales, damages):
     """Allocate field sales and damage chronologically to source transfer lots."""
-    remaining = {lot.item_id: int(lot.quantity) for lot in lots}
+    remaining = {lot.item_id: float(lot.quantity) for lot in lots}
     lots_by_stock = {}
     for lot in sorted(lots, key=lambda row: (row.transferred_at, row.transfer_id, row.item_id)):
         lots_by_stock.setdefault((lot.employee_id, lot.product_id), []).append(lot)
@@ -32,7 +32,7 @@ def allocate_field_movements_to_transfers(lots, sales, damages):
         key = (movement.employee_id, movement.product_id)
         stock_lots = lots_by_stock.get(key, [])
         pointer = pointers.get(key, 0)
-        quantity = int(movement.quantity)
+        quantity = float(movement.quantity)
         while quantity > 0 and pointer < len(stock_lots):
             lot = stock_lots[pointer]
             if lot.transferred_at > event_at:

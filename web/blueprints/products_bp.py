@@ -125,6 +125,9 @@ def update_product(product_id):
         name=data.get("name"),
         unit=data.get("unit"),
         default_sale_price=data.get("default_sale_price", 0),
+        unit_conversions=data.get("unit_conversions"),
+        weight_per_unit=data.get("weight_per_unit"),
+        volume_per_unit=data.get("volume_per_unit"),
     )
     return jsonify({
         "message": "Đã cập nhật sản phẩm thành công",
@@ -132,6 +135,9 @@ def update_product(product_id):
             "id": product.id,
             "name": product.name,
             "unit": product.unit,
+            "unit_conversions": product.unit_conversions or {},
+            "weight_per_unit": float(product.weight_per_unit) if product.weight_per_unit is not None else None,
+            "volume_per_unit": float(product.volume_per_unit) if product.volume_per_unit is not None else None,
             "default_sale_price": float(product.default_sale_price),
         },
     }), 200
@@ -148,6 +154,9 @@ def create_product():
         unit=data.get("unit"),
         default_sale_price=data.get("default_sale_price", 0),
         request_id=data.get("request_id"),
+        unit_conversions=data.get("unit_conversions"),
+        weight_per_unit=data.get("weight_per_unit"),
+        volume_per_unit=data.get("volume_per_unit"),
     )
     return jsonify({
         "message": "Đã thêm sản phẩm thành công",
@@ -155,6 +164,9 @@ def create_product():
             "id": product.id,
             "name": product.name,
             "unit": product.unit,
+            "unit_conversions": product.unit_conversions or {},
+            "weight_per_unit": float(product.weight_per_unit) if product.weight_per_unit is not None else None,
+            "volume_per_unit": float(product.volume_per_unit) if product.volume_per_unit is not None else None,
             "default_sale_price": float(product.default_sale_price),
         },
         "request": serialize_product_request(product_request) if product_request else None,

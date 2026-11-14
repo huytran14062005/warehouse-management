@@ -34,7 +34,7 @@ Sau khi backend/frontend đã dừng, xóa đúng dữ liệu của một lần 
 | Nhập kho | Thủ kho, kế toán | UI tạo phiếu có phí nhập, tồn tăng; UI trả một phần, nợ giảm và quỹ giảm; API chặn trả dưới mức tối thiểu, quá nợ và sai quyền | C. hai test |
 | Điều chuyển | Thủ kho, nhân viên bán | UI cấp hàng; tồn kho giảm và tồn nhân viên tăng | D. cấp hàng |
 | Đơn và chuyển vai trò | Bán hàng → thủ kho → giao hàng → kế toán | Đơn nháp có khuyến mãi, gửi kho, nhận việc, xử lý, giao, hoàn thành; tồn, tiền, quỹ, công nợ, doanh thu và chống hoàn thành lặp | E–G. hành trình |
-| Chi phí và giá | Quản lý | Chưa chi không phân bổ; ghi chi mới phân bổ và trừ quỹ; hủy chi hoàn quỹ | H. chi phí |
+| Chi phí và giá | Quản lý | Chi phí phát sinh phân bổ dù chưa trả; ghi chi chỉ trừ quỹ; hủy chi hoàn quỹ và loại khỏi COST | H. chi phí |
 | Hàng hư | Thủ kho → quản lý | Lập phiếu trừ tồn theo quy tắc hiện tại, duyệt giữ tồn, duyệt lại bị chặn, thủ kho không được duyệt | I. hàng hư |
 | Tìm kiếm và phân trang | Quản lý | Tạo 12 sản phẩm thử, API trả total/trang đúng, UI hiển thị 10 rồi 2 | J. phân trang |
 

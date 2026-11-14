@@ -259,7 +259,9 @@ test.describe('D. Điều chuyển và tồn nhân viên', () => {
     const { context, page } = await asRole(browser, 'keeper');
     try {
       await page.goto(`${UI}/stock-transfers`, { waitUntil: 'domcontentloaded' });
-      await page.getByRole('button', { name: '+ Cấp hàng cho nhân viên' }).click({ force: true });
+      const createTransfer = page.getByRole('button', { name: '+ Cấp hàng cho nhân viên' });
+      await expect(createTransfer).toBeEnabled();
+      await createTransfer.click();
       const dialog = page.getByRole('dialog', { name: 'Cấp hàng cho nhân viên' });
       await selectOption(dialog, 'Chọn nhân viên nhận hàng', `${f.users.seller.name} - ${f.users.seller.phone || ''}`);
       await dialog.getByRole('button', { name: '+ Thêm sản phẩm' }).click({ force: true });
@@ -439,7 +441,7 @@ test.describe('E–G. Đơn bán, giao nhận, khuyến mãi, thu tiền và bá
 });
 
 test.describe('H. Quỹ và chi phí kinh doanh', () => {
-  test('chi phí chưa thanh toán không tính giá; ghi chi và hủy hoàn quỹ', async ({ browser, request }) => {
+  test('chi phí phát sinh tính giá trước thanh toán; ghi chi và hủy hoàn quỹ', async ({ browser, request }) => {
     const f = fixture();
     const marker = `E2E expense ${f.run_id}`;
     const { context, page } = await asRole(browser, 'manager');
@@ -464,7 +466,7 @@ test.describe('H. Quỹ và chi phí kinh doanh', () => {
       expect(created.status(), await created.text()).toBe(201);
       const expenseId = (await created.json()).expense.id;
       expect((await (await apiAs(request, 'manager', 'get', '/pricing/catalog')).json())
-        .pricing_allocated_expenses).toBe(beforeAllocated);
+        .pricing_allocated_expenses - beforeAllocated).toBe(10000);
       const row = page.getByRole('row').filter({ hasText: marker });
       await expect(row).toBeVisible();
       await row.getByRole('button', { name: 'Ghi đã chi' }).click({ force: true });

@@ -76,7 +76,7 @@ def get_customer_purchased_products(customer_id):
             "product_id": p.product_id,
             "product_name": p.product_name,
             "unit": p.unit,
-            "total_quantity": int(p.total_quantity),
+            "total_quantity": float(p.total_quantity),
             "total_amount": float(p.total_amount),
             "last_purchased": p.last_purchased.isoformat() if p.last_purchased else None
         }

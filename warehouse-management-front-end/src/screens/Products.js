@@ -60,6 +60,11 @@ function ProductEditor({ request, product, onClose, onSaved }) {
   const [price, setPrice] = useState(
     product ? String(product.default_sale_price || "") : "",
   );
+  const [conversions, setConversions] = useState(() =>
+    Object.entries(product?.unit_conversions || {}).map(([name, factor]) => ({ name, factor: String(factor) })),
+  );
+  const [weight, setWeight] = useState(product?.weight_per_unit == null ? "" : String(product.weight_per_unit));
+  const [volume, setVolume] = useState(product?.volume_per_unit == null ? "" : String(product.volume_per_unit));
   const [note, setNote] = useState(request?.note || "");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -77,6 +82,9 @@ function ProductEditor({ request, product, onClose, onSaved }) {
         name: name.trim(),
         unit: unit.trim(),
         default_sale_price: Number(price || 0),
+        unit_conversions: Object.fromEntries(conversions.filter((entry) => entry.name.trim()).map((entry) => [entry.name.trim(), entry.factor])),
+        weight_per_unit: weight,
+        volume_per_unit: volume,
       };
       if (editing)
         await authApis().put(endpoints.productDetail(product.id), payload);
@@ -128,6 +136,25 @@ function ProductEditor({ request, product, onClose, onSaved }) {
             unit={unit}
             onUnitChange={setUnit}
           />
+          <div className="warehouse-field">
+            <span>Quy đổi sang {unit || "đơn vị cơ sở"} (riêng sản phẩm này)</span>
+            {conversions.map((entry, index) => (
+              <div key={index} className="warehouse-row">
+                <input aria-label="Đơn vị đóng gói" placeholder="bao, bịch, cây..." value={entry.name}
+                  onChange={(event) => setConversions((rows) => rows.map((row, i) => i === index ? { ...row, name: event.target.value } : row))} />
+                <input aria-label="Số đơn vị cơ sở" type="number" min="1.001" step="0.001" placeholder={`Số ${unit || "đơn vị"}`}
+                  value={entry.factor} onChange={(event) => setConversions((rows) => rows.map((row, i) => i === index ? { ...row, factor: event.target.value } : row))} />
+                <button type="button" onClick={() => setConversions((rows) => rows.filter((_, i) => i !== index))}>Xóa</button>
+              </div>
+            ))}
+            <button type="button" onClick={() => setConversions((rows) => [...rows, { name: "", factor: "" }])}>+ Thêm quy cách</button>
+          </div>
+          <label className="warehouse-field"><span>Trọng lượng mỗi {unit || "đơn vị"} (kg, nếu phân bổ theo cân nặng)</span>
+            <input type="number" min="0.001" step="0.001" value={weight} onChange={(event) => setWeight(event.target.value)} />
+          </label>
+          <label className="warehouse-field"><span>Thể tích mỗi {unit || "đơn vị"} (m³, nếu phân bổ theo thể tích)</span>
+            <input type="number" min="0.001" step="0.001" value={volume} onChange={(event) => setVolume(event.target.value)} />
+          </label>
           <label className="warehouse-field">
             <span>Giá bán mặc định</span>
             <MoneyInput

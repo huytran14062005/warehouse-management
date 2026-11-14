@@ -5,7 +5,7 @@ from web.middleware.auth_middleware import verify_role, verify_token
 from web.models import EmployeeRole
 from web.services.pricing_service import (
     apply_suggested_price, create_expense, create_expense_category,
-    list_expense_categories, list_expenses, pricing_catalog,
+    list_expense_categories, list_expenses, pricing_breakdown, pricing_catalog,
     pay_expense, profitability_report, save_pricing_cycle, save_pricing_policy,
     update_expense, void_expense,
 )
@@ -89,6 +89,14 @@ def catalog():
     return jsonify(cached_query("pricing-catalog", params.to_dict(flat=True), 30, lambda: pricing_catalog(
         params.get("page"), params.get("keyword"), params.get("cost_mode"),
     ))), 200
+
+
+@pricing_bp.route("/breakdown/<int:product_id>", methods=["GET"])
+@verify_token
+@verify_role(EmployeeRole.QUAN_LY)
+@handle_api_errors
+def breakdown(product_id):
+    return jsonify(pricing_breakdown(product_id, request.args.get("cost_mode") or "actual")), 200
 
 
 @pricing_bp.route("/policies/<int:product_id>", methods=["PUT"])

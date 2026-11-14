@@ -11,7 +11,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { authApis, endpoints } from "../configs/Apis";
 import { getApiError } from "../utils/apiError";
 import useNotificationState from "../utils/useNotificationState";
-import { formatCurrency, formatInteger as formatAmount } from "../utils/money";
+import { formatCurrency, formatQuantity as formatAmount } from "../utils/money";
 import { formatDate, formatDateTime, toDateInputValue } from "../utils/date";
 import { notifyInventoryChanged } from "../utils/inventoryEvents";
 import AutoDismissMessage from "../components/AutoDismissMessage";
@@ -315,7 +315,8 @@ function ImportDetail({
                   <tr key={item.id || item.product_id}>
                     <td>{item.product_name}</td>
                     <td>{item.unit}</td>
-                    <td>{item.quantity}</td>
+                    <td>{formatAmount(item.quantity)}{item.entered_unit && item.entered_unit !== item.unit &&
+                      <small>Nhập {formatAmount(item.entered_quantity)} {item.entered_unit}</small>}</td>
                     <td>
                       {(invoice.combo_groups || []).some((group) =>
                         (group.parts || []).some(
@@ -334,7 +335,7 @@ function ImportDetail({
             </table>
           </div>
           <p className="warehouse-inbound-fee-note">
-            Phí mua hàng về kho: {formatCurrency(invoice.inbound_fee || 0)}.
+            Phí mua hàng về kho: {formatCurrency(invoice.inbound_fee || 0)}. VAT đầu vào khấu trừ trong giá mua: {formatCurrency(invoice.deductible_input_vat || 0)}.
             Giá nhập dùng để đề xuất giá bán đã gồm khoản phí này.
           </p>
           {canEditFee && (
@@ -531,7 +532,8 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = false }) {
       return [
         {
           product_id: String(item.product_id),
-          quantity: String(quantity),
+          quantity: String(comboQuantity ? quantity : (item.entered_quantity ?? quantity)),
+          unit: comboQuantity ? item.unit : (item.entered_unit || item.unit),
           unit_price: String(
             Math.round(((Number(item.total) - comboAmount) / quantity) * 100) /
               100,
@@ -567,6 +569,7 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = false }) {
   const [previewing, setPreviewing] = useState(false);
   const [note, setNote] = useState(invoice?.note || "");
   const [inboundFee, setInboundFee] = useState(String(invoice?.inbound_fee || ""));
+  const [deductibleVat, setDeductibleVat] = useState(String(invoice?.deductible_input_vat || ""));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useNotificationState();
@@ -643,7 +646,11 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = false }) {
   const updateItem = (index, field, value) =>
     setItems((current) =>
       current.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, [field]: value } : item,
+        itemIndex === index
+          ? field === "product_id"
+            ? { ...item, product_id: value, unit: products.find((product) => String(product.id) === String(value))?.unit || "" }
+            : { ...item, [field]: value }
+          : item,
       ),
     );
   const addItem = () =>
@@ -724,6 +731,7 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = false }) {
     items.map((item) => ({
       product_id: Number(item.product_id),
       quantity: Number(item.quantity),
+      unit: item.unit || undefined,
       unit_price: Number(item.unit_price),
     }));
   const getComboPayload = () =>
@@ -798,13 +806,13 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = false }) {
     for (const item of items) {
       if (
         !item.product_id ||
-        !Number.isInteger(Number(item.quantity)) ||
+        !Number.isFinite(Number(item.quantity)) ||
         Number(item.quantity) <= 0 ||
         !Number.isFinite(Number(item.unit_price)) ||
         Number(item.unit_price) <= 0
       )
         return setError(
-          "Vui lòng nhập sản phẩm, số lượng nguyên dương và đơn giá lớn hơn 0.",
+          "Vui lòng nhập sản phẩm, số lượng dương và đơn giá lớn hơn 0.",
         );
       if (productIds.has(item.product_id))
         return setError(
@@ -885,6 +893,7 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = false }) {
             : undefined,
         note: note.trim(),
         inbound_fee: Number(inboundFee || 0),
+        deductible_input_vat: Number(deductibleVat || 0),
         imported_at: importedAt,
         items: getSinglePayload(),
         combo_groups: getComboPayload(),
@@ -1054,6 +1063,13 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = false }) {
                   minAmount={0}
                 />
                 <small>Chỉ dùng để tính giá, chưa ghi quỹ. Phí được chia theo giá trị hàng; không ghi lại ở chi phí kinh doanh.</small>
+              </label>
+              <label className="warehouse-field">
+                <span>VAT đầu vào được khấu trừ nằm trong giá mua đã nhập</span>
+                <MoneyInput value={deductibleVat} onChange={setDeductibleVat}
+                  label="VAT đầu vào được khấu trừ" placeholder="0 đ nếu giá nhập đã là giá chưa VAT"
+                  allowZero allowEmpty minAmount={0} />
+                <small>Khoản này được trừ khỏi giá vốn; tiền phải trả nhà cung cấp vẫn tính theo phiếu nhập.</small>
               </label>
               <div className="warehouse-section-heading">
                 <h3>Combo nhập</h3>
@@ -1421,8 +1437,8 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = false }) {
                       <ProductEntryField label="Số lượng nhập">
                         <input
                           type="number"
-                          min="1"
-                          step="1"
+                          min="0.001"
+                          step="0.001"
                           value={item.quantity}
                           onChange={(event) =>
                             updateItem(index, "quantity", event.target.value)
@@ -1431,7 +1447,16 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = false }) {
                           aria-label="Số lượng nhập"
                         />
                       </ProductEntryField>
+                      <ProductEntryField label="Đơn vị nhập">
+                        <select value={item.unit || selectedProduct?.unit || ""}
+                          onChange={(event) => updateItem(index, "unit", event.target.value)}>
+                          {selectedProduct && [selectedProduct.unit, ...Object.keys(selectedProduct.unit_conversions || {})].map((unit) => (
+                            <option key={unit} value={unit}>{unit}</option>
+                          ))}
+                        </select>
+                      </ProductEntryField>
                       <ProductEntryField label="Đơn giá nhập">
+                        {selectedProduct && <small>Giá mỗi {selectedProduct.unit}</small>}
                         <MoneyInput
                           value={item.unit_price}
                           onChange={(value) =>

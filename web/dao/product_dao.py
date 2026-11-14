@@ -210,7 +210,7 @@ def _inventory_for_products(product_ids, warehouse_id=None, exclude_invoice_id=N
                 "damaged": "total_damaged",
                 "transferred": "total_transferred",
             }[field]
-            quantity = int(row.quantity or 0)
+            quantity = float(row.quantity or 0)
             data = inventory[row.product_id]
             data[total_field] += quantity
             warehouse = data["warehouses"].setdefault(

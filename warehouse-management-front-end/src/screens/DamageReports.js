@@ -209,11 +209,11 @@ function DamageEditor({ onClose, onSaved, isFieldEmployee }) {
     for (const item of items) {
       if (
         !item.product_id ||
-        !Number.isInteger(Number(item.quantity)) ||
+        !Number.isFinite(Number(item.quantity)) ||
         Number(item.quantity) <= 0
       )
         return setError(
-          "Vui lòng chọn sản phẩm và nhập số lượng nguyên dương.",
+          "Vui lòng chọn sản phẩm và nhập số lượng dương.",
         );
       if (ids.has(item.product_id))
         return setError("Mỗi sản phẩm chỉ được xuất hiện một lần trong phiếu.");
@@ -314,8 +314,8 @@ function DamageEditor({ onClose, onSaved, isFieldEmployee }) {
                       <ProductEntryField label="Số lượng hư">
                         <input
                           type="number"
-                          min="1"
-                          step="1"
+                          min="0.001"
+                          step="0.001"
                           value={item.quantity}
                           onChange={(event) =>
                             updateItem(index, "quantity", event.target.value)

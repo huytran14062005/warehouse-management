@@ -46,28 +46,29 @@ def calculate_product_profit_rows(sale_lines, import_lines, *, presorted=False):
             purchase = purchases[purchase_index]
             line_amount = (
                 _money(purchase.line_total) if purchase.line_total is not None
-                else int(purchase.quantity) * _money(purchase.unit_price)
+                else _money(purchase.quantity) * _money(purchase.unit_price)
             )
             invoice_amount = _money(getattr(purchase, "invoice_purchase_total", None))
             inbound_fee = _money(getattr(purchase, "inbound_fee", None))
+            deductible_vat = _money(getattr(purchase, "deductible_input_vat", None))
             landed_amount = (
-                line_amount + line_amount * inbound_fee / invoice_amount
+                line_amount + line_amount * (inbound_fee - deductible_vat) / invoice_amount
                 if invoice_amount > 0 else line_amount
             )
             quantity, amount = purchase_totals.get(
                 purchase.product_id, (0, Decimal("0"))
             )
             purchase_totals[purchase.product_id] = (
-                quantity + int(purchase.quantity),
+                quantity + _money(purchase.quantity),
                 amount + landed_amount,
             )
             purchase_index += 1
 
         gross_amounts = [
-            int(line.quantity) * _money(line.unit_price) for line in lines
+            _money(line.quantity) * _money(line.unit_price) for line in lines
         ]
         invoice_gross = sum(gross_amounts, Decimal("0"))
-        invoice_quantity = sum(int(line.quantity) for line in lines)
+        invoice_quantity = sum((_money(line.quantity) for line in lines), Decimal("0"))
         remaining_discount = _money(invoice.discount_amount)
         # Only the charged third-party fee is a recorded selling expense.
         shipping_total = (
@@ -85,7 +86,7 @@ def calculate_product_profit_rows(sale_lines, import_lines, *, presorted=False):
                 share = (
                     gross / invoice_gross
                     if invoice_gross
-                    else Decimal(int(line.quantity)) / Decimal(invoice_quantity)
+                    else _money(line.quantity) / invoice_quantity
                 )
                 discount = _rounded(_money(invoice.discount_amount) * share)
                 shipping = _rounded(shipping_total * share)
@@ -104,7 +105,7 @@ def calculate_product_profit_rows(sale_lines, import_lines, *, presorted=False):
                 "shipping_cost": Decimal("0"),
                 "missing_cost_quantity": 0,
             })
-            product["quantity"] += int(line.quantity)
+            product["quantity"] += _money(line.quantity)
             product["gross_revenue"] += gross
             product["discount"] += discount
             product["net_revenue"] += gross - discount
@@ -115,10 +116,10 @@ def calculate_product_profit_rows(sale_lines, import_lines, *, presorted=False):
             )
             if imported_quantity:
                 product["known_cost"] += _rounded(
-                    Decimal(int(line.quantity)) * imported_amount / imported_quantity
+                    _money(line.quantity) * imported_amount / imported_quantity
                 )
             else:
-                product["missing_cost_quantity"] += int(line.quantity)
+                product["missing_cost_quantity"] += _money(line.quantity)
 
     rows = []
     for product in products.values():
@@ -138,7 +139,7 @@ def calculate_product_profit_rows(sale_lines, import_lines, *, presorted=False):
             "product_id": product["product_id"],
             "product_name": product["product_name"],
             "unit": product["unit"],
-            "quantity": product["quantity"],
+            "quantity": float(product["quantity"]),
             "gross_revenue": float(product["gross_revenue"]),
             "discount": float(product["discount"]),
             "net_revenue": float(product["net_revenue"]),
@@ -146,7 +147,7 @@ def calculate_product_profit_rows(sale_lines, import_lines, *, presorted=False):
             "shipping_cost": float(product["shipping_cost"]),
             "estimated_profit": float(profit) if profit is not None else None,
             "margin_percent": margin,
-            "missing_cost_quantity": product["missing_cost_quantity"],
+            "missing_cost_quantity": float(product["missing_cost_quantity"]),
         })
     rows.sort(key=lambda row: (
         row["estimated_profit"] is None,

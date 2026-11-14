@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from enum import Enum as UserEnum
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Date, DateTime, Enum, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Column, Date, DateTime, Enum, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from web import db
@@ -89,6 +89,9 @@ class Product(BaseModel):
     name = Column(String(255), nullable=False, unique=True)
     unit = Column(String(50), nullable=False)
     default_sale_price = Column(Numeric(14, 2), nullable=False, default=0)
+    unit_conversions = Column(JSON, nullable=True)
+    weight_per_unit = Column(Numeric(14, 3), nullable=True)
+    volume_per_unit = Column(Numeric(14, 3), nullable=True)
 
     import_invoice_items = relationship("ImportInvoiceItem", backref="product", lazy=True)
     sales_invoice_items = relationship("SalesInvoiceItem", backref="product", lazy=True)
@@ -102,9 +105,11 @@ class PricingPolicy(db.Model):
     )
 
     product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), primary_key=True)
-    planned_quantity = Column(BigInteger, nullable=False, default=100)
+    planned_quantity = Column(Numeric(22, 3), nullable=False, default=100)
     markup_percent = Column("target_margin", Numeric(5, 2), nullable=False, default=20)
     desired_profit_per_unit = Column(Numeric(14, 2), nullable=True)
+    reference_price = Column(Numeric(14, 2), nullable=True)
+    rounding_step = Column(Integer, nullable=False, default=1000, server_default="1000")
     updated_at = Column(DateTime, nullable=False, default=vietnam_payment_time)
     updated_by_id = Column(Integer, ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False)
 
@@ -115,6 +120,7 @@ class PricingCycle(db.Model):
     id = Column(Integer, primary_key=True)
     start_date = Column(Date, nullable=False)
     planned_salary_amount = Column(Numeric(14, 2), nullable=True)
+    planned_revenue_amount = Column(Numeric(14, 2), nullable=True)
     updated_at = Column(DateTime, nullable=False, default=vietnam_payment_time)
     updated_by_id = Column(Integer, ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False)
 
@@ -132,9 +138,11 @@ class OperatingExpense(BaseModel):
     amount = Column(Numeric(14, 2), nullable=False)
     occurred_on = Column(Date, nullable=False)
     invoice_id = Column(Integer, ForeignKey("sales_invoices.id", ondelete="RESTRICT"), nullable=True)
+    trip_invoice_ids = Column(JSON(none_as_null=True), nullable=True)
     description = Column(String(500), nullable=False)
     payment_method = Column(String(20), nullable=True)
     is_abnormal = Column(Boolean, nullable=False, default=False, server_default="0")
+    allocation_basis = Column(String(12), nullable=False, default="revenue", server_default="revenue")
     created_at = Column(DateTime, nullable=False, default=vietnam_payment_time)
     created_by_id = Column(Integer, ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False)
     voided_at = Column(DateTime, nullable=True)
@@ -341,6 +349,7 @@ class ImportInvoice(BaseModel):
     note = Column(Text)
     combo_groups = Column(JSON, nullable=True)
     inbound_fee = Column(Numeric(14, 2), nullable=False, default=0)
+    deductible_input_vat = Column(Numeric(14, 2), nullable=False, default=0, server_default="0")
 
     warehouse_id = Column(Integer, ForeignKey("warehouses.id", ondelete="RESTRICT"), nullable=False, index=True)
     supplier_id = Column(Integer, ForeignKey("suppliers.id", ondelete="RESTRICT"), nullable=False, index=True)
@@ -441,9 +450,11 @@ class ImportInvoiceItem(BaseModel):
         CheckConstraint("unit_price >= 0", name="ck_import_item_price"),
         UniqueConstraint("import_invoice_id", "product_id", name="uq_import_item_product"),)
 
-    quantity = Column(Integer, nullable=False)
+    quantity = Column(Numeric(18, 3), nullable=False)
     unit_price = Column(Numeric(14, 2), nullable=False)
     line_total = Column(Numeric(14, 2), nullable=True)
+    entered_unit = Column(String(50), nullable=True)
+    entered_quantity = Column(Numeric(18, 3), nullable=True)
 
     import_invoice_id = Column(
         Integer,
@@ -462,7 +473,7 @@ class EmployeeStock(BaseModel):
         Index("ix_employee_stocks_employee_product", "employee_id", "product_id"),
     )
 
-    quantity = Column(Integer, nullable=False, default=0)
+    quantity = Column(Numeric(18, 3), nullable=False, default=0)
     updated_at = Column(DateTime, nullable=False, default=datetime.now, onupdate=datetime.now)
 
     employee_id = Column(Integer, ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False, index=True)
@@ -496,7 +507,7 @@ class StockTransferItem(BaseModel):
         UniqueConstraint("stock_transfer_id", "product_id", name="uq_stock_transfer_product"),
     )
 
-    quantity = Column(Integer, nullable=False)
+    quantity = Column(Numeric(18, 3), nullable=False)
 
     stock_transfer_id = Column(
         Integer,
@@ -650,8 +661,11 @@ class SalesInvoiceItem(BaseModel):
         UniqueConstraint("sales_invoice_id", "product_id", name="uq_sales_item_product"),
     )
 
-    quantity = Column(Integer, nullable=False)
+    quantity = Column(Numeric(18, 3), nullable=False)
     unit_price = Column(Numeric(14, 2), nullable=False)
+    entered_unit = Column(String(50), nullable=True)
+    entered_quantity = Column(Numeric(18, 3), nullable=True)
+    landed_unit_cost = Column(Numeric(18, 4), nullable=True)
     combo_id = Column(Integer, nullable=True)
 
     sales_invoice_id = Column(
@@ -746,7 +760,7 @@ class DamageReportItem(BaseModel):
         UniqueConstraint("damage_report_id", "product_id", name="uq_damage_report_product"),
     )
 
-    quantity = Column(Integer, nullable=False)
+    quantity = Column(Numeric(18, 3), nullable=False)
 
     damage_report_id = Column(
         Integer,

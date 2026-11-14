@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from web import app, db
 from web.dao import damage_report_dao, product_dao, employee_stock_dao
 from web.models import (
@@ -16,8 +18,8 @@ from web.services.authorization import (
 )
 from web.services.validators import (
     validate_coercible_positive_integer as _positive_integer,
-    validate_strict_positive_integer as _positive_number,
 )
+from web.services.unit_conversion import positive_quantity as _positive_number
 
 
 def _parse_page(value, default):
@@ -70,7 +72,7 @@ def serialize_damage_report(report):
                 "product_id": item.product_id,
                 "product_name": item.product.name,
                 "unit": item.product.unit,
-                "quantity": int(item.quantity),
+                "quantity": float(item.quantity),
             }
             for item in report.items
         ],
@@ -147,12 +149,12 @@ def create_damage_report_service(reported_by_employee_id, warehouse_id, note, it
             )
             for item in validated_items:
                 stock = stocks.get(item["product_id"])
-                available = int(stock.quantity) if stock else 0
+                available = float(stock.quantity) if stock else 0
                 if item["quantity"] > available:
                     raise ValidationError(
                         f"Hàng đi tỉnh của bạn chỉ còn {available} sản phẩm '{stock.product.name if stock else item['product_id']}'"
                     )
-                stock.quantity = available - item["quantity"]
+                stock.quantity = Decimal(str(available)) - item["quantity"]
         else:
             Warehouse.query.filter(Warehouse.id == warehouse.id).with_for_update().one()
             validated_items = _validate_items(items, warehouse.id)
@@ -223,7 +225,7 @@ def review_damage_report_service(report_id, manager_id, decision, review_note):
                 stock = employee_stock_dao.get_or_create_employee_stock(
                     report.reported_by_employee_id, item.product_id,
                 )
-                stock.quantity = int(stock.quantity) + int(item.quantity)
+                stock.quantity = Decimal(str(stock.quantity)) + Decimal(str(item.quantity))
 
         return damage_report_dao.review_damage_report(
             report=report,

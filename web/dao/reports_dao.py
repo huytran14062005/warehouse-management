@@ -139,7 +139,7 @@ def get_movements_report(from_date, to_date, warehouse_id=None):
                     "damaged": 0,
                     "transferred": 0,
                 }
-            product_summary[item.product_id]["imported"] += int(item.quantity)
+            product_summary[item.product_id]["imported"] += float(item.quantity)
     
                                       
     for invoice in sales_invoices:
@@ -154,7 +154,7 @@ def get_movements_report(from_date, to_date, warehouse_id=None):
                     "damaged": 0,
                     "transferred": 0,
                 }
-            product_summary[item.product_id]["exported"] += int(item.quantity)
+            product_summary[item.product_id]["exported"] += float(item.quantity)
 
     field_damaged_by_product = {}
     for report in damage_reports:
@@ -169,10 +169,10 @@ def get_movements_report(from_date, to_date, warehouse_id=None):
                     "damaged": 0,
                     "transferred": 0,
                 }
-            product_summary[item.product_id]["damaged"] += int(item.quantity)
+            product_summary[item.product_id]["damaged"] += float(item.quantity)
             if report.reported_by_employee.role == EmployeeRole.NHAN_VIEN_BAN_HANG:
                 field_damaged_by_product[item.product_id] = (
-                    field_damaged_by_product.get(item.product_id, 0) + int(item.quantity)
+                    field_damaged_by_product.get(item.product_id, 0) + float(item.quantity)
                 )
 
     for transfer in stock_transfers:
@@ -187,7 +187,7 @@ def get_movements_report(from_date, to_date, warehouse_id=None):
                     "damaged": 0,
                     "transferred": 0,
                 }
-            product_summary[item.product_id]["transferred"] += int(item.quantity)
+            product_summary[item.product_id]["transferred"] += float(item.quantity)
     
                                                
     inventory_by_product = calculate_inventory_for_products(
@@ -319,20 +319,20 @@ def get_movements_report_aggregated(from_date, to_date, warehouse_id=None):
               "total_damage_quantity": 0, "total_transferred_quantity": 0}
     field_damaged_by_product = {}
     for row in import_rows:
-        product_summary[row.product_id]["imported"] = int(row.quantity)
-        totals["total_import_quantity"] += int(row.quantity)
+        product_summary[row.product_id]["imported"] = float(row.quantity)
+        totals["total_import_quantity"] += float(row.quantity)
         totals["total_import_amount"] += float(row.amount)
     for row in sale_rows:
-        product_summary[row.product_id]["exported"] = int(row.quantity)
-        totals["total_export_quantity"] += int(row.quantity)
+        product_summary[row.product_id]["exported"] = float(row.quantity)
+        totals["total_export_quantity"] += float(row.quantity)
         totals["total_export_amount"] += float(row.amount)
     for row in damage_rows:
-        product_summary[row.product_id]["damaged"] = int(row.quantity)
-        field_damaged_by_product[row.product_id] = int(row.field_quantity or 0)
-        totals["total_damage_quantity"] += int(row.quantity)
+        product_summary[row.product_id]["damaged"] = float(row.quantity)
+        field_damaged_by_product[row.product_id] = float(row.field_quantity or 0)
+        totals["total_damage_quantity"] += float(row.quantity)
     for row in transfer_rows:
-        product_summary[row.product_id]["transferred"] = int(row.quantity)
-        totals["total_transferred_quantity"] += int(row.quantity)
+        product_summary[row.product_id]["transferred"] = float(row.quantity)
+        totals["total_transferred_quantity"] += float(row.quantity)
 
     inventory_by_product = calculate_inventory_for_products(
         list(product_summary), warehouse_id=warehouse_id,

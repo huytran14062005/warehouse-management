@@ -422,8 +422,8 @@ function StockTransfers() {
                     <ProductEntryField label="Số lượng cấp đi">
                       <input
                         type="number"
-                        min="1"
-                        step="1"
+                        min="0.001"
+                        step="0.001"
                         value={item.quantity}
                         onChange={(event) =>
                           updateItem(index, "quantity", event.target.value)

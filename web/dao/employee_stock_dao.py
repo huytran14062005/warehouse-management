@@ -41,9 +41,9 @@ def get_employee_stock_list(employee_id, page=1, per_page=10):
     )
     rows = query.offset((page - 1) * per_page).limit(per_page).all()
     return [
-        {"product": product, "quantity": int(stock.quantity)}
+        {"product": product, "quantity": float(stock.quantity)}
         for stock, product in rows
-    ], total, int(total_quantity or 0)
+    ], total, float(total_quantity or 0)
 
 
 def get_or_create_employee_stock(employee_id, product_id):

@@ -20,6 +20,7 @@ from web.services.authorization import (
     resolve_document_warehouse,
 )
 from web.services.payment_service import parse_payment_method
+from web.services.unit_conversion import to_base_quantity
 from web.services.supplier_service import get_or_create_supplier
 
 
@@ -30,6 +31,14 @@ def _validate_inbound_fee(value):
     return fee
 
 
+def _validate_deductible_input_vat(value, lines):
+    vat = validate_money_amount(value, "VAT đầu vào được khấu trừ", minimum=None)
+    gross = sum((line["line_total"] for line in lines), Decimal("0"))
+    if vat > gross:
+        raise ValidationError("VAT đầu vào được khấu trừ không thể lớn hơn tổng tiền mua hàng")
+    return vat
+
+
 def _validate_import_items(items):
     ensure_bounded_items(items, "Sản phẩm trong phiếu nhập")
     if not isinstance(items, list) or not items:
@@ -37,6 +46,9 @@ def _validate_import_items(items):
 
     normalized = []
     seen_product_ids = set()
+    product_ids = [validate_positive_integer(item.get("product_id"), "Mã sản phẩm")
+                   for item in items if isinstance(item, dict)]
+    products = {product.id: product for product in Product.query.filter(Product.id.in_(product_ids)).all()}
     for index, item in enumerate(items, start=1):
         if not isinstance(item, dict):
             raise ValidationError(f"Sản phẩm (item {index}) không hợp lệ")
@@ -47,19 +59,27 @@ def _validate_import_items(items):
         if product_id in seen_product_ids:
             raise ValidationError(f"Sản phẩm ID {product_id} bị lặp trong phiếu nhập")
         seen_product_ids.add(product_id)
+        product = products.get(product_id)
+        if product is None:
+            raise NotFoundError(f"Sản phẩm ID {product_id} không tồn tại")
+        base_quantity, entered_unit, entered_quantity = to_base_quantity(
+            product, item.get("quantity"), item.get("unit"),
+        )
+        price_unit = item.get("price_unit") or product.unit
+        price_factor, _, _ = to_base_quantity(product, 1, price_unit)
+        entered_price = validate_money_amount(
+            item.get("unit_price"), f"Đơn giá (item {index})", allow_zero=False,
+        )
+        base_price = (entered_price / price_factor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        line_total = (base_quantity * entered_price / price_factor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         normalized.append({
             "product_id": product_id,
-            "quantity": validate_positive_integer(
-                item.get("quantity"),
-                f"Số lượng (item {index})",
-            ),
-            "unit_price": validate_money_amount(
-                item.get("unit_price"),
-                f"Đơn giá (item {index})",
-                allow_zero=False,
-            ),
+            "quantity": base_quantity,
+            "unit_price": base_price,
+            "line_total": line_total,
+            "entered_unit": entered_unit,
+            "entered_quantity": entered_quantity,
         })
-        normalized[-1]["line_total"] = normalized[-1]["quantity"] * normalized[-1]["unit_price"]
 
     return normalized
 
@@ -186,6 +206,8 @@ def _prepare_import_lines(items, combo_groups, excluded_invoice_id=None, importe
                                           "line_total": Decimal("0"), "unit_price": Decimal("0")})
             line["quantity"] += quantity
             line["line_total"] += amount
+            line["entered_unit"] = None
+            line["entered_quantity"] = None
             snapshot_part = {"product_id": pid, "quantity_per_set": part["quantity_per_set"],
                              "allocated_total": str(amount)}
             if group["allocation_mode"] == "supplier_prices":
@@ -274,7 +296,9 @@ def serialize_import_invoice(invoice):
             "product_id": item.product_id,
             "product_name": item.product.name,
             "unit": item.product.unit,
-            "quantity": int(item.quantity),
+            "quantity": float(item.quantity),
+            "entered_unit": item.entered_unit or item.product.unit,
+            "entered_quantity": float(item.entered_quantity) if item.entered_quantity is not None else float(item.quantity),
             "unit_price": float(item.unit_price),
             "total": item_total
         })
@@ -284,6 +308,7 @@ def serialize_import_invoice(invoice):
     return {
         "id": invoice.id,
         "inbound_fee": float(invoice.inbound_fee or 0),
+        "deductible_input_vat": float(invoice.deductible_input_vat or 0),
         "imported_at": invoice.imported_at.isoformat() if invoice.imported_at else None,
         "note": invoice.note,
         "combo_groups": invoice.combo_groups or [],
@@ -329,6 +354,7 @@ def serialize_import_invoice_summary(invoice):
     return {
         "id": invoice.id,
         "inbound_fee": float(invoice.inbound_fee or 0),
+        "deductible_input_vat": float(invoice.deductible_input_vat or 0),
         "imported_at": invoice.imported_at.isoformat() if invoice.imported_at else None,
         "warehouse": {
             "id": invoice.warehouse.id,
@@ -396,7 +422,7 @@ def update_import_inbound_fee_service(invoice_id, employee_id, inbound_fee):
     return import_invoice_dao.get_import_invoice_by_id(invoice.id)
 
 
-def create_import_invoice_service(employee_id, warehouse_id, supplier_id, supplier_data=None, note="", items=None, combo_groups=None, is_return=False, imported_at=None, payment_amount=0, payment_method=None, inbound_fee=0):
+def create_import_invoice_service(employee_id, warehouse_id, supplier_id, supplier_data=None, note="", items=None, combo_groups=None, is_return=False, imported_at=None, payment_amount=0, payment_method=None, inbound_fee=0, deductible_input_vat=0):
        
                     
     if not items and not combo_groups:
@@ -437,6 +463,7 @@ def create_import_invoice_service(employee_id, warehouse_id, supplier_id, suppli
         items=validated_items,
         combo_groups=combo_snapshots,
         inbound_fee=_validate_inbound_fee(inbound_fee),
+        deductible_input_vat=_validate_deductible_input_vat(deductible_input_vat, validated_items),
         payment=None,
     )
 
@@ -481,7 +508,7 @@ def record_supplier_payment_service(invoice_id, employee_id, amount, payment_met
     return import_invoice_dao.get_import_invoice_by_id(invoice.id), payment_record
 
 
-def update_import_invoice_service(invoice_id, employee_id, warehouse_id, supplier_id, supplier_data=None, note="", items=None, combo_groups=None, is_return=False, imported_at=None, inbound_fee=0):
+def update_import_invoice_service(invoice_id, employee_id, warehouse_id, supplier_id, supplier_data=None, note="", items=None, combo_groups=None, is_return=False, imported_at=None, inbound_fee=0, deductible_input_vat=0):
        
                               
     invoice = import_invoice_dao.get_import_invoice_by_id(invoice_id)
@@ -542,7 +569,7 @@ def update_import_invoice_service(invoice_id, employee_id, warehouse_id, supplie
     
                                     
     new_items_by_product = {
-        item["product_id"]: item["quantity"]
+        item["product_id"]: float(item["quantity"])
         for item in validated_items
     }
     stock_by_product = product_dao.calculate_available_stock_for_items_at_warehouse(
@@ -581,6 +608,7 @@ def update_import_invoice_service(invoice_id, employee_id, warehouse_id, supplie
         items=validated_items,
         combo_groups=combo_snapshots,
         inbound_fee=_validate_inbound_fee(inbound_fee),
+        deductible_input_vat=_validate_deductible_input_vat(deductible_input_vat, validated_items),
     )
 
     return updated_invoice
@@ -611,7 +639,7 @@ def delete_import_invoice_service(invoice_id):
             raise ValidationError(
                 f"Không thể xóa phiếu nhập vì sản phẩm '{item.product.name}' "
                 f"đã bán hết. Tồn kho hiện tại: {stock_info['available_stock']}, "
-                f"xóa {int(item.quantity)} sẽ làm tồn kho âm."
+                f"xóa {item.quantity} sẽ làm tồn kho âm."
             )
 
                  

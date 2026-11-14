@@ -100,6 +100,7 @@ def create_import_invoice():
         items=data.get("items", []),
         combo_groups=data.get("combo_groups", []),
         inbound_fee=data.get("inbound_fee", 0),
+        deductible_input_vat=data.get("deductible_input_vat", 0),
         is_return=parse_bool(data.get("is_return", False), "is_return"),
         payment_amount=data.get("payment_amount", 0),
         payment_method=data.get("payment_method"),
@@ -170,6 +171,7 @@ def update_import_invoice(invoice_id):
         items=data.get("items", []),
         combo_groups=data.get("combo_groups", []),
         inbound_fee=data.get("inbound_fee", 0),
+        deductible_input_vat=data.get("deductible_input_vat", 0),
         is_return=parse_bool(data.get("is_return", False), "is_return")
     )
 

@@ -23,8 +23,9 @@ from web.models import (
     SaleSource, SalesInvoice, Supplier, Warehouse,
 )
 from web.services.exceptions import ValidationError
-from web.services.pricing_service import create_expense, pricing_catalog, pay_expense
+from web.services.pricing_service import create_expense, pricing_catalog, pay_expense, save_pricing_cycle, save_pricing_policy
 from web.services.pricing_service import profitability_report
+from web.services.import_invoice_service import create_import_invoice_service
 from web.services.sales_invoice_service import (
     accept_sales_invoice_assignment_service, approve_discount_service,
     cancel_invoice_service, complete_sales_invoice_service,
@@ -296,21 +297,25 @@ class PrelaunchChecklist(unittest.TestCase):
         db.session.commit()
         self.assertEqual(client.get("/api/pricing/catalog", headers=self.token("manager")).status_code, 403)
 
-    def test_07_paid_cost_only_and_input_freight_in_pricing(self):
+    def test_07_accrual_cost_and_input_freight_in_pricing(self):
+        save_pricing_cycle(self.people["manager"], {"planned_revenue_amount": 200000})
+        save_pricing_policy(self.people["manager"], self.product_ids[0], {"planned_quantity": 100, "markup_percent": 20})
         before = pricing_catalog()["products"][0]
         self.assertGreater(before["estimated_unit_cost"], 500)
         unpaid = create_expense(self.people["manager"], {
             "category": "sales_salary", "amount": 100000,
             "occurred_on": date.today().isoformat(), "description": "Salary",
         })
-        self.assertEqual(pricing_catalog()["pricing_allocated_expenses"], 0)
-        pay_expense(self.people["manager"], unpaid["id"], "cash")
         after = pricing_catalog()
         self.assertEqual(after["pricing_allocated_expenses"], 100000)
         self.assertGreater(after["products"][0]["full_cost_per_unit"], before["full_cost_per_unit"])
-        self.assertGreater(after["products"][0]["suggested_price"], before["suggested_price"])
+        pay_expense(self.people["manager"], unpaid["id"], "cash")
+        paid = pricing_catalog()
+        self.assertEqual(paid["products"][0]["full_cost_per_unit"], after["products"][0]["full_cost_per_unit"])
 
     def test_08_report_period_and_pre_vat_price_formula(self):
+        save_pricing_cycle(self.people["manager"], {"planned_revenue_amount": 200000})
+        save_pricing_policy(self.people["manager"], self.product_ids[0], {"planned_quantity": 100, "markup_percent": 20})
         row = pricing_catalog()["products"][0]
         full_cost = Decimal(str(row["full_cost_per_unit"]))
         self.assertEqual(row["suggested_price"], int((full_cost * Decimal("1.2") / 1000).to_integral_value(rounding="ROUND_CEILING") * 1000))
@@ -329,8 +334,16 @@ class PrelaunchChecklist(unittest.TestCase):
         previous = profitability_report(yesterday.isoformat(), yesterday.isoformat())
         self.assertEqual(current["revenue"], 1000)
         self.assertEqual(current["estimated_cogs"], 550)
+        self.assertEqual(current["cogs_status"], "recorded")
+        self.assertEqual(current["operating_profit"], 450)
         self.assertEqual(current["estimated_operating_profit"], 450)
         self.assertEqual(previous["revenue"], 0)
+        imported = ImportInvoice.query.first()
+        imported.inbound_fee = Decimal("200000")
+        db.session.commit()
+        frozen = profitability_report(today.isoformat(), today.isoformat())
+        self.assertEqual(frozen["estimated_cogs"], 550)
+        self.assertEqual(frozen["operating_profit"], 450)
 
     def test_09_two_access_tokens_read_after_write_and_retry_completion(self):
         client = app.test_client()
@@ -354,6 +367,25 @@ class PrelaunchChecklist(unittest.TestCase):
         with self.assertRaises(ValidationError):
             self.complete(invoice.id, amount=2000, method="bank_transfer")
         self.assertEqual(CompanyFundEntry.query.filter_by(entry_type="customer_receipt").count(), entry_count)
+
+    def test_10_fractional_metre_sale_through_full_order_flow(self):
+        rail = Product(name="Ray rèm", unit="mét", default_sale_price=Decimal("5000"),
+                       unit_conversions={"cây": "6"})
+        db.session.add(rail)
+        db.session.commit()
+        supplier_id = Supplier.query.first().id
+        create_import_invoice_service(self.people["manager"], self.warehouse_id, supplier_id,
+            imported_at=date.today().isoformat(),
+            items=[{"product_id": rail.id, "quantity": 1, "unit": "cây", "unit_price": 4000}])
+        invoice = self.create_sale([{"product_id": rail.id, "quantity": 0.5,
+                                     "unit": "mét", "unit_price": 5000}])
+        self.assertEqual(invoice.items[0].quantity, Decimal("0.5"))
+        self.dispatch(invoice.id)
+        self.assertEqual(self.stock(rail.id), 5.5)
+        self.handoff(invoice.id)
+        completed = self.complete(invoice.id)
+        self.assertEqual(completed.status, InvoiceStatus.COMPLETED)
+        self.assertEqual(self.stock(rail.id), 5.5)
 
 
 if __name__ == "__main__":

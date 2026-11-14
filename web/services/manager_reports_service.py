@@ -183,7 +183,7 @@ def _build_period_trend(from_date, to_date, granularity="month"):
         for row in revenue_rows
     }
     quantity_by_period = {
-        period_key(row): int(row.quantity or 0)
+        period_key(row): float(row.quantity or 0)
         for row in revenue_rows
     }
     paid_by_period = {
@@ -372,6 +372,7 @@ def _build_product_profit_rows(from_date, to_date):
             ImportInvoice.id.label("import_id"),
             ImportInvoice.imported_at,
             ImportInvoice.inbound_fee,
+            ImportInvoice.deductible_input_vat,
             purchase_invoice_totals.c.amount.label("invoice_purchase_total"),
             ImportInvoiceItem.id.label("import_line_id"),
             ImportInvoiceItem.product_id,
@@ -430,7 +431,7 @@ def _get_manager_sales_table_page(
                 "area": row.area,
                 "orders": int(row.orders or 0),
                 "revenue": float(row.revenue or 0),
-                "quantity": int(row.quantity or 0),
+                "quantity": float(row.quantity or 0),
             }
             for row in revenue_rows
         ]
@@ -443,7 +444,7 @@ def _get_manager_sales_table_page(
         )
         rows = []
         for product in products:
-            available_stock = max(0, int(inventory_by_product.get(product.id, {}).get("available_stock", 0) or 0))
+            available_stock = max(0, float(inventory_by_product.get(product.id, {}).get("available_stock", 0) or 0))
             if available_stock > 0:
                 rows.append({
                     "product_id": product.id,
@@ -487,10 +488,10 @@ def _get_manager_sales_table_page(
                 "product_id": row.product_id,
                 "product_name": row.product_name,
                 "unit": row.unit,
-                "quantity": int(row.quantity or 0),
+                "quantity": float(row.quantity or 0),
             }
             for row in sold_rows
-            if int(row.quantity or 0) > 0
+            if float(row.quantity or 0) > 0
         ]
         key = "sold_table"
 
@@ -611,12 +612,12 @@ def get_manager_sales_analytics_service(
     top_products = {}
     for row in quantity_rows:
         current = top_products.get(row.area)
-        quantity = int(row.quantity or 0)
+        quantity = float(row.quantity or 0)
         if not current or quantity > current["quantity"]:
             top_products[row.area] = {"name": row.product_name, "quantity": quantity}
     quantity_by_area = {}
     for item in quantity_rows:
-        quantity_by_area[item.area] = quantity_by_area.get(item.area, 0) + int(item.quantity or 0)
+        quantity_by_area[item.area] = quantity_by_area.get(item.area, 0) + float(item.quantity or 0)
 
     revenue_by_area = [
         {
@@ -670,10 +671,10 @@ def get_manager_sales_analytics_service(
             "product_id": row.product_id,
             "product_name": row.product_name,
             "unit": row.unit,
-            "quantity": int(row.quantity or 0),
+            "quantity": float(row.quantity or 0),
         }
         for row in sold_rows
-        if int(row.quantity or 0) > 0
+        if float(row.quantity or 0) > 0
     ]
     total_period_sold = sum(row["quantity"] for row in sold_chart)
 

@@ -171,14 +171,14 @@ def _build_movements_report(warehouse_id, include_all_products=False):
         "total_transferred_quantity": totals["total_transferred_quantity"],
     }
     low_stock_percentage = float(get_low_stock_percentage())
-    summary["current_stock"] = sum(int(p["current_stock"] or 0) for p in report_data["by_product"])
+    summary["current_stock"] = sum(float(p["current_stock"] or 0) for p in report_data["by_product"])
     summary["out_of_stock_count"] = sum(
-        int(p["current_stock"] or 0) <= 0 for p in report_data["by_product"]
+        float(p["current_stock"] or 0) <= 0 for p in report_data["by_product"]
     )
     summary["low_stock_count"] = sum(
-        int(p["current_stock"] or 0) > 0
+        float(p["current_stock"] or 0) > 0
         and int(p["total_imported"] or 0) > 0
-        and int(p["current_stock"] or 0) <= int(p["total_imported"] or 0) * low_stock_percentage / 100
+        and float(p["current_stock"] or 0) <= float(p["total_imported"] or 0) * low_stock_percentage / 100
         for p in report_data["by_product"]
     )
     summary["low_stock_percentage"] = low_stock_percentage

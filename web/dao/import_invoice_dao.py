@@ -69,7 +69,7 @@ def get_import_invoice_by_id(invoice_id):
     )
 
 
-def create_import_invoice(warehouse_id, supplier_id, employee_id, note, items, imported_at=None, payment=None, combo_groups=None, inbound_fee=0):
+def create_import_invoice(warehouse_id, supplier_id, employee_id, note, items, imported_at=None, payment=None, combo_groups=None, inbound_fee=0, deductible_input_vat=0):
        
     try:
                      
@@ -81,6 +81,7 @@ def create_import_invoice(warehouse_id, supplier_id, employee_id, note, items, i
             note=note,
             combo_groups=combo_groups or None,
             inbound_fee=inbound_fee,
+            deductible_input_vat=deductible_input_vat,
         )
         db.session.add(invoice)
         db.session.flush()                    
@@ -93,6 +94,8 @@ def create_import_invoice(warehouse_id, supplier_id, employee_id, note, items, i
                 quantity=item_data["quantity"],
                 unit_price=item_data["unit_price"],
                 line_total=item_data["line_total"],
+                entered_unit=item_data.get("entered_unit"),
+                entered_quantity=item_data.get("entered_quantity"),
             )
             db.session.add(item)
 
@@ -118,7 +121,7 @@ def create_import_invoice(warehouse_id, supplier_id, employee_id, note, items, i
         raise Exception(f"Lỗi tạo phiếu nhập kho: {str(ex)}")
 
 
-def update_import_invoice(invoice_id, warehouse_id, supplier_id, note, items, imported_at=None, combo_groups=None, inbound_fee=0):
+def update_import_invoice(invoice_id, warehouse_id, supplier_id, note, items, imported_at=None, combo_groups=None, inbound_fee=0, deductible_input_vat=0):
        
     try:
         invoice = ImportInvoice.query.get(invoice_id)
@@ -136,6 +139,7 @@ def update_import_invoice(invoice_id, warehouse_id, supplier_id, note, items, im
         invoice.note = note
         invoice.combo_groups = combo_groups or None
         invoice.inbound_fee = inbound_fee
+        invoice.deductible_input_vat = deductible_input_vat
 
                        
         for item_data in items:
@@ -145,6 +149,8 @@ def update_import_invoice(invoice_id, warehouse_id, supplier_id, note, items, im
                 quantity=item_data["quantity"],
                 unit_price=item_data["unit_price"],
                 line_total=item_data["line_total"],
+                entered_unit=item_data.get("entered_unit"),
+                entered_quantity=item_data.get("entered_quantity"),
             )
             db.session.add(item)
 

@@ -37,6 +37,7 @@ from web.services.authorization import (
 )
 from web.services.validators import MIN_MONEY_AMOUNT, require_text, validate_money_amount, validate_phone, validate_positive_number
 from web.services.payment_service import parse_payment_method
+from web.services.unit_conversion import positive_quantity, to_base_quantity
 from web.services.sales_area_service import resolve_sales_area_id
 from web.services.promotion_service import (
     append_approval_note,
@@ -269,15 +270,9 @@ def has_active_cancel_request(invoice):
 
 
 def validate_positive_quantity(value, field_name):
-    try:
-        if isinstance(value, bool):
-            raise ValueError
-        quantity = int(value)
-        if float(value) != quantity or quantity <= 0:
-            raise ValidationError(f"{field_name} must be a positive integer")
-        return quantity
-    except (ValueError, TypeError):
-        raise ValidationError(f"{field_name} must be a positive integer")
+    if isinstance(value, bool):
+        raise ValidationError(f"{field_name} không hợp lệ")
+    return positive_quantity(value, field_name)
 
 
 def validate_positive_integer(value, field_name):
@@ -315,6 +310,15 @@ def calculate_total_amount(items):
     return total
 
 
+def _snapshot_sale_costs(invoice):
+    """Freeze the landed purchase estimate used when this sale is completed."""
+    from web.services.pricing_service import _purchase_costs
+    product_ids = [item.product_id for item in invoice.items]
+    costs = _purchase_costs(product_ids, end=invoice.sold_at + timedelta(microseconds=1))
+    for item in invoice.items:
+        item.landed_unit_cost = costs.get(item.product_id)
+
+
 def _validate_sales_items(items):
     ensure_bounded_items(items, "Sản phẩm trong đơn hàng")
     if not isinstance(items, list) or not items:
@@ -336,15 +340,13 @@ def _validate_sales_items(items):
         product_ids.append(product_id)
         combo_id = item.get("combo_id")
         if combo_id not in (None, ""):
-            combo_id = validate_positive_quantity(combo_id, f"Mã combo (item {index})")
+            combo_id = validate_positive_integer(combo_id, f"Mã combo (item {index})")
         else:
             combo_id = None
         normalized.append({
             "product_id": product_id,
-            "quantity": validate_positive_quantity(
-                item.get("quantity"),
-                f"Số lượng (item {index})",
-            ),
+            "quantity": item.get("quantity"),
+            "entered_unit": item.get("unit"),
             "unit_price": validate_money_amount(
                 item.get("unit_price"),
                 f"Đơn giá (item {index})",
@@ -359,6 +361,16 @@ def _validate_sales_items(items):
     missing_product_ids = [product_id for product_id in product_ids if product_id not in products_by_id]
     if missing_product_ids:
         raise NotFoundError(f"Sản phẩm ID {missing_product_ids[0]} không tồn tại")
+    for item in normalized:
+        product = products_by_id[item["product_id"]]
+        base_quantity, entered_unit, entered_quantity = to_base_quantity(
+            product, item["quantity"], item["entered_unit"],
+        )
+        if item["combo_id"] is not None and entered_unit != product.unit:
+            raise ValidationError("Thành phần combo phải nhập theo đơn vị cơ sở")
+        item["quantity"] = base_quantity
+        item["entered_unit"] = entered_unit
+        item["entered_quantity"] = entered_quantity
 
     combo_groups = {}
     for item in normalized:
@@ -454,7 +466,7 @@ def _validate_items_available_in_warehouse(items, warehouse_id, exclude_invoice_
     for item in items:
         available_stock = max(
             0,
-            int(stock_by_product.get(item["product_id"], {}).get("available_stock", 0)),
+            float(stock_by_product.get(item["product_id"], {}).get("available_stock", 0)),
         )
         if available_stock < item["quantity"]:
             product = products_by_id.get(item["product_id"])
@@ -537,14 +549,14 @@ def _consume_employee_stock(employee_id, items):
     }
     for item in items:
         stock = stocks.get(item["product_id"])
-        available = int(stock.quantity) if stock else 0
+        available = float(stock.quantity) if stock else 0
         if available < item["quantity"]:
             raise ValidationError(
                 f"Sản phẩm '{product_names[item['product_id']]}' trong tồn của nhân viên không đủ."
             )
     for item in items:
         stocks[item["product_id"]].quantity = (
-            int(stocks[item["product_id"]].quantity) - item["quantity"]
+            Decimal(str(stocks[item["product_id"]].quantity)) - item["quantity"]
         )
 
 
@@ -672,7 +684,10 @@ def serialize_sales_invoice(invoice):
             "product_name": item.product.name,
             "unit": item.product.unit,
             "default_sale_price": float(item.product.default_sale_price),
-            "quantity": int(item.quantity),
+            "quantity": float(item.quantity),
+            "entered_unit": item.entered_unit or item.product.unit,
+            "entered_quantity": float(item.entered_quantity) if item.entered_quantity is not None else float(item.quantity),
+            "unit_conversions": item.product.unit_conversions or {},
             "unit_price": float(item.unit_price),
             "total": item_total
         })
@@ -902,6 +917,7 @@ def create_sales_invoice_service(
                 payment_due_date=clean_payment_due_date,
                 commit=False,
             )
+            _snapshot_sale_costs(invoice)
             _apply_invoice_payment(invoice, employee_id, 0, final_amount)
             db.session.commit()
             return dao.get_sales_invoice_by_id(invoice.id)
@@ -1085,7 +1101,7 @@ def complete_sales_invoice_service(invoice_id, employee_id, payment_amount=0, pa
         if invoice.sale_source == SaleSource.CENTRAL_WAREHOUSE:
             _validate_items_available_in_warehouse(
                 [
-                    {"product_id": item.product_id, "quantity": int(item.quantity)}
+                    {"product_id": item.product_id, "quantity": float(item.quantity)}
                     for item in invoice.items
                 ],
                 invoice.warehouse_id,
@@ -1098,7 +1114,7 @@ def complete_sales_invoice_service(invoice_id, employee_id, payment_amount=0, pa
             )
             for item in invoice.items:
                 stock_info = stock_by_product[item.product_id]
-                if stock_info["available_stock"] < int(item.quantity):
+                if stock_info["available_stock"] < float(item.quantity):
                     raise ValidationError(
                         f"Sản phẩm '{item.product.name}' không đủ tồn kho."
                     )
@@ -1120,6 +1136,7 @@ def complete_sales_invoice_service(invoice_id, employee_id, payment_amount=0, pa
             if remaining_amount > 0 else None
         )
         invoice.status = InvoiceStatus.COMPLETED
+        _snapshot_sale_costs(invoice)
         invoice.current_assignee_id = None
         invoice.assignment_stage = None
         invoice.accepted_at = None
@@ -1833,7 +1850,7 @@ def update_invoice_status_service(invoice_id, employee_id, status_value):
             Warehouse.query.filter(Warehouse.id == invoice.warehouse_id).with_for_update().one()
             _validate_items_available_in_warehouse(
                 [
-                    {"product_id": item.product_id, "quantity": int(item.quantity)}
+                    {"product_id": item.product_id, "quantity": float(item.quantity)}
                     for item in invoice.items
                 ],
                 invoice.warehouse_id,
