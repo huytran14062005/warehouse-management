@@ -60,7 +60,7 @@ class PaymentMethod(UserEnum):
 
 class ExpenseType(UserEnum):
     INCIDENTAL = "incidental"
-    FIXED_SALARY = "fixed_salary"
+    FIXED = "fixed"
 
 
 class FundEntryType(UserEnum):
@@ -155,6 +155,7 @@ class ExpenseCategory(db.Model):
 
     code = Column(String(24), primary_key=True)
     name = Column(String(120), nullable=False, unique=True)
+    expense_type = Column(String(12), nullable=False, default=ExpenseType.INCIDENTAL.value, server_default=ExpenseType.INCIDENTAL.value)
     created_at = Column(DateTime, nullable=False, default=vietnam_payment_time)
     created_by_id = Column(Integer, ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False)
 

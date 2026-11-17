@@ -29,7 +29,7 @@ CATEGORIES = {
     "fuel": "Xăng xe",
     "utilities": "Điện nước",
     "vehicle_repair": "Sửa xe",
-    "maintenance": "Bảo trì",
+    "maintenance": "Bảo trì xe",
     "shrinkage": "Hao hụt",
     "lodging": "Nhà nghỉ",
     "sales_salary": "Lương nhân viên",
@@ -37,31 +37,42 @@ CATEGORIES = {
     "depreciation": "Khấu hao xe, thiết bị",
     "other": "Chi phí bán hàng khác",
 }
+FIXED_CATEGORIES = frozenset({"sales_salary", "vehicle_repair", "maintenance"})
+
+
+def _fixed_category_codes():
+    custom = db.session.query(ExpenseCategory.code).filter_by(expense_type=ExpenseType.FIXED.value).all()
+    return FIXED_CATEGORIES | {code for (code,) in custom}
 
 
 def list_expense_categories():
     custom = ExpenseCategory.query.order_by(ExpenseCategory.name.asc()).all()
     return [
-        {"value": code, "label": label} for code, label in CATEGORIES.items()
-    ] + [{"value": row.code, "label": row.name} for row in custom]
+        {"value": code, "label": label, "expense_type": expense_type_for(code).value}
+        for code, label in CATEGORIES.items()
+    ] + [{"value": row.code, "label": row.name, "expense_type": row.expense_type} for row in custom]
 
 
 def create_expense_category(employee_id, payload):
     name = str(payload.get("name") or "").strip()
+    expense_type = payload.get("expense_type", ExpenseType.INCIDENTAL.value)
+    if expense_type not in (ExpenseType.INCIDENTAL.value, ExpenseType.FIXED.value):
+        raise ValidationError("Nhóm chi phí không hợp lệ")
     if not name or len(name) > 120:
         raise ValidationError("Tên loại chi phí cần từ 1 đến 120 ký tự")
     if name.casefold() in {label.casefold() for label in CATEGORIES.values()}:
         raise ValidationError("Loại chi phí đã tồn tại", status_code=409)
     if ExpenseCategory.query.filter(func.lower(ExpenseCategory.name) == name.lower()).first():
         raise ValidationError("Loại chi phí đã tồn tại", status_code=409)
-    category = ExpenseCategory(code=f"custom_{uuid4().hex[:17]}", name=name, created_by_id=employee_id)
+    category = ExpenseCategory(code=f"custom_{uuid4().hex[:17]}", name=name,
+                               expense_type=expense_type, created_by_id=employee_id)
     try:
         db.session.add(category)
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
         raise ValidationError("Loại chi phí đã tồn tại", status_code=409)
-    return {"value": category.code, "label": category.name}
+    return {"value": category.code, "label": category.name, "expense_type": category.expense_type}
 
 
 def _category_label(code, custom_labels=None):
@@ -73,8 +84,15 @@ def _category_label(code, custom_labels=None):
     return category.name if category else None
 
 
-def expense_type_for(category):
-    return ExpenseType.FIXED_SALARY if category == "sales_salary" else ExpenseType.INCIDENTAL
+def expense_type_for(category, custom_types=None):
+    if category in FIXED_CATEGORIES:
+        return ExpenseType.FIXED
+    if category in CATEGORIES:
+        return ExpenseType.INCIDENTAL
+    if custom_types is not None:
+        return ExpenseType(custom_types.get(category, ExpenseType.INCIDENTAL.value))
+    custom = db.session.get(ExpenseCategory, category)
+    return ExpenseType(custom.expense_type) if custom else ExpenseType.INCIDENTAL
 
 
 CENT = Decimal("0.01")
@@ -166,14 +184,12 @@ def _expense_details(payload, existing=None):
             raise ValidationError("Mã đơn hàng không hợp lệ")
         if invoice_id <= 0 or not db.session.get(SalesInvoice, invoice_id):
             raise ValidationError("Đơn hàng liên quan không tồn tại")
-    legacy_salary_link = (
-        existing is not None and existing.category == "sales_salary"
-        and existing.invoice_id == invoice_id
-    )
-    if expense_type_for(category) == ExpenseType.FIXED_SALARY and invoice_id is not None and not legacy_salary_link:
-        raise ValidationError("Lương nhân viên là chi phí chung, không gắn với đơn bán")
-    if expense_type_for(category) == ExpenseType.FIXED_SALARY and trip_invoice_ids:
-        raise ValidationError("Lương nhân viên là chi phí chung, không gắn với chuyến xe")
+    is_fixed = expense_type_for(category) == ExpenseType.FIXED
+    legacy_link = existing is not None and existing.category == category
+    if is_fixed and invoice_id is not None and not (legacy_link and existing.invoice_id == invoice_id):
+        raise ValidationError("Chi phí cố định là chi phí chung, không gắn với đơn bán")
+    if is_fixed and trip_invoice_ids and not (legacy_link and existing.trip_invoice_ids == trip_invoice_ids):
+        raise ValidationError("Chi phí cố định là chi phí chung, không gắn với chuyến xe")
     is_abnormal = payload.get("is_abnormal", existing.is_abnormal if existing else False)
     if not isinstance(is_abnormal, bool):
         raise ValidationError("Đánh dấu chi phí bất thường không hợp lệ")
@@ -294,10 +310,10 @@ def update_expense(employee_id, expense_id, payload):
     return serialize_expense(expense)
 
 
-def serialize_expense(row, category_labels=None):
+def serialize_expense(row, category_labels=None, custom_types=None):
     return {
         "id": row.id, "category": row.category,
-        "expense_type": expense_type_for(row.category).value,
+        "expense_type": expense_type_for(row.category, custom_types).value,
         "category_label": _category_label(row.category, category_labels) or row.category,
         "amount": float(row.amount), "occurred_on": row.occurred_on.isoformat(),
         "invoice_id": row.invoice_id, "description": row.description,
@@ -363,23 +379,25 @@ def pay_expense(employee_id, expense_id, payment_method):
 def list_expenses(from_value=None, to_value=None, page_value=None, expense_type=None):
     start, end = parse_period(from_value, to_value)
     page = parse_page(page_value)
-    if expense_type not in (None, ExpenseType.INCIDENTAL.value, ExpenseType.FIXED_SALARY.value):
+    if expense_type not in (None, ExpenseType.INCIDENTAL.value, ExpenseType.FIXED.value, "fixed_salary"):
         raise ValidationError("Nhóm chi phí không hợp lệ")
     query = OperatingExpense.query.filter(
         OperatingExpense.occurred_on >= start, OperatingExpense.occurred_on <= end,
     )
-    if expense_type == ExpenseType.FIXED_SALARY.value:
+    if expense_type == "fixed_salary":
         query = query.filter(OperatingExpense.category == "sales_salary")
+    elif expense_type == ExpenseType.FIXED.value:
+        query = query.filter(OperatingExpense.category.in_(_fixed_category_codes()))
     elif expense_type == ExpenseType.INCIDENTAL.value:
-        query = query.filter(OperatingExpense.category != "sales_salary")
+        query = query.filter(OperatingExpense.category.notin_(_fixed_category_codes()))
     total = query.count()
     rows = query.order_by(OperatingExpense.occurred_on.desc(), OperatingExpense.id.desc()).offset((page - 1) * 20).limit(20).all()
     custom_codes = {row.category for row in rows if row.category not in CATEGORIES}
-    custom_labels = {
-        row.code: row.name for row in ExpenseCategory.query.filter(ExpenseCategory.code.in_(custom_codes)).all()
-    } if custom_codes else {}
+    custom_categories = ExpenseCategory.query.filter(ExpenseCategory.code.in_(custom_codes)).all() if custom_codes else []
+    custom_labels = {row.code: row.name for row in custom_categories}
+    custom_types = {row.code: row.expense_type for row in custom_categories}
     return {
-        "expenses": [serialize_expense(row, custom_labels) for row in rows],
+        "expenses": [serialize_expense(row, custom_labels, custom_types) for row in rows],
         "pagination": build_pagination(page, 20, total),
         "period": {"from": start.isoformat(), "to": end.isoformat()},
     }
@@ -815,6 +833,10 @@ def pricing_catalog(page_value=None, keyword=None, cost_mode="actual"):
     products = query.order_by(Product.name, Product.id).offset((page - 1) * 20).limit(20).all()
     inputs = _pricing_inputs(cost_mode or "actual", [product.id for product in products])
     salary_expenses = inputs["actual_salary"]
+    fixed_categories = _fixed_category_codes()
+    incidental_expenses = sum(
+        (amount for category, amount in inputs["by_category"].items()
+         if category not in fixed_categories), Decimal("0"))
     return {
         "products": [_pricing_row(product, inputs["policies"].get(product.id), inputs["costs"].get(product.id), inputs["shared_expenses"], inputs["planned_revenue"], inputs["direct_per_unit"].get(product.id)) for product in products],
         "pagination": build_pagination(page, 20, total),
@@ -829,7 +851,7 @@ def pricing_catalog(page_value=None, keyword=None, cost_mode="actual"):
         "pricing_planned_revenue_amount": float(inputs["confirmed_revenue"]) if inputs["confirmed_revenue"] is not None else None,
         "pricing_estimated_salary": float(inputs["estimated_salary"]),
         "pricing_salary_confirmed": bool(salary_expenses),
-        "pricing_incidental_expenses": float(inputs["actual_shared"] - salary_expenses),
+        "pricing_incidental_expenses": float(incidental_expenses),
         "pricing_shipping": float(inputs["shipping"]),
         "pricing_period_start": inputs["start"].isoformat(),
         "pricing_period_end": inputs["end"].isoformat(),

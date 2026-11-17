@@ -60,7 +60,7 @@ def ensure_business_columns():
     if _business_schema_ready or not request.path.startswith("/api/"):
         return
     from sqlalchemy import Numeric, inspect
-    from web.models import EmployeeStock, ImportInvoice, ImportInvoiceItem, OperatingExpense, PricingCycle, PricingPolicy, Product, SalesInvoice, SalesInvoiceItem, StockTransferItem, DamageReportItem
+    from web.models import EmployeeStock, ExpenseCategory, ImportInvoice, ImportInvoiceItem, OperatingExpense, PricingCycle, PricingPolicy, Product, SalesInvoice, SalesInvoiceItem, StockTransferItem, DamageReportItem
 
     inspector = inspect(db.engine)
     columns = (
@@ -81,6 +81,7 @@ def ensure_business_columns():
         (SalesInvoiceItem.__tablename__, "entered_quantity", "DECIMAL(18, 3) NULL"),
         (SalesInvoiceItem.__tablename__, "landed_unit_cost", "DECIMAL(18, 4) NULL"),
         (OperatingExpense.__tablename__, "is_abnormal", "BOOLEAN NOT NULL DEFAULT 0"),
+        (ExpenseCategory.__tablename__, "expense_type", "VARCHAR(12) NOT NULL DEFAULT 'incidental'"),
         (SalesInvoice.__tablename__, "return_pending", "BOOLEAN NOT NULL DEFAULT 0"),
     )
     if any(not inspector.has_table(table) for table, _, _ in columns):

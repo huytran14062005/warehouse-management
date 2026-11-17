@@ -15,7 +15,8 @@ from web.models import (Customer, Employee, EmployeeRole, ImportInvoice, ImportI
 from web.services.exceptions import ValidationError
 from web.services.import_invoice_service import create_import_invoice_service
 from web.services.sales_invoice_service import _validate_sales_items
-from web.services.pricing_service import (apply_suggested_price, create_expense, pricing_breakdown, pricing_catalog,
+from web.services.pricing_service import (apply_suggested_price, create_expense, create_expense_category,
+                                          list_expense_categories, list_expenses, pricing_breakdown, pricing_catalog,
                                           profitability_report, save_pricing_cycle, save_pricing_policy)
 
 
@@ -114,6 +115,44 @@ class PricingRequirements(unittest.TestCase):
                       "occurred_on": self.today.isoformat(), "description": "Lương tháng chưa thanh toán"})
         self.assertEqual(self.row()["shared_expense_per_unit"], 337.5)
         self.assertEqual(profitability_report(self.today.isoformat(), self.today.isoformat())["expenses"], 15_000_000)
+
+    def test_fixed_expense_categories_are_extensible_and_shared(self):
+        self.import_product()
+        self.confirm_plan()
+        fixed_custom = create_expense_category(self.manager_id, {
+            "name": "Tiền thuê kho", "expense_type": "fixed"})
+        incidental_custom = create_expense_category(self.manager_id, {"name": "Vật tư lẻ"})
+        categories = {item["value"]: item for item in list_expense_categories()}
+        for code in ("sales_salary", "vehicle_repair", "maintenance", fixed_custom["value"]):
+            self.assertEqual(categories[code]["expense_type"], "fixed")
+        self.assertEqual(categories[incidental_custom["value"]]["expense_type"], "incidental")
+        amounts = {"sales_salary": 100_000, "vehicle_repair": 200_000,
+                   "maintenance": 300_000, fixed_custom["value"]: 400_000,
+                   incidental_custom["value"]: 500_000}
+        for category, amount in amounts.items():
+            create_expense(self.manager_id, {"category": category, "amount": amount,
+                           "occurred_on": self.today.isoformat(), "description": category})
+        fixed = list_expenses(self.today.isoformat(), self.today.isoformat(), expense_type="fixed")
+        incidental = list_expenses(self.today.isoformat(), self.today.isoformat(), expense_type="incidental")
+        self.assertEqual({row["category"] for row in fixed["expenses"]}, set(amounts) - {incidental_custom["value"]})
+        self.assertTrue(all(row["expense_type"] == "fixed" for row in fixed["expenses"]))
+        self.assertEqual([row["category"] for row in incidental["expenses"]], [incidental_custom["value"]])
+        catalog = pricing_catalog()
+        self.assertEqual(catalog["pricing_shared_expenses"], sum(amounts.values()))
+        self.assertEqual(catalog["pricing_incidental_expenses"], 500_000)
+        self.assertEqual(catalog["pricing_salary_expenses"], 100_000)
+
+    def test_fixed_expense_cannot_be_linked_to_invoice(self):
+        invoice = SalesInvoice(warehouse_id=self.warehouse_id, customer_id=self.customer_id,
+                               employee_id=self.manager_id, sold_at=datetime.combine(self.today, datetime.min.time()),
+                               status=InvoiceStatus.COMPLETED)
+        db.session.add(invoice)
+        db.session.commit()
+        for category in ("sales_salary", "vehicle_repair", "maintenance"):
+            with self.assertRaises(ValidationError):
+                create_expense(self.manager_id, {"category": category, "amount": 100_000,
+                    "occurred_on": self.today.isoformat(), "description": category,
+                    "invoice_id": invoice.id})
 
     def test_03_order_allocation_by_revenue_and_weight(self):
         self.import_product()
