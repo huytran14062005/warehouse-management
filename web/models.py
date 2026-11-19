@@ -611,6 +611,7 @@ class SalesInvoice(BaseModel):
     payment_status = Column(Enum(PaymentStatus), nullable=False, default=PaymentStatus.UNPAID, index=True)
     paid_amount = Column(Numeric(14, 2), nullable=False, default=0)
     payment_due_date = Column(Date, nullable=True)
+    payment_due_original_date = Column(Date, nullable=True)
 
     warehouse_id = Column(Integer, ForeignKey("warehouses.id", ondelete="RESTRICT"), nullable=False, index=True)
     customer_id = Column(Integer, ForeignKey("customers.id", ondelete="RESTRICT"), nullable=False, index=True)

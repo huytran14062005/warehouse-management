@@ -676,3 +676,71 @@
   .internal-sidebar,
   .mobile-navigation-overlay { transition: none; }
 }
+
+.products-filter-toggle { display: none; }
+.products-extra-filters { display: contents; }
+.sales-filter-toggle { display: none; }
+.sales-extra-filters { display: contents; }
+.products-mobile-identity { display: none; }
+.products-active-filters { margin: -8px 0 12px; color: #52657a; font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+.sales-active-filters { margin: -6px 0 12px; color: #52657a; font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+.warehouse-import-list td:first-child small,
+.stock-transfers-history-table td:first-child small { display: block; margin-top: 3px; color: #647a90; font-size: 12px; }
+
+@media (max-width: 768px) {
+  .products-header, .sales-header, .warehouse-page-header, .stock-transfers-header { gap: 10px; margin-bottom: 12px; }
+  .sales-status-board-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .sales-status-board-card { min-height: 70px; padding: 10px; }
+  .sales-status-board-card span { margin-bottom: 5px; }
+  .sales-status-board-card strong { font-size: 23px; }
+  .products-page, .sales-page, .warehouse-page, .stock-transfers-page { padding-top: 16px; }
+  .products-toolbar, .sales-toolbar, .warehouse-toolbar { margin-bottom: 12px; }
+  .products-filter-toggle { display: block; min-height: 44px; color: #0b3158 !important; background: #fff !important; border: 1px solid #b7c8d8 !important; }
+  .sales-filter-toggle { display: block; min-height: 44px; border: 1px solid #b7c8d8; border-radius: 5px; background: #fff; color: #0b3158; font: inherit; font-size: 14px; font-weight: 600; }
+  .sales-extra-filters, .sales-toolbar-secondary { display: none; }
+  .sales-toolbar.is-filters-open .sales-extra-filters { display: grid; gap: 10px; }
+  .sales-toolbar.is-filters-open .sales-toolbar-secondary { display: grid; }
+  .sales-extra-filters > * { min-width: 0; width: 100%; }
+  .products-extra-filters { display: none; width: 100%; }
+  .products-extra-filters.is-open { display: grid; gap: 10px; }
+  .products-extra-filters > * { width: 100%; min-width: 0; }
+  .products-mobile-identity { display: block; margin-top: 3px; color: #61758b; font-size: 12px; font-weight: 500; overflow-wrap: anywhere; }
+  .products-table-wrapper, .sales-invoice-list-wrap, .warehouse-import-list-wrap, .stock-transfers-history-table-wrap { overflow-x: hidden; }
+  .products-table-wrapper .products-table, .sales-invoice-list-wrap .sales-invoice-list, .warehouse-import-list-wrap .warehouse-import-list, .stock-transfers-history-table-wrap .stock-transfers-history-table { display: block; width: 100%; min-width: 0; }
+  .products-table thead, .sales-invoice-list thead, .warehouse-import-list thead, .stock-transfers-history-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .products-table tbody, .sales-invoice-list tbody, .warehouse-import-list tbody, .stock-transfers-history-table tbody { display: block; }
+  .products-table tbody tr, .sales-invoice-list tbody tr, .warehouse-import-list tbody tr, .stock-transfers-history-table tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto); gap: 5px 12px; min-height: 76px; padding: 12px; border-bottom: 1px solid #e8edf2; }
+  .products-table tbody td, .sales-invoice-list tbody td, .warehouse-import-list tbody td, .stock-transfers-history-table tbody td { display: block; min-width: 0; padding: 0; border: 0; white-space: normal; overflow-wrap: anywhere; font-size: 14px; }
+  .products-table tbody td:nth-child(1) { grid-column: 1; grid-row: 1 / 3; font-size: 15px; }
+  .products-table tbody td:nth-child(2), .products-table tbody td:nth-child(4), .products-table tbody td:nth-child(5), .products-table tbody td:nth-child(6), .products-table tbody td:nth-child(7) { display: none; }
+  .products-table tbody td:nth-child(8) { grid-column: 2; grid-row: 1; text-align: right; font-size: 16px; font-weight: 700; }
+  .products-table tbody td:nth-child(8)::before { content: 'Tồn khả dụng'; display: block; color: #52657a; font-size: 12px; font-weight: 500; }
+  .products-table tbody td:nth-child(3) { grid-column: 1; grid-row: 3; color: #52657a; }
+  .products-table tbody td:nth-child(9) { grid-column: 2; grid-row: 3; text-align: right; }
+  .sales-invoice-list tbody td:nth-child(1), .warehouse-import-list tbody td:nth-child(1), .stock-transfers-history-table tbody td:nth-child(1) { grid-column: 1; grid-row: 1; color: #52657a; }
+  .sales-invoice-list tbody td:nth-child(1) strong, .warehouse-import-list tbody td:nth-child(1) strong, .stock-transfers-history-table tbody td:nth-child(1) strong { color: #0b3158; font-size: 15px; }
+  .sales-invoice-list tbody td:nth-child(3), .warehouse-import-list tbody td:nth-child(3), .stock-transfers-history-table tbody td:nth-child(4) { grid-column: 1 / -1; grid-row: 2; }
+  .sales-invoice-list tbody td:nth-child(4) { grid-column: 2; grid-row: 1; text-align: right; }
+  .sales-invoice-list tbody td:nth-child(4) .sales-status-cell { justify-content: flex-end; }
+  .sales-invoice-list tbody td:nth-child(5) { grid-column: 1; grid-row: 3; }
+  .sales-invoice-list tbody td:nth-child(7) { grid-column: 2; grid-row: 3; text-align: right; font-weight: 700; }
+  .sales-invoice-list tbody td:nth-child(7)::before { content: 'Tổng tiền'; display: block; color: #52657a; font-size: 12px; font-weight: 500; }
+  .sales-invoice-list tbody td:nth-child(2), .sales-invoice-list tbody td:nth-child(6) { color: #647a90; font-size: 13px; }
+  .sales-invoice-list tbody td:nth-child(6) { text-align: right; }
+  .warehouse-import-list tbody td:nth-child(3) { font-size: 15px; }
+  .warehouse-import-list tbody td:nth-child(5) { grid-column: 2; grid-row: 1; text-align: right; font-weight: 700; }
+  .warehouse-import-list tbody td:nth-child(6) { grid-column: 2; grid-row: 3; text-align: right; }
+  .warehouse-import-list tbody td:nth-child(6)::before { content: 'Còn phải trả'; display: block; color: #52657a; font-size: 12px; }
+  .warehouse-import-list tbody td:nth-child(2) { grid-column: 1; grid-row: 3; }
+  .warehouse-import-list tbody td:nth-child(4), .warehouse-import-list tbody td:nth-child(7) { display: none; }
+  .stock-transfers-history-table tbody td:nth-child(5) { grid-column: 2; grid-row: 1; text-align: right; font-weight: 700; }
+  .stock-transfers-history-table tbody td:nth-child(5)::before { content: 'Số lượng'; display: block; color: #52657a; font-size: 12px; }
+  .stock-transfers-history-table tbody td:nth-child(2), .stock-transfers-history-table tbody td:nth-child(3) { font-size: 13px; }
+  .stock-transfers-history-table tbody td:nth-child(6) { grid-column: 1 / -1; }
+  .stock-transfers-item { grid-template-columns: minmax(0, 1fr) 44px; }
+  .stock-transfers-item .stock-transfers-product-field { grid-column: 1 / -1; }
+  .stock-transfers-item .stock-transfers-remove { grid-column: 2; width: 44px; height: 44px; margin-top: 20px; }
+  .stock-transfers-actions button { min-height: 48px; width: 100%; font-size: 15px; }
+  .warehouse-modal-body, .sales-editor-body { padding-bottom: max(24px, env(safe-area-inset-bottom)); scroll-padding-bottom: 100px; }
+  .warehouse-modal-body :is(input, textarea, select), .sales-editor-body :is(input, textarea, select) { scroll-margin-bottom: 110px; }
+}

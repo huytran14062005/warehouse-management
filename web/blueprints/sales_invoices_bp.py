@@ -121,6 +121,7 @@ def get_sales_invoice_assignees():
     allowed = {
         "warehouse": {EmployeeRole.NHAN_VIEN_BAN_HANG.value, EmployeeRole.THU_KHO.value, EmployeeRole.QUAN_LY.value},
         "accounting": {EmployeeRole.NHAN_VIEN_GIAO_HANG.value, EmployeeRole.QUAN_LY.value},
+        "delivery_manager": {EmployeeRole.THU_KHO.value, EmployeeRole.QUAN_LY.value},
     }
     if stage in allowed and request.employee_role not in allowed[stage]:
         raise ForbiddenError("Bạn không có quyền xem người nhận ở công đoạn này")
@@ -370,7 +371,7 @@ def cancel_invoice(invoice_id):
 
 @sales_invoices_bp.route("/<int:invoice_id>/confirm-return", methods=["POST"])
 @verify_token
-@verify_role(EmployeeRole.THU_KHO, EmployeeRole.QUAN_LY)
+@verify_role(EmployeeRole.THU_KHO)
 @handle_api_errors
 def confirm_sales_invoice_return(invoice_id):
     invoice = confirm_sales_invoice_return_service(invoice_id, request.employee_id)

@@ -71,8 +71,9 @@ def _log_workflow_event(invoice, actor_id, action, detail=None, recipient_id=Non
 
 def _eligible_assignees(stage, warehouse_id):
     roles = {
-        "warehouse": (EmployeeRole.THU_KHO, EmployeeRole.QUAN_LY),
+        "warehouse": (EmployeeRole.THU_KHO,),
         "accounting": (EmployeeRole.KE_TOAN,),
+        "delivery_manager": (EmployeeRole.QUAN_LY,),
     }
     if stage not in roles:
         raise ValidationError("Công đoạn phân công không hợp lệ")
@@ -85,18 +86,18 @@ def _eligible_assignees(stage, warehouse_id):
         query = query.filter(or_(
             Employee.warehouse_id == warehouse_id,
             Employee.warehouse_id.is_(None),
-            Employee.role == EmployeeRole.QUAN_LY,
         ))
     return query.order_by(Employee.full_name.asc(), Employee.id.asc()).all()
 
 
 def list_sales_invoice_assignees_service(stage, warehouse_id):
     staff = _eligible_assignees(stage, warehouse_id)
+    assignment_stage = "delivery" if stage == "delivery_manager" else stage
     active = dict(db.session.query(
         SalesInvoice.current_assignee_id, func.count(SalesInvoice.id),
     ).filter(
         SalesInvoice.current_assignee_id.in_([person.id for person in staff]),
-        SalesInvoice.assignment_stage == stage,
+        SalesInvoice.assignment_stage == assignment_stage,
         SalesInvoice.status.in_((InvoiceStatus.DRAFT, InvoiceStatus.PROCESSING, InvoiceStatus.DELIVERING)),
     ).group_by(SalesInvoice.current_assignee_id).all()) if staff else {}
     return [{"id": person.id, "full_name": person.full_name,
@@ -126,6 +127,10 @@ def _assign_invoice(invoice, actor_id, recipient_id, stage):
 
 
 def _require_assignee(invoice, employee_id, stage, accepted=False):
+    if stage == "warehouse":
+        employee = db.session.get(Employee, employee_id)
+        if not employee or employee.role != EmployeeRole.THU_KHO:
+            raise ForbiddenError("Chỉ thủ kho được xử lý công đoạn kho")
     if invoice.assignment_stage != stage or invoice.current_assignee_id != employee_id:
         raise ForbiddenError("Đơn chưa được phân công cho bạn ở công đoạn này")
     if accepted and not invoice.accepted_at:
@@ -190,8 +195,12 @@ def get_sales_invoice_action_count_service(employee_id, employee_role):
     else:
         condition = or_(
             active_cancel,
-            SalesInvoice.status == InvoiceStatus.DRAFT,
-            and_(SalesInvoice.cancel_requested.is_(False), processing),
+            draft_to_send,
+            and_(
+                SalesInvoice.cancel_requested.is_(False), processing,
+                SalesInvoice.current_assignee_id == employee_id,
+                SalesInvoice.assignment_stage == "delivery",
+            ),
             and_(
                 SalesInvoice.cancel_requested.is_(False), delivering,
                 SalesInvoice.current_assignee_id == employee_id,
@@ -260,6 +269,12 @@ def get_payment_due_info(invoice, remaining_amount):
         "days_until_due": max(0, delta),
         "days_overdue": max(0, -delta),
     }
+
+
+def get_payment_due_extension_days(invoice):
+    if not invoice.payment_due_original_date or not invoice.payment_due_date:
+        return 0
+    return max(0, (invoice.payment_due_date - invoice.payment_due_original_date).days)
 
 
 def has_active_cancel_request(invoice):
@@ -734,6 +749,7 @@ def serialize_sales_invoice(invoice):
         "paid_amount": float(invoice.paid_amount),
         "remaining_amount": remaining_amount,
         "payment_due_date": invoice.payment_due_date.isoformat() if invoice.payment_due_date else None,
+        "payment_due_extension_days": get_payment_due_extension_days(invoice),
         "payment_due_status": payment_due["status"],
         "days_until_due": payment_due["days_until_due"],
         "days_overdue": payment_due["days_overdue"],
@@ -1187,9 +1203,12 @@ def record_sales_invoice_payment_service(invoice_id, employee_id, amount, paymen
     if Decimal(str(customer.debt_amount or 0)) < credited:
         raise ValidationError("Công nợ khách hàng không đủ để ghi nhận khoản thanh toán này")
     updated_due_date = (
-        parse_payment_due_date(payment_due_date, allow_past=True)
+        parse_payment_due_date(payment_due_date)
         if payment_due_date and credited < remaining else None
     )
+    if (updated_due_date and invoice.payment_due_date and
+            updated_due_date < invoice.payment_due_date):
+        raise ValidationError("Hạn mới phải bằng hoặc muộn hơn hạn thanh toán hiện tại")
 
     try:
         customer.debt_amount = Decimal(str(customer.debt_amount)) - credited
@@ -1198,6 +1217,11 @@ def record_sales_invoice_payment_service(invoice_id, employee_id, amount, paymen
         if invoice.payment_status == PaymentStatus.PAID:
             invoice.payment_due_date = None
         elif updated_due_date is not None:
+            if invoice.payment_due_date and updated_due_date > invoice.payment_due_date:
+                if not invoice.payment_due_original_date:
+                    invoice.payment_due_original_date = invoice.payment_due_date
+                _log_workflow_event(invoice, employee_id, "payment_due_extended",
+                                    f"{invoice.payment_due_date.isoformat()} -> {updated_due_date.isoformat()}")
             invoice.payment_due_date = updated_due_date
         note = (
             f"Khách đưa {_format_vnd(tendered)}; tiền thối lại {_format_vnd(change)}"
@@ -1308,6 +1332,7 @@ def serialize_invoice_summary(invoice):
         "paid_amount": float(invoice.paid_amount),
         "remaining_amount": remaining_amount,
         "payment_due_date": invoice.payment_due_date.isoformat() if invoice.payment_due_date else None,
+        "payment_due_extension_days": get_payment_due_extension_days(invoice),
         "payment_due_status": payment_due["status"],
         "days_until_due": payment_due["days_until_due"],
         "days_overdue": payment_due["days_overdue"],
@@ -1657,6 +1682,8 @@ def prepare_sales_invoice_delivery_service(invoice_id, employee_id, data):
         and invoice.delivery_method is None
         and actor.role == EmployeeRole.QUAN_LY
     )
+    if actor.role == EmployeeRole.QUAN_LY and not repairing_legacy and invoice.assignment_stage != "delivery":
+        raise ForbiddenError("Chỉ thủ kho được chuẩn bị giao hàng ở công đoạn kho")
     if (invoice.status != InvoiceStatus.PROCESSING and not repairing_legacy) or invoice.cancel_requested:
         raise ValidationError("Chỉ được chọn phương án giao cho đơn đang xử lý hoặc đơn cũ chưa có phương án")
     if repairing_legacy and invoice.shipping_charged_at:
@@ -1745,11 +1772,15 @@ def update_payment_due_date_service(invoice_id, employee_id, payment_due_date):
     if remaining_amount <= 0:
         raise ValidationError("Đơn hàng đã thanh toán đủ nên không cần hạn thanh toán")
 
-    invoice.payment_due_date = parse_payment_due_date(
-        payment_due_date,
-        required=True,
-        allow_past=True,
-    )
+    new_due_date = parse_payment_due_date(payment_due_date, required=True)
+    previous_due_date = invoice.payment_due_date
+    if previous_due_date and new_due_date <= previous_due_date:
+        raise ValidationError("Hạn mới phải muộn hơn hạn thanh toán hiện tại")
+    if previous_due_date and not invoice.payment_due_original_date:
+        invoice.payment_due_original_date = previous_due_date
+    invoice.payment_due_date = new_due_date
+    _log_workflow_event(invoice, employee_id, "payment_due_extended" if previous_due_date else "payment_due_set",
+                        f"{previous_due_date.isoformat() if previous_due_date else '-'} -> {new_due_date.isoformat()}")
     db.session.commit()
     return dao.get_sales_invoice_by_id(invoice.id)
 
@@ -1807,10 +1838,8 @@ def update_invoice_status_service(invoice_id, employee_id, status_value):
     if new_status not in allowed_transitions[invoice.status]:
         raise ValidationError("Chuyển trạng thái đơn hàng không hợp lệ")
 
-    if new_status == InvoiceStatus.PROCESSING and employee.role not in {
-        EmployeeRole.THU_KHO, EmployeeRole.QUAN_LY,
-    }:
-        raise ForbiddenError("Chỉ thủ kho hoặc quản lý được xác nhận xử lý đơn")
+    if new_status == InvoiceStatus.PROCESSING and employee.role != EmployeeRole.THU_KHO:
+        raise ForbiddenError("Chỉ thủ kho được xác nhận xử lý đơn")
     if new_status == InvoiceStatus.PROCESSING:
         _require_assignee(invoice, employee_id, "warehouse", accepted=True)
     if new_status == InvoiceStatus.DELIVERING:
@@ -1946,8 +1975,8 @@ def cancel_invoice_service(invoice_id, employee_id):
 def confirm_sales_invoice_return_service(invoice_id, employee_id):
     """Restock a cancelled dispatched order only after the full return arrives."""
     employee = db.session.get(Employee, employee_id)
-    if not employee or employee.role not in {EmployeeRole.THU_KHO, EmployeeRole.QUAN_LY}:
-        raise ForbiddenError("Chỉ thủ kho hoặc quản lý được xác nhận hàng hoàn")
+    if not employee or employee.role != EmployeeRole.THU_KHO:
+        raise ForbiddenError("Chỉ thủ kho được xác nhận hàng hoàn")
     try:
         invoice = SalesInvoice.query.filter_by(id=invoice_id).with_for_update().first()
         if not invoice:

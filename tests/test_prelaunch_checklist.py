@@ -22,7 +22,7 @@ from web.models import (
     PaymentStatus, Product, ProductCombo, ProductComboItem, Promotion,
     SaleSource, SalesInvoice, Supplier, Warehouse,
 )
-from web.services.exceptions import ValidationError
+from web.services.exceptions import ForbiddenError, ValidationError
 from web.services.pricing_service import create_expense, pricing_catalog, pay_expense, save_pricing_cycle, save_pricing_policy
 from web.services.pricing_service import profitability_report
 from web.services.import_invoice_service import create_import_invoice_service
@@ -31,8 +31,11 @@ from web.services.sales_invoice_service import (
     cancel_invoice_service, complete_sales_invoice_service,
     confirm_sales_invoice_return_service, create_sales_invoice_service,
     handoff_sales_invoice_accounting_service, prepare_sales_invoice_delivery_service,
+    get_sales_invoice_action_count_service,
     record_sales_invoice_payment_service, submit_sales_invoice_to_warehouse_service,
+    update_payment_due_date_service,
     update_invoice_status_service, update_sales_invoice_service, serialize_sales_invoice,
+    reassign_sales_invoice_service,
 )
 
 
@@ -150,6 +153,80 @@ class PrelaunchChecklist(unittest.TestCase):
                    "exp": now - timedelta(seconds=1) if expired else now + timedelta(minutes=10)}
         return {"Authorization": "Bearer " + jwt.encode(payload, app.config["JWT_SECRET"], algorithm="HS256")}
 
+    def test_warehouse_stage_requires_keeper_and_delivery_manager_stays_available(self):
+        client = app.test_client()
+        warehouse_staff = client.get(
+            f"/api/sales-invoices/assignees?stage=warehouse&warehouse_id={self.warehouse_id}",
+            headers=self.token("seller"),
+        )
+        self.assertEqual(warehouse_staff.status_code, 200)
+        self.assertEqual(
+            [person["id"] for person in warehouse_staff.json["employees"]],
+            [self.people["keeper"]],
+        )
+        delivery_managers = client.get(
+            f"/api/sales-invoices/assignees?stage=delivery_manager&warehouse_id={self.warehouse_id}",
+            headers=self.token("keeper"),
+        )
+        self.assertEqual(delivery_managers.status_code, 200)
+        self.assertEqual(
+            {person["id"] for person in delivery_managers.json["employees"]},
+            {self.people["manager"], self.people["manager2"]},
+        )
+
+        invoice = self.create_sale()
+        with self.assertRaises(ValidationError):
+            submit_sales_invoice_to_warehouse_service(
+                invoice.id, self.people["seller"], self.people["manager"],
+            )
+        submit_sales_invoice_to_warehouse_service(
+            invoice.id, self.people["seller"], self.people["keeper"],
+        )
+        self.assertEqual(get_sales_invoice_action_count_service(
+            self.people["manager"], EmployeeRole.QUAN_LY.value,
+        ), 0)
+        with self.assertRaises(ValidationError):
+            reassign_sales_invoice_service(
+                invoice.id, self.people["manager"], self.people["manager2"],
+            )
+
+        # A manager assigned by older data must be transferred to a keeper.
+        legacy_invoice = db.session.get(SalesInvoice, invoice.id)
+        legacy_invoice.current_assignee_id = self.people["manager"]
+        legacy_invoice.accepted_at = datetime.now()
+        db.session.commit()
+        with self.assertRaises(ForbiddenError):
+            accept_sales_invoice_assignment_service(invoice.id, self.people["manager"])
+        with self.assertRaises(ForbiddenError):
+            update_invoice_status_service(invoice.id, self.people["manager"], "processing")
+        legacy_invoice.status = InvoiceStatus.PROCESSING
+        db.session.commit()
+        with self.assertRaises(ForbiddenError):
+            prepare_sales_invoice_delivery_service(invoice.id, self.people["manager"], {
+                "delivery_method": "internal", "delivery_employee_id": self.people["courier"],
+            })
+
+        reassign_sales_invoice_service(invoice.id, self.people["manager"], self.people["keeper"])
+        accept_sales_invoice_assignment_service(invoice.id, self.people["keeper"])
+        prepared = prepare_sales_invoice_delivery_service(invoice.id, self.people["keeper"], {
+            "delivery_method": "third_party", "delivery_service": "Carrier",
+            "tracking_number": "TRACK-1", "shipping_fee": 500,
+            "shipping_fund_method": "cash", "delivery_manager_id": self.people["manager"],
+        })
+        self.assertEqual(prepared.assignment_stage, "delivery")
+        self.assertEqual(prepared.current_assignee_id, self.people["manager"])
+        self.assertEqual(get_sales_invoice_action_count_service(
+            self.people["manager"], EmployeeRole.QUAN_LY.value,
+        ), 1)
+        accept_sales_invoice_assignment_service(invoice.id, self.people["manager"])
+        delivering = update_invoice_status_service(invoice.id, self.people["manager"], "delivering")
+        self.assertEqual(delivering.status, InvoiceStatus.DELIVERING)
+        cancelled = cancel_invoice_service(invoice.id, self.people["manager"])
+        self.assertTrue(cancelled.return_pending)
+        with self.assertRaises(ForbiddenError):
+            confirm_sales_invoice_return_service(invoice.id, self.people["manager"])
+        confirm_sales_invoice_return_service(invoice.id, self.people["keeper"])
+
     def test_01_normal_order_draft_edit_handoff_completion_money_and_stock(self):
         invoice = self.create_sale()
         self.assertEqual(invoice.status, InvoiceStatus.DRAFT)
@@ -249,6 +326,29 @@ class PrelaunchChecklist(unittest.TestCase):
         with self.assertRaises(ValidationError):
             record_sales_invoice_payment_service(invoice.id, self.people["accountant"], 500, "cash")
         self.assertEqual(CompanyFundEntry.query.filter_by(entry_type="customer_receipt").count(), 2)
+
+    def test_overdue_debt_extension_keeps_original_deadline_and_rejects_shortening(self):
+        invoice = self.create_sale()
+        self.dispatch(invoice.id)
+        self.handoff(invoice.id)
+        self.complete(invoice.id)
+        overdue = date.today() - timedelta(days=3)
+        stored = db.session.get(SalesInvoice, invoice.id)
+        stored.payment_due_date = overdue
+        db.session.commit()
+        with self.assertRaises(ValidationError):
+            update_payment_due_date_service(invoice.id, self.people["accountant"], overdue.isoformat())
+        extended = date.today() + timedelta(days=5)
+        result = update_payment_due_date_service(invoice.id, self.people["accountant"], extended.isoformat())
+        self.assertEqual(result.payment_due_original_date, overdue)
+        self.assertEqual(serialize_sales_invoice(result)["payment_due_extension_days"], 8)
+        self.assertEqual(serialize_sales_invoice(result)["days_until_due"], 5)
+        with self.assertRaises(ValidationError):
+            update_payment_due_date_service(invoice.id, self.people["manager"], (extended - timedelta(days=1)).isoformat())
+        later = extended + timedelta(days=2)
+        result = update_payment_due_date_service(invoice.id, self.people["manager"], later.isoformat())
+        self.assertEqual(result.payment_due_original_date, overdue)
+        self.assertEqual(serialize_sales_invoice(result)["payment_due_extension_days"], 10)
 
     def test_05_promotion_eligibility_auto_approval_and_legacy_review(self):
         promotion = Promotion(

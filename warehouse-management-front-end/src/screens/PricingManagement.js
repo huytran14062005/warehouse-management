@@ -21,8 +21,14 @@ const CATEGORIES = {
   depreciation: "Khấu hao xe, thiết bị",
   other: "Chi phí bán hàng khác",
 };
-const FIXED_CATEGORIES = new Set(["sales_salary", "vehicle_repair", "maintenance"]);
-const unitCostFormatter = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 });
+const FIXED_CATEGORIES = new Set([
+  "sales_salary",
+  "vehicle_repair",
+  "maintenance",
+]);
+const unitCostFormatter = new Intl.NumberFormat("vi-VN", {
+  maximumFractionDigits: 0,
+});
 const formatUnitCost = (value) => {
   const amount = Number(value);
   return `${unitCostFormatter.format(Math.sign(amount) * Math.ceil(Math.abs(amount)))} đ`;
@@ -68,8 +74,12 @@ export function PricingRow({ row, onSave, onApply, busy, costMode }) {
     String(row.planned_quantity),
   );
   const [editingQuantity, setEditingQuantity] = useState(false);
-  const [referencePrice, setReferencePrice] = useState(String(row.reference_price ?? ""));
-  const [roundingStep, setRoundingStep] = useState(String(row.rounding_step || 1000));
+  const [referencePrice, setReferencePrice] = useState(
+    String(row.reference_price ?? ""),
+  );
+  const [roundingStep, setRoundingStep] = useState(
+    String(row.rounding_step || 1000),
+  );
   const [details, setDetails] = useState(null);
   const [detailsError, setDetailsError] = useState("");
   const [detailsLoading, setDetailsLoading] = useState(false);
@@ -79,7 +89,12 @@ export function PricingRow({ row, onSave, onApply, busy, costMode }) {
     setReferencePrice(String(row.reference_price ?? ""));
     setRoundingStep(String(row.rounding_step || 1000));
     setDetails(null);
-  }, [row.markup_percent, row.planned_quantity, row.reference_price, row.rounding_step]);
+  }, [
+    row.markup_percent,
+    row.planned_quantity,
+    row.reference_price,
+    row.rounding_step,
+  ]);
   const changed =
     row.legacy_fixed_profit ||
     !row.reference_confirmed ||
@@ -94,13 +109,21 @@ export function PricingRow({ row, onSave, onApply, busy, costMode }) {
     Number.isFinite(Number(referencePrice)) &&
     /^\d{1,15}(?:\.\d{1,3})?$/.test(plannedQuantity) &&
     Number(plannedQuantity) > 0;
+  const isExpanded = Boolean(details || detailsError || detailsLoading);
   const showDetails = async () => {
     if (detailsLoading) return;
-    if (details) { setDetails(null); return; }
+    if (isExpanded) {
+      setDetails(null);
+      setDetailsError("");
+      return;
+    }
     setDetailsLoading(true);
     setDetailsError("");
     try {
-      const response = await authApis().get(endpoints.pricingBreakdown(row.product_id), { params: { cost_mode: costMode } });
+      const response = await authApis().get(
+        endpoints.pricingBreakdown(row.product_id),
+        { params: { cost_mode: costMode } },
+      );
       setDetails(response.data);
     } catch (error) {
       setDetailsError(getApiError(error));
@@ -110,161 +133,253 @@ export function PricingRow({ row, onSave, onApply, busy, costMode }) {
   };
   return (
     <>
-    <tr
-      className={`pricing-product-row${details ? " is-expanded" : ""}`}
-      tabIndex={0}
-      aria-label={`${row.name}: nhấn Enter để xem chi phí chung và chi phí đơn/chuyến`}
-      onClick={(event) => {
-        if (!event.target.closest?.("input, select, button, a, textarea, label")) {
-          showDetails();
-        }
-      }}
-      onKeyDown={(event) => {
-        if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
-          event.preventDefault();
-          showDetails();
-        }
-      }}
-    >
-      <th scope="row">
-        <strong><span className="pricing-row-indicator" aria-hidden="true">▸</span>{row.name}</strong>
-        <small>/{row.unit}</small>
-      </th>
-      <td>
-        {row.estimated_unit_cost == null ? (
-          <span className="pricing-warning">Chưa có giá nhập</span>
-        ) : (
-          formatUnitCost(row.estimated_unit_cost)
-        )}
-      </td>
-      <td>
-        {row.shared_expense_per_unit == null ? (
-          <span className="pricing-warning">Chưa tính được</span>
-        ) : (
-          <span className="pricing-cost-value">{formatUnitCost(row.shared_expense_per_unit)}</span>
-        )}
-      </td>
-      <td><span className="pricing-cost-value">{formatUnitCost(row.direct_expense_per_unit || 0)}</span></td>
-      <td>
-        {row.full_cost_per_unit == null
-          ? "—"
-          : formatUnitCost(row.full_cost_per_unit)}
-      </td>
-      <td>
-        <input
-          className="pricing-plan-input"
-          type="text"
-          inputMode="decimal"
-          aria-label={`Sản lượng dự kiến ${row.name}`}
-          value={editingQuantity || !/^\d+(?:\.\d{0,3})?$/.test(plannedQuantity)
-            ? plannedQuantity
-            : formatQuantity(plannedQuantity)}
-          onFocus={() => {
-            if (plannedQuantity && Number.isFinite(Number(plannedQuantity))) {
-              setPlannedQuantity(String(Number(plannedQuantity)));
-            }
-            setEditingQuantity(true);
-          }}
-          onBlur={() => setEditingQuantity(false)}
-          onChange={(event) =>
-            setPlannedQuantity(event.target.value.replace(",", "."))
+      <tr
+        className={`pricing-product-row${isExpanded ? " is-expanded" : ""}`}
+        tabIndex={0}
+        aria-label={`${row.name}: nhấn Enter để xem chi phí chung và chi phí đơn/chuyến`}
+        onClick={(event) => {
+          if (
+            !event.target.closest?.("input, select, button, a, textarea, label")
+          ) {
+            showDetails();
           }
-          title="Ví dụ: 1.000 là một nghìn; 0,5 là nửa đơn vị. Khi sửa, nhập 1000 hoặc 0,5."
-        />
-      </td>
-      <td>{row.planned_revenue == null ? "—" : formatCurrency(row.planned_revenue)}</td>
-      <td><input type="number" min="0.01" step="0.01" value={referencePrice} aria-label={`Giá bán tham chiếu ${row.name}`} onChange={(event) => setReferencePrice(event.target.value)} /></td>
-      <td>
-        <input
-          type="number"
-          min="0"
-          max="99.99"
-          step="0.01"
-          aria-label={`Phần trăm lãi trên COST của ${row.name}`}
-          value={profit}
-          onChange={(event) => setProfit(event.target.value)}
-        />
-        {row.legacy_fixed_profit && (
-          <small className="pricing-legacy-note">
-            Kế hoạch tiền lời cũ: lưu % trước khi áp dụng giá.
-          </small>
-        )}
-      </td>
-      <td><select value={roundingStep} aria-label={`Bước làm tròn ${row.name}`} onChange={(event) => setRoundingStep(event.target.value)}>
-        {[1, 10, 100, 1000, 10000].map((step) => <option key={step} value={step}>{new Intl.NumberFormat("vi-VN").format(step)} đ</option>)}
-      </select></td>
-      <td
-        title={
-          row.actual_markup_percent == null
-            ? undefined
-            : `Lãi thực sau làm tròn: ${row.actual_markup_percent}% trên COST`
-        }
+        }}
+        onKeyDown={(event) => {
+          if (
+            event.target === event.currentTarget &&
+            (event.key === "Enter" || event.key === " ")
+          ) {
+            event.preventDefault();
+            showDetails();
+          }
+        }}
       >
-        {row.actual_profit_per_unit == null
-          ? "—"
-          : formatUnitCost(row.actual_profit_per_unit)}
-      </td>
-      <td>
-        <strong>
-          {row.suggested_price == null
+        <th scope="row">
+          <button
+            type="button"
+            className="pricing-row-expand"
+            aria-label={`${isExpanded ? "Thu gọn" : "Xem chi tiết"} ${row.name}`}
+            aria-expanded={isExpanded}
+            onClick={showDetails}
+          >
+            <span className="pricing-row-indicator" aria-hidden="true">▸</span>
+            <strong>{row.name}</strong>
+            <small>/{row.unit}</small>
+            <span className="pricing-row-expand-text">{isExpanded ? "Thu gọn" : "Chi tiết"}</span>
+          </button>
+        </th>
+        <td data-label="Giá nhập về kho">
+          {row.estimated_unit_cost == null ? (
+            <span className="pricing-warning">Chưa có giá nhập</span>
+          ) : (
+            formatUnitCost(row.estimated_unit_cost)
+          )}
+        </td>
+        <td data-label="Chi phí chung / đơn vị">
+          {row.shared_expense_per_unit == null ? (
+            <span className="pricing-warning">Chưa tính được</span>
+          ) : (
+            <span className="pricing-cost-value">
+              {formatUnitCost(row.shared_expense_per_unit)}
+            </span>
+          )}
+        </td>
+        <td data-label="Chi phí riêng / đơn vị">
+          <span className="pricing-cost-value">
+            {formatUnitCost(row.direct_expense_per_unit || 0)}
+          </span>
+        </td>
+        <td data-label="COST đầy đủ">
+          {row.full_cost_per_unit == null
             ? "—"
-            : formatCurrency(row.suggested_price)}
-        </strong>
-      </td>
-      <td className="pricing-current-price">
-        <strong>{formatCurrency(row.current_price)}</strong>
-        {row.profit_at_current_price_per_unit < 0 && (
-          <small className="pricing-cost-loss">
-            Giá đang áp dụng thấp hơn COST{" "}
-            {formatUnitCost(-row.profit_at_current_price_per_unit)}/đơn vị
-          </small>
-        )}
-      </td>
-      <td>{row.profit_at_current_price_per_unit == null ? "—" : <>{formatUnitCost(row.profit_at_current_price_per_unit)}<small>{row.markup_at_current_price_percent}% trên COST</small></>}</td>
-      <td>
-        <div className="pricing-row-actions">
-          <button
-            type="button"
-            disabled={busy || !changed || !valid}
-            onClick={() =>
-              onSave(row.product_id, {
-                planned_quantity: plannedQuantity,
-                markup_percent: Number(profit),
-                reference_price: Number(referencePrice),
-                rounding_step: Number(roundingStep),
-              })
+            : formatUnitCost(row.full_cost_per_unit)}
+        </td>
+        <td data-label="Sản lượng dự kiến">
+          <input
+            className="pricing-plan-input"
+            type="text"
+            inputMode="decimal"
+            aria-label={`Sản lượng dự kiến ${row.name}`}
+            value={
+              editingQuantity || !/^\d+(?:\.\d{0,3})?$/.test(plannedQuantity)
+                ? plannedQuantity
+                : formatQuantity(plannedQuantity)
             }
-          >
-            Lưu kế hoạch
-          </button>
-          <button
-            type="button"
-            className="pricing-primary"
-            disabled={
-              busy ||
-              changed ||
-              row.legacy_fixed_profit ||
-              row.suggested_price == null ||
-              row.suggested_price === row.current_price
+            onFocus={() => {
+              if (plannedQuantity && Number.isFinite(Number(plannedQuantity))) {
+                setPlannedQuantity(String(Number(plannedQuantity)));
+              }
+              setEditingQuantity(true);
+            }}
+            onBlur={() => setEditingQuantity(false)}
+            onChange={(event) =>
+              setPlannedQuantity(event.target.value.replace(",", "."))
             }
-            onClick={() => onApply(row)}
+            title="Ví dụ: 1.000 là một nghìn; 0,5 là nửa đơn vị. Khi sửa, nhập 1000 hoặc 0,5."
+          />
+        </td>
+        <td data-label="Doanh thu dự kiến">
+          {row.planned_revenue == null
+            ? "—"
+            : formatCurrency(row.planned_revenue)}
+        </td>
+        <td data-label="Giá tham chiếu">
+          <input
+            type="number"
+            min="0.01"
+            step="0.01"
+            value={referencePrice}
+            aria-label={`Giá bán tham chiếu ${row.name}`}
+            onChange={(event) => setReferencePrice(event.target.value)}
+          />
+        </td>
+        <td data-label="% lãi trên COST">
+          <input
+            type="number"
+            min="0"
+            max="99.99"
+            step="0.01"
+            aria-label={`Phần trăm lãi trên COST của ${row.name}`}
+            value={profit}
+            onChange={(event) => setProfit(event.target.value)}
+          />
+          {row.legacy_fixed_profit && (
+            <small className="pricing-legacy-note">
+              Kế hoạch tiền lời cũ: lưu % trước khi áp dụng giá.
+            </small>
+          )}
+        </td>
+        <td data-label="Làm tròn lên">
+          <select
+            value={roundingStep}
+            aria-label={`Bước làm tròn ${row.name}`}
+            onChange={(event) => setRoundingStep(event.target.value)}
           >
-            Áp dụng giá
-          </button>
-        </div>
-      </td>
-    </tr>
-    {(details || detailsError || detailsLoading) && <tr className="pricing-detail-row"><td colSpan="15">
-      {detailsLoading && <span>Đang tải chi tiết chi phí…</span>}
-      {detailsError && <span className="pricing-warning">{detailsError}</span>}
-      {details && <div className="pricing-breakdown">
-        <strong>Chi phí chung</strong>
-        {details.shared.length ? details.shared.map((entry) => <div key={`s-${entry.id}`}>{entry.occurred_on} · {CATEGORIES[entry.category] || entry.category}: {entry.description} · {formatUnitCost(entry.per_unit)}/{row.unit}</div>) : <p>Không có khoản chi chung.</p>}
-        <strong>Chi phí đơn/chuyến</strong>
-        <p>Mức trong bảng là bình quân theo số lượng của các đơn/chuyến có chi phí. Mỗi dòng dưới đây là chi phí trên một đơn vị của đơn/chuyến đó.</p>
-        {details.direct.length ? details.direct.map((entry, index) => <div key={`d-${entry.id || "ship"}-${index}`}>{entry.trip_invoice_ids?.length ? `Chuyến ${entry.trip_invoice_ids.map((id) => `#${id}`).join(", ")}` : `Đơn #${entry.invoice_id}`} · {CATEGORIES[entry.category] || entry.category}: {entry.description} · {formatUnitCost(entry.per_unit)}/{row.unit}</div>) : <p>Không có khoản chi gắn đơn/chuyến.</p>}
-      </div>}
-    </td></tr>}
+            {[1, 10, 100, 1000, 10000].map((step) => (
+              <option key={step} value={step}>
+                {new Intl.NumberFormat("vi-VN").format(step)} đ
+              </option>
+            ))}
+          </select>
+        </td>
+        <td
+          data-label="Lãi dự kiến / đơn vị"
+          title={
+            row.actual_markup_percent == null
+              ? undefined
+              : `Lãi thực sau làm tròn: ${row.actual_markup_percent}% trên COST`
+          }
+        >
+          {row.actual_profit_per_unit == null
+            ? "—"
+            : formatUnitCost(row.actual_profit_per_unit)}
+        </td>
+        <td data-label="Giá đề xuất">
+          <strong>
+            {row.suggested_price == null
+              ? "—"
+              : formatCurrency(row.suggested_price)}
+          </strong>
+        </td>
+        <td className="pricing-current-price" data-label="Giá đang áp dụng">
+          <strong>{formatCurrency(row.current_price)}</strong>
+          {row.profit_at_current_price_per_unit < 0 && (
+            <small className="pricing-cost-loss">
+              Giá đang áp dụng thấp hơn COST{" "}
+              {formatUnitCost(-row.profit_at_current_price_per_unit)}/đơn vị
+            </small>
+          )}
+        </td>
+        <td data-label="Lãi tại giá đang bán">
+          {row.profit_at_current_price_per_unit == null ? (
+            "—"
+          ) : (
+            <>
+              {formatUnitCost(row.profit_at_current_price_per_unit)}
+              <small>{row.markup_at_current_price_percent}% trên COST</small>
+            </>
+          )}
+        </td>
+        <td className="pricing-actions-cell" data-label="Thao tác">
+          <div className="pricing-row-actions">
+            <button
+              type="button"
+              disabled={busy || !changed || !valid}
+              onClick={() =>
+                onSave(row.product_id, {
+                  planned_quantity: plannedQuantity,
+                  markup_percent: Number(profit),
+                  reference_price: Number(referencePrice),
+                  rounding_step: Number(roundingStep),
+                })
+              }
+            >
+              Lưu kế hoạch
+            </button>
+            <button
+              type="button"
+              className="pricing-primary"
+              disabled={
+                busy ||
+                changed ||
+                row.legacy_fixed_profit ||
+                row.suggested_price == null ||
+                row.suggested_price === row.current_price
+              }
+              onClick={() => onApply(row)}
+            >
+              Áp dụng giá
+            </button>
+          </div>
+        </td>
+      </tr>
+      {(details || detailsError || detailsLoading) && (
+        <tr className="pricing-detail-row">
+          <td colSpan="15">
+            {detailsLoading && <span>Đang tải chi tiết chi phí…</span>}
+            {detailsError && (
+              <span className="pricing-warning">{detailsError}</span>
+            )}
+            {details && (
+              <div className="pricing-breakdown">
+                <strong>Chi phí chung</strong>
+                {details.shared.length ? (
+                  details.shared.map((entry) => (
+                    <div key={`s-${entry.id}`}>
+                      {entry.occurred_on} ·{" "}
+                      {CATEGORIES[entry.category] || entry.category}:{" "}
+                      {entry.description} · {formatUnitCost(entry.per_unit)}/
+                      {row.unit}
+                    </div>
+                  ))
+                ) : (
+                  <p>Không có khoản chi chung.</p>
+                )}
+                <strong>Chi phí đơn/chuyến</strong>
+                <p>
+                  Mức trong bảng là bình quân theo số lượng của các đơn/chuyến
+                  có chi phí. Mỗi dòng dưới đây là chi phí trên một đơn vị của
+                  đơn/chuyến đó.
+                </p>
+                {details.direct.length ? (
+                  details.direct.map((entry, index) => (
+                    <div key={`d-${entry.id || "ship"}-${index}`}>
+                      {entry.trip_invoice_ids?.length
+                        ? `Chuyến ${entry.trip_invoice_ids.map((id) => `#${id}`).join(", ")}`
+                        : `Đơn #${entry.invoice_id}`}{" "}
+                      · {CATEGORIES[entry.category] || entry.category}:{" "}
+                      {entry.description} · {formatUnitCost(entry.per_unit)}/
+                      {row.unit}
+                    </div>
+                  ))
+                ) : (
+                  <p>Không có khoản chi gắn đơn/chuyến.</p>
+                )}
+              </div>
+            )}
+          </td>
+        </tr>
+      )}
     </>
   );
 }
@@ -288,7 +403,9 @@ export default function PricingManagement() {
   const [category, setCategory] = useState("fuel");
   const [categories, setCategories] = useState(() =>
     Object.entries(CATEGORIES).map(([value, label]) => ({
-      value, label, expense_type: FIXED_CATEGORIES.has(value) ? "fixed" : "incidental",
+      value,
+      label,
+      expense_type: FIXED_CATEGORIES.has(value) ? "fixed" : "incidental",
     })),
   );
   const [expenseModalOpen, setExpenseModalOpen] = useState(false);
@@ -359,12 +476,19 @@ export default function PricingManagement() {
   const formExpenseType = editingExpense?.expense_type || expenseType;
   const formIsFixed = formExpenseType === "fixed";
   const formIsSalary = category === "sales_salary";
-  const fixedLegacyLink = formIsFixed &&
+  const fixedLegacyLink =
+    formIsFixed &&
     (editingExpense?.invoice_id || editingExpense?.trip_invoice_ids?.length);
-  const formCategories = categories.filter((item) => item.expense_type === formExpenseType);
+  const formCategories = categories.filter(
+    (item) => item.expense_type === formExpenseType,
+  );
   const selectCategory = (value) => {
-    if (!editingExpense && formIsSalary && value !== "sales_salary" &&
-        amount === String(catalog.pricing_planned_salary_amount ?? "")) {
+    if (
+      !editingExpense &&
+      formIsSalary &&
+      value !== "sales_salary" &&
+      amount === String(catalog.pricing_planned_salary_amount ?? "")
+    ) {
       setAmount("");
     }
     setCategory(value);
@@ -401,7 +525,11 @@ export default function PricingManagement() {
     );
   }, [catalog.pricing_planned_salary_amount]);
   useEffect(() => {
-    setPlannedRevenueDraft(catalog.pricing_planned_revenue_amount == null ? "" : String(catalog.pricing_planned_revenue_amount));
+    setPlannedRevenueDraft(
+      catalog.pricing_planned_revenue_amount == null
+        ? ""
+        : String(catalog.pricing_planned_revenue_amount),
+    );
   }, [catalog.pricing_planned_revenue_amount]);
 
   const loadMonthlyProfit = useCallback(async () => {
@@ -502,8 +630,7 @@ export default function PricingManagement() {
   const openExpenseModal = (row = null) => {
     setEditingExpense(row);
     setCategory(
-      row?.category ||
-        (expenseType === "fixed" ? "sales_salary" : "fuel"),
+      row?.category || (expenseType === "fixed" ? "sales_salary" : "fuel"),
     );
     setAmount(row ? String(row.amount) : "");
     if (
@@ -545,12 +672,7 @@ export default function PricingManagement() {
       setExpenseError("Chọn một đơn trong danh sách hoặc chọn chi phí chung.");
       return;
     }
-    if (
-      !category ||
-      !amount ||
-      !occurredOn ||
-      !description.trim()
-    ) {
+    if (!category || !amount || !occurredOn || !description.trim()) {
       setExpenseError("Nhập đầy đủ loại, số tiền, ngày và nội dung chi phí.");
       return;
     }
@@ -568,15 +690,24 @@ export default function PricingManagement() {
         occurred_on: occurredOn,
         invoice_id: formIsFixed
           ? editingExpense?.invoice_id || null
-          : tripInvoiceIds.length ? null : invoiceId || null,
-        trip_invoice_ids: formIsFixed
-          ? (editingExpense?.trip_invoice_ids || null)
           : tripInvoiceIds.length
-            ? [...new Set([...tripInvoiceIds, ...(invoiceId ? [String(invoiceId)] : [])])].map(Number)
+            ? null
+            : invoiceId || null,
+        trip_invoice_ids: formIsFixed
+          ? editingExpense?.trip_invoice_ids || null
+          : tripInvoiceIds.length
+            ? [
+                ...new Set([
+                  ...tripInvoiceIds,
+                  ...(invoiceId ? [String(invoiceId)] : []),
+                ]),
+              ].map(Number)
             : null,
         description: description.trim(),
         is_abnormal: formIsSalary ? false : isAbnormal,
-        allocation_basis: formIsFixed ? (editingExpense?.allocation_basis || "revenue") : allocationBasis,
+        allocation_basis: formIsFixed
+          ? editingExpense?.allocation_basis || "revenue"
+          : allocationBasis,
       };
       if (editingExpense) {
         await authApis().put(endpoints.pricingExpense(editingExpense.id), {
@@ -590,7 +721,9 @@ export default function PricingManagement() {
         });
       }
       closeExpenseModal();
-      setSuccess("Đã ghi nhận chi phí theo ngày phát sinh và tính lại COST dự kiến.");
+      setSuccess(
+        "Đã ghi nhận chi phí theo ngày phát sinh và tính lại COST dự kiến.",
+      );
       try {
         await Promise.all([loadExpenses(), loadCatalog(), loadMonthlyProfit()]);
       } catch (refreshError) {
@@ -721,7 +854,9 @@ export default function PricingManagement() {
         payment_method: payMethod,
       });
       setPayRow(null);
-      setSuccess("Đã ghi thanh toán vào sổ quỹ; COST theo ngày phát sinh giữ nguyên.");
+      setSuccess(
+        "Đã ghi thanh toán vào sổ quỹ; COST theo ngày phát sinh giữ nguyên.",
+      );
       await Promise.all([loadExpenses(), loadCatalog()]);
     } catch (requestError) {
       setError(getApiError(requestError));
@@ -757,10 +892,6 @@ export default function PricingManagement() {
         <div className="pricing-section-head">
           <div>
             <h2 id="pricing-expense-heading">Chi phí kinh doanh</h2>
-            <p>
-              Chi phí được tính vào giá đề xuất theo ngày phát sinh; thanh toán
-              được ghi riêng vào sổ quỹ. Khoản bất thường vẫn vào báo cáo nhưng không tính giá.
-            </p>
           </div>
           <button
             type="button"
@@ -857,7 +988,11 @@ export default function PricingManagement() {
                   </td>
                   <td>{row.description}</td>
                   <td>
-                    {row.trip_invoice_ids?.length ? `Chuyến: ${row.trip_invoice_ids.map((id) => `#${id}`).join(", ")}` : row.invoice_id ? `#${row.invoice_id}` : "Chi phí chung"}
+                    {row.trip_invoice_ids?.length
+                      ? `Chuyến: ${row.trip_invoice_ids.map((id) => `#${id}`).join(", ")}`
+                      : row.invoice_id
+                        ? `#${row.invoice_id}`
+                        : "Chi phí chung"}
                   </td>
                   <td>
                     <span className="pricing-payment-method">
@@ -955,11 +1090,6 @@ export default function PricingManagement() {
         <div className="pricing-section-head">
           <div>
             <h2 id="pricing-catalog-heading">Giá bán đề xuất</h2>
-            <p>
-              COST đầy đủ = Giá nhập về kho + chi phí chung + chi phí gắn đơn/chuyến.
-              Chi phí chung phân bổ theo doanh thu kế hoạch đã xác nhận. Giá tham chiếu cố định,
-              giá đề xuất chưa VAT và chỉ thành giá bán khi quản lý áp dụng.
-            </p>
           </div>
           <form
             className="pricing-search"
@@ -980,10 +1110,10 @@ export default function PricingManagement() {
         </div>
         <form className="pricing-cycle-form" onSubmit={saveSalaryPlan}>
           <div className="pricing-cycle-heading">
-            <div>
-              <h3>Kế hoạch tính giá tháng {formatExpenseMonth(catalog.pricing_period_start)}</h3>
-              <p>Nhập số đã được quản lý xác nhận để phân bổ chi phí chung cho từng sản phẩm.</p>
-            </div>
+            <h3>
+              Kế hoạch tính giá tháng{" "}
+              {formatExpenseMonth(catalog.pricing_period_start)}
+            </h3>
           </div>
           <div className="pricing-controls">
             <label className="pricing-control" htmlFor="pricing-cost-mode">
@@ -1001,25 +1131,26 @@ export default function PricingManagement() {
                   Bình quân 3 tháng trước
                 </option>
               </select>
-              <small>Chọn chi phí thực tế tháng này hoặc bình quân 3 tháng.</small>
             </label>
             <label className="pricing-control" htmlFor="pricing-revenue-plan">
               Doanh thu kế hoạch toàn công ty (đ/tháng)
               <span className="pricing-money-input">
-                <input id="pricing-revenue-plan" type="number" min="0.01" step="0.01" value={plannedRevenueDraft}
-                  onChange={(event) => setPlannedRevenueDraft(event.target.value)}
-                  placeholder="Nhập doanh thu đã xác nhận" />
+                <input
+                  id="pricing-revenue-plan"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={plannedRevenueDraft}
+                  onChange={(event) =>
+                    setPlannedRevenueDraft(event.target.value)
+                  }
+                  placeholder="Nhập doanh thu đã xác nhận"
+                />
                 <span>đ</span>
               </span>
-              <small>{plannedRevenueDraft && Number(plannedRevenueDraft) > 0
-                ? `Đã nhập: ${formatCurrency(Number(plannedRevenueDraft))}`
-                : "Dùng để chia chi phí chung theo doanh thu dự kiến."}</small>
             </label>
             <div className="pricing-control pricing-salary-control">
-              <label
-                htmlFor="pricing-salary-plan"
-                title="Dùng cho COST dự kiến khi chưa ghi lương thực tế; báo cáo lãi/lỗ chỉ tính lương đã ghi nhận"
-              >
+              <label htmlFor="pricing-salary-plan">
                 Lương kế hoạch (đ/tháng)
               </label>
               <span className="pricing-money-input">
@@ -1036,13 +1167,9 @@ export default function PricingManagement() {
                 />
                 <span>đ</span>
               </span>
-              <small>{plannedSalaryDraft !== "" && Number(plannedSalaryDraft) >= 0
-                ? `Đã nhập: ${formatCurrency(Number(plannedSalaryDraft))}`
-                : "Có thể để trống; chỉ dùng khi chưa ghi lương thực tế."}</small>
             </div>
           </div>
           <div className="pricing-cycle-actions">
-            <span>Nút này lưu doanh thu và lương kế hoạch của cả tháng. Kế hoạch từng sản phẩm lưu ở bảng bên dưới.</span>
             <button
               type="submit"
               className="pricing-primary"
@@ -1051,12 +1178,17 @@ export default function PricingManagement() {
                 (plannedSalaryDraft !== "" &&
                   (!Number.isFinite(Number(plannedSalaryDraft)) ||
                     Number(plannedSalaryDraft) < 0)) ||
-                (plannedRevenueDraft !== "" && (!Number.isFinite(Number(plannedRevenueDraft)) || Number(plannedRevenueDraft) <= 0)) ||
+                (plannedRevenueDraft !== "" &&
+                  (!Number.isFinite(Number(plannedRevenueDraft)) ||
+                    Number(plannedRevenueDraft) <= 0)) ||
                 (plannedSalaryDraft ===
                   (catalog.pricing_planned_salary_amount == null
                     ? ""
                     : String(catalog.pricing_planned_salary_amount)) &&
-                 plannedRevenueDraft === (catalog.pricing_planned_revenue_amount == null ? "" : String(catalog.pricing_planned_revenue_amount)))
+                  plannedRevenueDraft ===
+                    (catalog.pricing_planned_revenue_amount == null
+                      ? ""
+                      : String(catalog.pricing_planned_revenue_amount)))
               }
             >
               Lưu kế hoạch tháng
@@ -1074,12 +1206,18 @@ export default function PricingManagement() {
             {monthlyProfit && (
               <div className="pricing-metric">
                 <span title="Báo cáo lãi/lỗ gồm chi phí đã ghi, kể cả khoản chưa thanh toán; không cộng lương kế hoạch">
-                  Lãi/lỗ tháng này{monthlyProfit.cogs_status === "recorded" ? "" : " (ước tính)"}
+                  Lãi/lỗ tháng này
+                  {monthlyProfit.cogs_status === "recorded"
+                    ? ""
+                    : " (ước tính)"}
                 </span>
                 <strong>
                   {monthlyProfit.estimated_operating_profit == null
                     ? "Chưa đủ giá vốn"
-                    : formatCurrency(monthlyProfit.operating_profit ?? monthlyProfit.estimated_operating_profit)}
+                    : formatCurrency(
+                        monthlyProfit.operating_profit ??
+                          monthlyProfit.estimated_operating_profit,
+                      )}
                 </strong>
               </div>
             )}
@@ -1090,8 +1228,7 @@ export default function PricingManagement() {
             {warning}
           </p>
         ))}
-        <p className="pricing-number-hint">Dấu chấm tách hàng nghìn (1.000 = một nghìn); dấu phẩy chỉ sản lượng lẻ (0,5 = nửa đơn vị). Tiền/đơn vị hiển thị làm tròn lên đồng nguyên.</p>
-        <div className="pricing-table-wrap">
+        <div className="pricing-table-wrap pricing-catalog-table-wrap">
           <table>
             <thead>
               <tr>
@@ -1099,18 +1236,20 @@ export default function PricingManagement() {
                 <th title="Bình quân từ phiếu nhập, gồm phí đưa hàng về kho được chia theo giá trị từng dòng.">
                   Giá nhập về kho
                 </th>
-                 <th>Chi phí chung / đơn vị</th>
-                 <th>Chi phí riêng / đơn vị</th>
+                <th>Chi phí chung / đơn vị</th>
+                <th>Chi phí riêng / đơn vị</th>
                 <th>COST đầy đủ</th>
                 <th>Sản lượng dự kiến</th>
-                 <th>Doanh thu dự kiến</th>
-                 <th>Giá tham chiếu</th>
+                <th>Doanh thu dự kiến</th>
+                <th>Giá tham chiếu</th>
                 <th>% lãi trên COST</th>
-                 <th>Làm tròn lên</th>
+                <th>Làm tròn lên</th>
                 <th>Lãi dự kiến / đơn vị</th>
                 <th>Giá đề xuất</th>
-                <th title="Giá bán mặc định hiện tại của sản phẩm">Giá bán đang áp dụng</th>
-                 <th>Lãi tại giá đang bán</th>
+                <th title="Giá bán mặc định hiện tại của sản phẩm">
+                  Giá bán đang áp dụng
+                </th>
+                <th>Lãi tại giá đang bán</th>
                 <th>Thao tác</th>
               </tr>
             </thead>
@@ -1129,7 +1268,7 @@ export default function PricingManagement() {
               ))}
               {!catalog.products.length && (
                 <tr>
-                   <td colSpan="15">
+                  <td colSpan="15">
                     {loadingCatalog
                       ? "Đang tải giá đề xuất..."
                       : "Chưa có sản phẩm phù hợp."}
@@ -1145,10 +1284,6 @@ export default function PricingManagement() {
           onPageChange={setCatalogPage}
           disabled={busy}
         />
-        <p className="pricing-hint">
-          Giá này là gợi ý quản trị. Khi áp dụng, giá bán mặc định thay đổi và
-          giới hạn ±10% của đơn bán sẽ dùng giá mới.
-        </p>
       </section>
       <ConfirmDialog
         open={expenseModalOpen}
@@ -1169,7 +1304,8 @@ export default function PricingManagement() {
           )}
           {fixedLegacyLink && !formIsSalary && (
             <p className="pricing-form-note">
-              Khoản chi cũ đang gắn đơn hoặc chuyến xe; liên kết và cách phân bổ được giữ nguyên khi sửa.
+              Khoản chi cũ đang gắn đơn hoặc chuyến xe; liên kết và cách phân bổ
+              được giữ nguyên khi sửa.
             </p>
           )}
           <div className="pricing-category-field">
@@ -1203,7 +1339,11 @@ export default function PricingManagement() {
                   value={categoryName}
                   onChange={(event) => setCategoryName(event.target.value)}
                   maxLength={120}
-                  placeholder={formIsFixed ? "Ví dụ: Tiền thuê kho" : "Ví dụ: Tiền điện kho"}
+                  placeholder={
+                    formIsFixed
+                      ? "Ví dụ: Tiền thuê kho"
+                      : "Ví dụ: Tiền điện kho"
+                  }
                 />
               </label>
               <button
@@ -1236,41 +1376,69 @@ export default function PricingManagement() {
           {!formIsFixed && (
             <div>
               <label>
-              Đơn liên quan (nếu có)
-              <SearchableDropdown
-                value={invoiceId}
-                onChange={(value, label) => {
-                  setInvoiceId(value);
-                  if (!value && !tripInvoiceIds.length) setAllocationBasis("revenue");
-                  setSelectedInvoice(value ? { value, label } : null);
+                Đơn liên quan (nếu có)
+                <SearchableDropdown
+                  value={invoiceId}
+                  onChange={(value, label) => {
+                    setInvoiceId(value);
+                    if (!value && !tripInvoiceIds.length)
+                      setAllocationBasis("revenue");
+                    setSelectedInvoice(value ? { value, label } : null);
+                    setInvoiceSearch("");
+                  }}
+                  options={invoiceOptions}
+                  searchValue={invoiceSearch}
+                  onSearchChange={setInvoiceSearch}
+                  searching={invoiceLoading}
+                  emptyLabel={invoiceSearchError || "Không tìm thấy đơn hàng."}
+                  placeholder="Tìm tên đơn, tên khách hoặc số đơn"
+                  ariaLabel="Tìm đơn liên quan"
+                />
+              </label>
+              <button
+                type="button"
+                disabled={
+                  !invoiceId || tripInvoiceIds.includes(String(invoiceId))
+                }
+                onClick={() => {
+                  setTripInvoiceIds((ids) => [...ids, String(invoiceId)]);
+                  setInvoiceId("");
+                  setSelectedInvoice(null);
                   setInvoiceSearch("");
                 }}
-                options={invoiceOptions}
-                searchValue={invoiceSearch}
-                onSearchChange={setInvoiceSearch}
-                searching={invoiceLoading}
-                emptyLabel={invoiceSearchError || "Không tìm thấy đơn hàng."}
-                placeholder="Tìm tên đơn, tên khách hoặc số đơn"
-                ariaLabel="Tìm đơn liên quan"
-              />
-              </label>
-              <button type="button" disabled={!invoiceId || tripInvoiceIds.includes(String(invoiceId))}
-                onClick={() => { setTripInvoiceIds((ids) => [...ids, String(invoiceId)]); setInvoiceId(""); setSelectedInvoice(null); setInvoiceSearch(""); }}>
+              >
                 + Thêm đơn vào chuyến
               </button>
-              {tripInvoiceIds.map((id) => <span key={id} className="pricing-trip-chip">
-                Đơn #{id} <button type="button" onClick={() => setTripInvoiceIds((ids) => ids.filter((value) => value !== id))}>×</button>
-              </span>)}
+              {tripInvoiceIds.map((id) => (
+                <span key={id} className="pricing-trip-chip">
+                  Đơn #{id}{" "}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setTripInvoiceIds((ids) =>
+                        ids.filter((value) => value !== id),
+                      )
+                    }
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
             </div>
           )}
-          {!formIsFixed && (invoiceId || tripInvoiceIds.length > 0) && <label>
-            Phân bổ chi phí đơn/chuyến theo
-            <select value={allocationBasis} onChange={(event) => setAllocationBasis(event.target.value)}>
-              <option value="revenue">Doanh thu từng sản phẩm</option>
-              <option value="weight">Trọng lượng từng sản phẩm</option>
-              <option value="volume">Thể tích từng sản phẩm</option>
-            </select>
-          </label>}
+          {!formIsFixed && (invoiceId || tripInvoiceIds.length > 0) && (
+            <label>
+              Phân bổ chi phí đơn/chuyến theo
+              <select
+                value={allocationBasis}
+                onChange={(event) => setAllocationBasis(event.target.value)}
+              >
+                <option value="revenue">Doanh thu từng sản phẩm</option>
+                <option value="weight">Trọng lượng từng sản phẩm</option>
+                <option value="volume">Thể tích từng sản phẩm</option>
+              </select>
+            </label>
+          )}
           {!editingExpense && (
             <label>
               Ghi quỹ
@@ -1304,7 +1472,9 @@ export default function PricingManagement() {
               placeholder={
                 formIsSalary
                   ? "Ví dụ: Tổng lương nhân viên tháng này"
-                  : formIsFixed ? "Ví dụ: Bảo trì xe tải tháng này" : "Ví dụ: Xăng chuyến giao đơn 23"
+                  : formIsFixed
+                    ? "Ví dụ: Bảo trì xe tải tháng này"
+                    : "Ví dụ: Xăng chuyến giao đơn 23"
               }
               required
             />

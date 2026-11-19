@@ -294,6 +294,7 @@ function Products() {
   const [maxPrice, setMaxPrice] = useState("");
   const [statusInput, setStatusInput] = useState("");
   const [status, setStatus] = useState("");
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ total: 0, totalPages: 1 });
   const [loading, setLoading] = useState(true);
@@ -522,6 +523,12 @@ function Products() {
     setPage(nextPage);
   };
 
+  const activeFilterLabels = [
+    minPrice && `Giá từ ${formatCurrency(Number(minPrice))}`,
+    maxPrice && `Giá đến ${formatCurrency(Number(maxPrice))}`,
+    status && (INVENTORY_STATUS_OPTIONS.find((option) => String(option.value) === status)?.label || status),
+  ].filter(Boolean);
+
   return (
     <div className="products-page">
       <div className="products-header">
@@ -578,9 +585,19 @@ function Products() {
           type="search"
           value={keywordInput}
           onChange={(event) => setKeywordInput(event.target.value)}
-          placeholder="Tìm theo tên sản phẩm"
+          placeholder="Tìm tên hàng"
           aria-label="Tìm kiếm sản phẩm"
         />
+        <button
+          type="button"
+          className="products-filter-toggle"
+          aria-expanded={mobileFiltersOpen}
+          aria-controls="products-extra-filters"
+          onClick={() => setMobileFiltersOpen((open) => !open)}
+        >
+          Bộ lọc{activeFilterLabels.length ? ` (${activeFilterLabels.length})` : ""}
+        </button>
+        <div id="products-extra-filters" className={`products-extra-filters${mobileFiltersOpen ? " is-open" : ""}`}>
         <label className="products-price-field">
           <input
             className="field-alert-target"
@@ -623,8 +640,14 @@ function Products() {
             ariaLabel="Lọc theo trạng thái tồn kho"
           />
         </div>
+        </div>
         <button type="submit">Tìm kiếm</button>
       </form>
+      {activeFilterLabels.length > 0 && (
+        <div className="products-active-filters" role="status">
+          Đang lọc: {activeFilterLabels.join(" · ")}
+        </div>
+      )}
 
       <FieldAlert
         id="products-price-range-alert"
@@ -683,7 +706,7 @@ function Products() {
                       role="button"
                       aria-label={`Xem chi tiết ${product.name}`}
                     >
-                      <td className="products-name">{product.name}</td>
+                      <td className="products-name">{product.name}<small className="products-mobile-identity">Mã #{product.id} · {product.unit}</small></td>
                       <td>{product.unit}</td>
                       <td className="products-money">
                         {formatCurrency(product.default_sale_price)}

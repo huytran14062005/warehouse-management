@@ -314,28 +314,27 @@ function StockTransfers() {
               className="warehouse-modal-body stock-transfers-form"
               onSubmit={submit}
             >
-              <label className="stock-transfers-source-warehouse">
+              <label className="stock-transfers-field">
                 <span>Kho xuất hàng</span>
-                <select
+                <SharedSearchableDropdown
                   value={sourceWarehouse?.id || ""}
-                  onChange={(event) => {
+                  placeholder="Chọn kho xuất hàng"
+                  ariaLabel="Chọn kho xuất hàng"
+                  onChange={(value) => {
                     setSourceWarehouse(
                       warehouses.find(
                         (warehouse) =>
-                          String(warehouse.id) === event.target.value,
+                          String(warehouse.id) === String(value),
                       ) || null,
                     );
                     setItems([]);
                     setProducts([]);
                   }}
-                  required
-                >
-                  {warehouses.map((warehouse) => (
-                    <option key={warehouse.id} value={warehouse.id}>
-                      {warehouse.name}
-                    </option>
-                  ))}
-                </select>
+                  options={warehouses.map((warehouse) => ({
+                    value: warehouse.id,
+                    label: warehouse.name,
+                  }))}
+                />
               </label>
               <label className="stock-transfers-field">
                 <span>Nhân viên nhận hàng</span>
@@ -422,6 +421,7 @@ function StockTransfers() {
                     <ProductEntryField label="Số lượng cấp đi">
                       <input
                         type="number"
+                        inputMode="decimal"
                         min="0.001"
                         step="0.001"
                         value={item.quantity}
@@ -656,7 +656,7 @@ function StockTransfers() {
                       }
                     }}
                   >
-                    <td>{formatDate(transfer.transferred_at)}</td>
+                    <td><strong>Phiếu #{transfer.id}</strong><small>{formatDate(transfer.transferred_at)}</small></td>
                     <td>{transfer.warehouse?.name || "—"}</td>
                     <td>
                       <strong>{transfer.items_count || 0}</strong> mặt hàng

@@ -16,9 +16,9 @@ function fixture() {
   ));
 }
 
-async function asRole(browser, role) {
+async function asRole(browser, role, contextOptions = {}) {
   const user = fixture().users[role];
-  const context = await browser.newContext();
+  const context = await browser.newContext(contextOptions);
   await context.addInitScript(({ token, profile }) => {
     localStorage.setItem('token', token);
     localStorage.setItem('user', JSON.stringify(profile));
@@ -77,6 +77,109 @@ async function seedStock(request, productId, quantity = 20) {
   expect(response.status(), await response.text()).toBe(201);
   return (await response.json()).invoice;
 }
+
+test('giao diện danh sách theo vai trò không tràn trang ở các chiều rộng phổ biến', async ({ browser }) => {
+  test.setTimeout(180000);
+  const journeys = [
+    ['seller', '/products', '.products-card'],
+    ['keeper', '/import-invoices', '.warehouse-card'],
+    ['accountant', '/sales-invoices', '.sales-card'],
+    ['manager', '/stock-transfers', '.stock-transfers-history'],
+  ];
+  for (const width of [320, 360, 390, 412, 768, 1440]) {
+    for (const [role, route, selector] of journeys) {
+      const { context, page } = await asRole(browser, role);
+      try {
+        await page.setViewportSize({ width, height: 800 });
+        await page.goto(`${UI}${route}`, { waitUntil: 'domcontentloaded' });
+        await expect(page.locator(selector)).toBeVisible();
+        const metrics = await page.evaluate(() => {
+          const search = document.querySelector('input[type="search"]');
+          return {
+            viewport: window.innerWidth,
+            content: document.documentElement.scrollWidth,
+            searchFont: search ? Number.parseFloat(getComputedStyle(search).fontSize) : null,
+          };
+        });
+        expect(metrics.content, `${role} ${route} ${width}px tràn ngang`).toBeLessThanOrEqual(metrics.viewport + 1);
+        if (width <= 768 && metrics.searchFont != null) expect(metrics.searchFont).toBeGreaterThanOrEqual(16);
+      } finally {
+        await context.close();
+      }
+    }
+  }
+});
+
+test('tên hàng dài và tồn kho lớn vẫn đọc được khi chạm trên điện thoại', async ({ browser, request }) => {
+  const name = `Hang${fixture().run_id}${'X'.repeat(90)}`;
+  const productId = await createProduct(request, name);
+  await seedStock(request, productId, 1234567);
+  const { devices } = require('@playwright/test');
+  for (const device of [devices['Pixel 7'], devices['iPhone 13']]) {
+    const { context, page } = await asRole(browser, 'seller', device);
+    try {
+      await page.goto(`${UI}/products`, { waitUntil: 'domcontentloaded' });
+      await page.getByRole('searchbox', { name: 'Tìm kiếm sản phẩm' }).fill(name);
+      const row = page.locator('.products-clickable-row').filter({ hasText: name });
+      await expect(row).toBeVisible();
+      await expect(row.getByText(`Mã #${productId}`)).toBeVisible();
+      await expect(row.locator('.products-stock')).toHaveText('1.234.567');
+      await page.getByRole('button', { name: 'Bộ lọc' }).click();
+      await expect(page.getByRole('button', { name: 'Bộ lọc' })).toHaveAttribute('aria-expanded', 'true');
+      await page.getByRole('button', { name: 'Bộ lọc' }).click();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+        await page.evaluate(() => window.innerWidth + 1),
+      );
+      await row.tap();
+      await expect(page.getByRole('dialog').last()).toBeVisible();
+      await page.getByRole('button', { name: 'Đóng chi tiết sản phẩm' }).click();
+      await expect(page.getByRole('searchbox', { name: 'Tìm kiếm sản phẩm' })).toHaveValue(name);
+    } finally {
+      await context.close();
+    }
+  }
+});
+
+test('trường số lượng trong form nhập kho vẫn thao tác được khi vùng nhìn thấp', async ({ browser }) => {
+  const { context, page } = await asRole(browser, 'keeper');
+  try {
+    await page.setViewportSize({ width: 320, height: 480 });
+    await page.goto(`${UI}/import-invoices`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: '+ Tạo phiếu nhập' }).click();
+    const dialog = page.getByRole('dialog').last();
+    await dialog.getByRole('button', { name: '+ Thêm sản phẩm' }).click();
+    const quantity = dialog.getByRole('spinbutton', { name: 'Số lượng nhập' }).first();
+    await quantity.click();
+    await expect(quantity).toBeInViewport();
+    expect(await quantity.getAttribute('inputmode')).toBe('decimal');
+    expect(await quantity.evaluate((input) => Number.parseFloat(getComputedStyle(input).fontSize))).toBeGreaterThanOrEqual(16);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(321);
+  } finally {
+    await context.close();
+  }
+});
+
+test('bảng giá đề xuất thu gọn mặc định và mở chi tiết theo sản phẩm', async ({ browser }) => {
+  for (const width of [320, 1440]) {
+    const { context, page } = await asRole(browser, 'manager');
+    try {
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto(`${UI}/pricing-management`, { waitUntil: 'domcontentloaded' });
+      const row = page.locator('.pricing-catalog-table-wrap .pricing-product-row').first();
+      await expect(row).toBeVisible();
+      await expect(row.locator('td:nth-child(3)')).toBeHidden();
+      await expect(row.locator('td:nth-child(5)')).toBeVisible();
+      const toggle = row.getByRole('button', { name: /Xem chi tiết/ });
+      await toggle.click();
+      await expect(row.locator('td:nth-child(3)')).toBeVisible();
+      await row.getByRole('button', { name: /Thu gọn/ }).click();
+      await expect(row.locator('td:nth-child(3)')).toBeHidden();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1);
+    } finally {
+      await context.close();
+    }
+  }
+});
 
 test.describe('A. Tài khoản, phiên và phân quyền', () => {
   test('đăng nhập sai, chưa duyệt, bị khóa và đăng nhập đúng qua giao diện', async ({ page }) => {

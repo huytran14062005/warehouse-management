@@ -39,27 +39,22 @@
 .pricing-expense-dialog .pricing-abnormal-checkbox input { width: 16px; min-height: 16px; height: 16px; margin: 2px 0 0; flex: none; }
 .pricing-expense-dialog .pricing-form-error { color: #9f3d3d; }
 .pricing-expense-dialog .pricing-form-success { color: #26704b; }
-.pricing-hint { margin: 14px 0; color: #647a90; font-size: 12px; line-height: 1.5; }
-.pricing-cycle-form { margin: 14px 0 10px; padding: 18px; border: 1px solid #d9e2ec; border-radius: 8px; background: #f8fafc; }
-.pricing-cycle-heading { margin-bottom: 18px; }
-.pricing-cycle-heading h3 { margin: 0; color: #0b3158; font-size: 16px; }
-.pricing-cycle-heading p { margin: 5px 0 0; color: #647a90; font-size: 12px; line-height: 1.45; }
-.pricing-controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: start; }
-.pricing-control { display: grid; grid-template-rows: minmax(32px, auto) 39px auto; gap: 7px; min-width: 0; color: #52657a; font-size: 12px; font-weight: 600; }
+.pricing-cycle-form { margin: 14px 0 10px; padding: 16px; border: 1px solid #d9e2ec; border-radius: 10px; background: #f8fafc; }
+.pricing-cycle-heading { display: flex; align-items: center; min-height: 24px; margin-bottom: 14px; }
+.pricing-cycle-heading h3 { margin: 0; color: #0b3158; font-size: 17px; line-height: 1.3; }
+.pricing-controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.pricing-control { display: grid; grid-template-rows: auto 39px; gap: 6px; min-width: 0; color: #52657a; font-size: 12px; font-weight: 600; }
 .pricing-control select, .pricing-control input { width: 100%; box-sizing: border-box; }
-.pricing-control small { color: #647a90; font-size: 11px; font-weight: 400; line-height: 1.4; }
 .pricing-money-input { position: relative; display: block; min-width: 0; }
 .pricing-money-input input { padding-right: 30px; }
 .pricing-money-input > span { position: absolute; top: 50%; right: 12px; color: #647a90; transform: translateY(-50%); pointer-events: none; }
-.pricing-cycle-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 18px; }
-.pricing-cycle-actions > span { color: #647a90; font-size: 12px; line-height: 1.45; }
+.pricing-cycle-actions { display: flex; align-items: center; justify-content: flex-end; gap: 16px; margin-top: 14px; }
 .pricing-page .pricing-cycle-actions button { flex: none; }
-.pricing-snapshot { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid #dce6ef; }
-.pricing-metric { display: grid; gap: 5px; min-width: 0; padding: 12px 14px; border: 1px solid #e0e8ef; border-radius: 6px; background: #fff; }
+.pricing-snapshot { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 14px; padding-top: 14px; border-top: 1px solid #dce6ef; }
+.pricing-metric { display: grid; gap: 4px; min-width: 0; padding: 11px 13px; border: 1px solid #e0e8ef; border-radius: 8px; background: #fff; }
 .pricing-metric span { color: #647a90; font-size: 12px; }
 .pricing-metric strong { color: #0b3158; font-size: 15px; overflow-wrap: anywhere; }
 .pricing-cost-warning { margin: 8px 0; padding: 9px 12px; border: 1px solid #ecd29b; border-radius: 5px; background: #fff9ea; color: #815b13; font-size: 12px; }
-.pricing-number-hint { margin: 14px 0 4px; color: #52657a; font-size: 12px; line-height: 1.45; }
 .pricing-abnormal-note { display: block; margin-top: 3px; color: #a46416; font-size: 11px; }
 .pricing-cost-loss { display: block; max-width: 180px; margin-top: 5px; color: #af3e35; font-size: 11px; line-height: 1.35; white-space: normal; }
 .pricing-warning { color: #946018; font-size: 12px; }
@@ -85,6 +80,37 @@
 .pricing-table-wrap td input { box-sizing: border-box; width: 100px; }
 .pricing-table-wrap td input.pricing-plan-input { width: 145px; }
 .pricing-table-wrap td.pricing-current-price { min-width: 130px; }
+.pricing-catalog-table-wrap { overflow: visible; }
+.pricing-catalog-table-wrap table, .pricing-catalog-table-wrap tbody { display: block; min-width: 0; width: 100%; }
+.pricing-catalog-table-wrap thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.pricing-catalog-table-wrap .pricing-product-row { display: grid; grid-template-columns: minmax(180px, 2fr) repeat(4, minmax(100px, 1fr)) minmax(210px, 2fr); align-items: center; gap: 0 14px; margin-bottom: 8px; padding: 10px 14px; border: 1px solid #dce6ef; border-radius: 8px; background: #fff; }
+.pricing-catalog-table-wrap .pricing-product-row:hover, .pricing-catalog-table-wrap .pricing-product-row.is-expanded { background: #f7fbff; border-color: #b7cee2; }
+.pricing-catalog-table-wrap .pricing-product-row:not(.is-expanded) > td:not(:is(:nth-child(5), :nth-child(6), :nth-child(12), :nth-child(13), :nth-child(15))) { display: none; }
+.pricing-catalog-table-wrap .pricing-product-row.is-expanded { grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: start; padding: 14px 16px; }
+.pricing-catalog-table-wrap .pricing-product-row > th { grid-column: 1 / -1; min-width: 0; padding: 0 0 10px; border-bottom: 1px solid #e8eef4; font-size: 14px; }
+.pricing-catalog-table-wrap .pricing-product-row:not(.is-expanded) > th { grid-column: auto; padding: 0; border: 0; }
+.pricing-page .pricing-row-expand { display: flex; align-items: center; gap: 4px; width: 100%; min-width: 0; min-height: 44px; padding: 0; border: 0; background: transparent; color: #0b3158; font: inherit; text-align: left; cursor: pointer; }
+.pricing-row-expand strong { min-width: 0; overflow-wrap: anywhere; }
+.pricing-row-expand small { flex: none; color: #71849a; font-size: 12px; font-weight: 400; }
+.pricing-row-expand-text { margin-left: auto; color: #52657a; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.pricing-catalog-table-wrap .pricing-product-row > th strong { overflow-wrap: anywhere; }
+.pricing-catalog-table-wrap .pricing-product-row > th small { display: inline; margin-left: 4px; }
+.pricing-catalog-table-wrap .pricing-product-row > td { display: block; min-width: 0; padding: 10px 0 0; border: 0; white-space: normal; overflow-wrap: anywhere; font-size: 13px; }
+.pricing-catalog-table-wrap .pricing-product-row:not(.is-expanded) > td { padding: 0; }
+.pricing-catalog-table-wrap .pricing-product-row > td::before { content: attr(data-label); display: block; min-height: 16px; margin-bottom: 5px; color: #52657a; font-size: 12px; font-weight: 600; line-height: 1.35; }
+.pricing-catalog-table-wrap .pricing-product-row > td :is(input, select) { width: 100%; min-height: 42px; font-size: 14px; }
+.pricing-catalog-table-wrap .pricing-product-row > td.pricing-current-price { min-width: 0; }
+.pricing-catalog-table-wrap .pricing-product-row > td.pricing-actions-cell { grid-column: 1 / -1; margin-top: 8px; padding-top: 12px; border-top: 1px solid #e8eef4; }
+.pricing-catalog-table-wrap .pricing-product-row:not(.is-expanded) > td.pricing-actions-cell { grid-column: auto; margin: 0; padding: 0; border: 0; }
+.pricing-catalog-table-wrap .pricing-product-row > td.pricing-actions-cell::before { display: none; }
+.pricing-catalog-table-wrap .pricing-row-actions { justify-content: flex-end; flex-wrap: wrap; }
+.pricing-catalog-table-wrap .pricing-row-actions button { min-height: 40px; padding-inline: 14px; font-size: 12px; }
+.pricing-catalog-table-wrap .pricing-detail-row { display: block; margin: -10px 0 10px; border: 1px solid #dce6ef; border-top: 0; border-radius: 0 0 9px 9px; }
+.pricing-catalog-table-wrap .pricing-detail-row td { display: block; width: 100%; box-sizing: border-box; padding: 12px 16px; }
+.pricing-catalog-table-wrap tbody > tr:not(.pricing-product-row):not(.pricing-detail-row) td { display: block; padding: 16px; white-space: normal; }
+@media (max-width: 1100px) { .pricing-catalog-table-wrap .pricing-product-row:not(.is-expanded), .pricing-catalog-table-wrap .pricing-product-row.is-expanded { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; padding: 12px; } .pricing-catalog-table-wrap .pricing-product-row:not(.is-expanded) > th, .pricing-catalog-table-wrap .pricing-product-row:not(.is-expanded) > td.pricing-actions-cell { grid-column: 1 / -1; } .pricing-catalog-table-wrap .pricing-product-row:not(.is-expanded) > th { padding-bottom: 8px; border-bottom: 1px solid #e8eef4; } .pricing-catalog-table-wrap .pricing-product-row:not(.is-expanded) > td { padding-top: 8px; } .pricing-catalog-table-wrap .pricing-product-row:not(.is-expanded) > td.pricing-actions-cell { margin-top: 8px; padding-top: 10px; border-top: 1px solid #e8eef4; } }
+@media (max-width: 780px) { .pricing-catalog-table-wrap .pricing-product-row > td { font-size: 13px; } .pricing-catalog-table-wrap .pricing-product-row > td :is(input, select) { min-height: 44px; font-size: 16px; } .pricing-catalog-table-wrap .pricing-row-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } .pricing-catalog-table-wrap .pricing-row-actions button { min-width: 0; white-space: normal; } }
+@media (max-width: 360px) { .pricing-catalog-table-wrap .pricing-product-row { gap: 0 8px; } .pricing-catalog-table-wrap .pricing-product-row > td { font-size: 12px; } }
 .pricing-breakdown { max-height: 320px; overflow: auto; display: grid; gap: 6px; padding: 8px; color: #334b62; line-height: 1.5; white-space: normal; }
 .pricing-breakdown strong { margin-top: 6px; color: #0b3158; }
 .pricing-breakdown p { margin: 2px 0; color: #647a90; }

@@ -83,6 +83,7 @@ def ensure_business_columns():
         (OperatingExpense.__tablename__, "is_abnormal", "BOOLEAN NOT NULL DEFAULT 0"),
         (ExpenseCategory.__tablename__, "expense_type", "VARCHAR(12) NOT NULL DEFAULT 'incidental'"),
         (SalesInvoice.__tablename__, "return_pending", "BOOLEAN NOT NULL DEFAULT 0"),
+        (SalesInvoice.__tablename__, "payment_due_original_date", "DATE NULL"),
     )
     if any(not inspector.has_table(table) for table, _, _ in columns):
         return

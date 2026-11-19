@@ -41,6 +41,12 @@ function formatDate(value) {
   return formatIsoDate(value, { empty: "Không giới hạn", invalid: value });
 }
 
+function formatConditionSummary(value) {
+  // Older API responses included the date range after the condition. Dates
+  // have their own column, so keep only the actual purchase condition here.
+  return String(value || "").split(" · ")[0];
+}
+
 function PromotionForm({ promotion, onClose, onSaved }) {
   const [form, setForm] = useState(() =>
     promotion
@@ -393,7 +399,7 @@ function Promotions() {
                     <td>
                       <strong>{promotion.name}</strong>
                     </td>
-                    <td>{promotion.condition_summary}</td>
+                    <td>{formatConditionSummary(promotion.condition_summary)}</td>
                     <td>
                       <strong className="promotion-benefit">
                         {promotion.benefit_summary}

@@ -74,22 +74,10 @@ def _format_vnd(value):
 
 def condition_summary(promotion):
     if promotion.condition_type == CONDITION_MIN_QUANTITY:
-        summary = f"Mua từ {promotion.min_quantity} sản phẩm"
+        return f"Mua từ {promotion.min_quantity} sản phẩm"
     elif promotion.condition_type == CONDITION_MIN_ORDER_AMOUNT:
-        summary = f"Đơn hàng từ {_format_vnd(promotion.min_order_amount)}"
-    else:
-        summary = "Khuyến mãi theo dịp/ngày lễ"
-
-    if promotion.start_date and promotion.end_date:
-        summary += (
-            f" · {promotion.start_date.strftime('%d/%m/%Y')}"
-            f"–{promotion.end_date.strftime('%d/%m/%Y')}"
-        )
-    elif promotion.start_date:
-        summary += f" · từ {promotion.start_date.strftime('%d/%m/%Y')}"
-    elif promotion.end_date:
-        summary += f" · đến {promotion.end_date.strftime('%d/%m/%Y')}"
-    return summary
+        return f"Đơn hàng từ {_format_vnd(promotion.min_order_amount)}"
+    return "Khuyến mãi theo dịp/ngày lễ"
 
 
 def benefit_summary(promotion):

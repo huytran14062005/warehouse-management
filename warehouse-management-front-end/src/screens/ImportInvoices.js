@@ -1437,6 +1437,7 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = false }) {
                       <ProductEntryField label="Số lượng nhập">
                         <input
                           type="number"
+                          inputMode="decimal"
                           min="0.001"
                           step="0.001"
                           value={item.quantity}
@@ -1647,8 +1648,8 @@ function ImportInvoices() {
         ) : invoices.length === 0 ? (
           <div className="warehouse-state">Chưa có phiếu nhập phù hợp.</div>
         ) : (
-          <div className="warehouse-table-wrap">
-            <table className="warehouse-table warehouse-clickable-table">
+          <div className="warehouse-table-wrap warehouse-import-list-wrap">
+            <table className="warehouse-table warehouse-clickable-table warehouse-import-list">
               <thead>
                 <tr>
                   <th>Ngày nhập</th>
@@ -1670,7 +1671,7 @@ function ImportInvoices() {
                       if (event.key === "Enter") openDetail(invoice.id);
                     }}
                   >
-                    <td>{formatDate(invoice.imported_at)}</td>
+                    <td><strong>Phiếu #{invoice.id}</strong><small>{formatDate(invoice.imported_at)}</small></td>
                     <td>{invoice.warehouse?.name || "—"}</td>
                     <td>
                       <strong>{invoice.supplier?.name || "—"}</strong>
