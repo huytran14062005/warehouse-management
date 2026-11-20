@@ -341,24 +341,20 @@ function Suppliers() {
                       message={modalError}
                       className="suppliers-alert"
                     />
-                    {detailLoading ? (
-                      <Skeleton rows={3} columns={1} />
-                    ) : (
-                      <dl className="suppliers-detail-list">
-                        <div>
-                          <dt>Tên nhà cung cấp</dt>
-                          <dd>{selectedSupplier?.name || "—"}</dd>
-                        </div>
-                        <div>
-                          <dt>Số điện thoại</dt>
-                          <dd>{selectedSupplier?.phone || "Chưa cập nhật"}</dd>
-                        </div>
-                        <div>
-                          <dt>Địa chỉ</dt>
-                          <dd>{selectedSupplier?.address || "—"}</dd>
-                        </div>
-                      </dl>
-                    )}
+                    <dl className="suppliers-detail-list">
+                      <div>
+                        <dt>Tên nhà cung cấp</dt>
+                        <dd>{selectedSupplier?.name || "—"}</dd>
+                      </div>
+                      <div>
+                        <dt>Số điện thoại</dt>
+                        <dd>{selectedSupplier?.phone || "Chưa cập nhật"}</dd>
+                      </div>
+                      <div>
+                        <dt>Địa chỉ</dt>
+                        <dd>{selectedSupplier?.address || "—"}</dd>
+                      </div>
+                    </dl>
                     {canManageSupplier &&
                       !detailLoading &&
                       selectedSupplier?.can_delete === false && (

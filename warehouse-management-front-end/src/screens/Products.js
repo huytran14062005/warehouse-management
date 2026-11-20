@@ -317,13 +317,19 @@ function Products() {
   const [comboManagerOpen, setComboManagerOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailReady, setDetailReady] = useState(false);
+  const [detailError, setDetailError] = useState("");
+  const detailRequestRef = useRef(0);
   const productRequestId = new URLSearchParams(location.search).get(
     "product_request_id",
   );
 
   const openProductDetail = async (product) => {
-    setSelectedProduct(null);
+    const requestId = ++detailRequestRef.current;
+    setSelectedProduct(product);
     setDetailLoading(true);
+    setDetailReady(false);
+    setDetailError("");
     try {
       const response = await authApis().get(
         endpoints.productDetail(product.id),
@@ -331,12 +337,27 @@ function Products() {
           params: { source: "central" },
         },
       );
-      setSelectedProduct(response.data?.product || product);
+      if (requestId === detailRequestRef.current) {
+        setSelectedProduct(response.data?.product || product);
+        setDetailReady(true);
+      }
     } catch (requestError) {
-      setError(getApiError(requestError));
+      if (requestId === detailRequestRef.current) {
+        const message = getApiError(requestError);
+        setDetailError(message);
+        setError(message);
+      }
     } finally {
-      setDetailLoading(false);
+      if (requestId === detailRequestRef.current) setDetailLoading(false);
     }
+  };
+
+  const closeProductDetail = () => {
+    detailRequestRef.current += 1;
+    setSelectedProduct(null);
+    setDetailLoading(false);
+    setDetailReady(false);
+    setDetailError("");
   };
 
   const fetchProducts = useCallback(async () => {
@@ -748,14 +769,17 @@ function Products() {
         onPageChange={handlePageChange}
         disabled={loading}
       />
-      {selectedProduct && !detailLoading && (
+      {selectedProduct && (
         <ProductDetailModal
           product={selectedProduct}
-          canEdit={canCreateProducts}
-          onClose={() => setSelectedProduct(null)}
+          refreshing={detailLoading}
+          refreshError={detailError}
+          canEdit={canCreateProducts && detailReady && !detailLoading}
+          onClose={closeProductDetail}
           onEdit={() => {
+            if (!detailReady || detailLoading) return;
             setProductEditor({ product: selectedProduct });
-            setSelectedProduct(null);
+            closeProductDetail();
           }}
         />
       )}

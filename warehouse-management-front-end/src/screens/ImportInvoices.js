@@ -1521,6 +1521,10 @@ function ImportInvoices() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useNotificationState();
   const [selected, setSelected] = useState(null);
+  const [openingInvoiceId, setOpeningInvoiceId] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState("");
+  const detailRequestRef = useRef(0);
   const [editor, setEditor] = useState(null);
   const [deletingInvoice, setDeletingInvoice] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -1578,15 +1582,36 @@ function ImportInvoices() {
   }, [keyword, keywordInput]);
 
   const openDetail = async (invoiceId) => {
+    const requestId = ++detailRequestRef.current;
+    setSelected(null);
+    setOpeningInvoiceId(invoiceId);
+    setDetailLoading(true);
+    setDetailError("");
     try {
       setError("");
       const response = await authApis().get(
         endpoints.importInvoiceDetail(invoiceId),
       );
-      setSelected(response.data);
+      if (requestId === detailRequestRef.current) {
+        setSelected(response.data);
+        setOpeningInvoiceId(null);
+      }
     } catch (requestError) {
-      setError(getApiError(requestError));
+      if (requestId === detailRequestRef.current) {
+        const message = getApiError(requestError);
+        setDetailError(message);
+        setError(message);
+      }
+    } finally {
+      if (requestId === detailRequestRef.current) setDetailLoading(false);
     }
+  };
+
+  const closeOpeningDetail = () => {
+    detailRequestRef.current += 1;
+    setOpeningInvoiceId(null);
+    setDetailLoading(false);
+    setDetailError("");
   };
   const handleSaved = () => {
     setEditor(null);
@@ -1693,6 +1718,25 @@ function ImportInvoices() {
         onPageChange={setPage}
         disabled={loading}
       />
+      {openingInvoiceId !== null && createPortal(
+        <div className="warehouse-modal-overlay">
+          <div className="warehouse-modal" role="dialog" aria-modal="true" aria-labelledby="import-detail-loading-title">
+            <div className="warehouse-modal-header">
+              <h2 id="import-detail-loading-title">Chi tiết phiếu nhập #{openingInvoiceId}</h2>
+              <WarehouseModalCloseButton onClick={closeOpeningDetail} ariaLabel="Đóng" />
+            </div>
+            <div className="warehouse-modal-body">
+              {detailLoading ? <Skeleton variant="form" rows={6} /> : (
+                <>
+                  <AutoDismissMessage message={detailError} className="warehouse-error" />
+                  <button type="button" onClick={() => openDetail(openingInvoiceId)}>Thử lại</button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
       {selected && (
         <ImportDetail
           invoice={selected}

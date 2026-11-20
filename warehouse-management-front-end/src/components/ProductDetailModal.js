@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { formatCurrency, formatQuantity } from "../utils/money";
 import "../css/ProductDetailModal.css";
 
-function ProductDetailModal({ product, canEdit = false, onClose, onEdit }) {
+function ProductDetailModal({ product, canEdit = false, refreshing = false, refreshError = "", onClose, onEdit }) {
   const quantities = [
     { label: "Tồn kho hiện tại", value: product.available_stock },
     { label: "Đã nhập", value: product.total_imported },
@@ -29,6 +29,8 @@ function ProductDetailModal({ product, canEdit = false, onClose, onEdit }) {
         </header>
 
         <div className="product-detail-body">
+          {refreshing && <p role="status">Đang cập nhật thông tin sản phẩm...</p>}
+          {refreshError && <p role="alert">Không cập nhật được dữ liệu mới nhất: {refreshError}</p>}
           <section className="product-detail-section" aria-labelledby="product-detail-info-title">
             <h3 id="product-detail-info-title">Thông tin sản phẩm</h3>
             <dl className="product-detail-facts">

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import WarehouseModalCloseButton from "../components/WarehouseModalCloseButton";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -32,7 +32,7 @@ function statusLabel(value) {
   );
 }
 
-function DamageDetail({ report, onClose, canReview, onReview }) {
+function DamageDetail({ report, onClose, canReview, refreshing = false, refreshError = "", onReview }) {
   return createPortal(
     <div className="warehouse-modal-overlay">
       <div
@@ -46,6 +46,8 @@ function DamageDetail({ report, onClose, canReview, onReview }) {
           <WarehouseModalCloseButton onClick={onClose} ariaLabel="Đóng" />
         </div>
         <div className="warehouse-modal-body">
+          {refreshing && <p role="status">Đang cập nhật thông tin phiếu...</p>}
+          {refreshError && <p role="alert" className="warehouse-error">Không cập nhật được dữ liệu mới nhất: {refreshError}</p>}
           <div className="warehouse-info-grid">
             <div>
               <span>Nguồn hàng</span>
@@ -382,6 +384,10 @@ function DamageReports() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useNotificationState();
   const [selected, setSelected] = useState(null);
+  const [detailReady, setDetailReady] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState("");
+  const detailRequestRef = useRef(0);
   const [editor, setEditor] = useState(false);
   const [reviewAction, setReviewAction] = useState(null);
   const [reviewNote, setReviewNote] = useState("");
@@ -420,16 +426,39 @@ function DamageReports() {
   useEffect(() => {
     fetchReports();
   }, [fetchReports]);
-  const openDetail = async (reportId) => {
+  const openDetail = async (report) => {
+    const requestId = ++detailRequestRef.current;
+    setSelected(report);
+    setDetailReady(false);
+    setDetailLoading(true);
+    setDetailError("");
     try {
       setError("");
       const response = await authApis().get(
-        endpoints.damageReportDetail(reportId),
+        endpoints.damageReportDetail(report.id),
       );
-      setSelected(response.data);
+      if (requestId === detailRequestRef.current) {
+        setSelected(response.data);
+        setDetailReady(true);
+      }
     } catch (requestError) {
-      setError(getApiError(requestError));
+      if (requestId === detailRequestRef.current) {
+        const message = getApiError(requestError);
+        setDetailError(message);
+        setError(message);
+      }
+    } finally {
+      if (requestId === detailRequestRef.current) setDetailLoading(false);
     }
+  };
+
+  const closeDetail = () => {
+    detailRequestRef.current += 1;
+    setReviewAction(null);
+    setSelected(null);
+    setDetailReady(false);
+    setDetailLoading(false);
+    setDetailError("");
   };
 
   const openReviewDialog = (decision) => {
@@ -520,9 +549,9 @@ function DamageReports() {
                   <tr
                     key={report.id}
                     tabIndex="0"
-                    onClick={() => openDetail(report.id)}
+                    onClick={() => openDetail(report)}
                     onKeyDown={(event) => {
-                      if (event.key === "Enter") openDetail(report.id);
+                      if (event.key === "Enter") openDetail(report);
                     }}
                   >
                     <td>{formatDate(report.reported_at)}</td>
@@ -552,12 +581,11 @@ function DamageReports() {
       {selected && (
         <DamageDetail
           report={selected}
-          canReview={canReviewDamageReport}
+          canReview={canReviewDamageReport && detailReady}
+          refreshing={detailLoading}
+          refreshError={detailError}
           onReview={openReviewDialog}
-          onClose={() => {
-            setReviewAction(null);
-            setSelected(null);
-          }}
+          onClose={closeDetail}
         />
       )}
       {editor && (
