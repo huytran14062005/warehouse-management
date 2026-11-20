@@ -109,6 +109,108 @@ const authenticatedApi = axios.create({
   withCredentials: true,
 });
 
+// Coalesce identical GETs while they are in flight. A page can mount two
+// dependent components at the same time; sharing the promise prevents two
+// MySQL round-trips without changing the response or freshness semantics.
+const inFlightGetRequests = new Map();
+const readResponseCache = new Map();
+let readCacheGeneration = 0;
+
+// These endpoints are reference data rather than live transactions. A short
+// client-side TTL makes navigation and modal editors feel immediate while any
+// write request below invalidates the cache before the next read.
+const READ_CACHE_TTLS = new Map([
+  ["/warehouses", 60 * 1000],
+  ["/sales-employees", 60 * 1000],
+  ["/sales-invoices/delivery-staff", 15 * 1000],
+  ["/pricing/expense-categories", 60 * 1000],
+  ["/sales-areas", 60 * 1000],
+  ["/products/combos/catalog", 30 * 1000],
+]);
+
+const serializeForCache = (value) => {
+  if (value === undefined) return "undefined";
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(serializeForCache).join(",")}]`;
+  return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${serializeForCache(value[key])}`).join(",")}}`;
+};
+
+const getApiPath = (url) => {
+  const rawUrl = String(url || "").split("?", 1)[0];
+  if (!/^https?:\/\//i.test(rawUrl)) {
+    return rawUrl.startsWith("/") ? rawUrl : `/${rawUrl}`;
+  }
+
+  try {
+    const parsed = new URL(rawUrl);
+    const apiPath = new URL(baseURL).pathname.replace(/\/$/, "");
+    return parsed.pathname.startsWith(apiPath)
+      ? parsed.pathname.slice(apiPath.length) || "/"
+      : parsed.pathname;
+  } catch {
+    return rawUrl;
+  }
+};
+
+const readAccessTokenForCache = () => {
+  try {
+    return localStorage.getItem("token") || "";
+  } catch {
+    return "";
+  }
+};
+
+const clearReadResponseCache = () => {
+  readCacheGeneration += 1;
+  readResponseCache.clear();
+};
+
+const installGetOptimization = (client) => {
+  const originalGet = client.get.bind(client);
+
+  client.get = (url, config = {}) => {
+    config = config || {};
+    const method = String(config.method || "get").toLowerCase();
+    if (method !== "get") return originalGet(url, config);
+
+    const path = getApiPath(url);
+    const token = readAccessTokenForCache();
+    const cacheTtl = READ_CACHE_TTLS.get(path) || 0;
+    const key = `${token}:${path}:${serializeForCache(config.params || {})}`;
+    const now = Date.now();
+    const cached = cacheTtl ? readResponseCache.get(key) : null;
+    if (cached && cached.expiresAt > now) {
+      return Promise.resolve(cached.response);
+    }
+    if (cached) readResponseCache.delete(key);
+
+    const existing = inFlightGetRequests.get(key);
+    if (existing) return existing;
+
+    const generation = readCacheGeneration;
+    const request = originalGet(url, config)
+      .then((response) => {
+        if (cacheTtl && generation === readCacheGeneration && response?.status >= 200 && response.status < 300) {
+          readResponseCache.set(key, {
+            response,
+            expiresAt: Date.now() + cacheTtl,
+          });
+        }
+        return response;
+      })
+      .finally(() => {
+        if (inFlightGetRequests.get(key) === request) inFlightGetRequests.delete(key);
+      });
+
+    inFlightGetRequests.set(key, request);
+    return request;
+  };
+
+  return client;
+};
+
+installGetOptimization(authenticatedApi);
+
 let refreshRequest = null;
 let refreshTimer = null;
 
@@ -305,6 +407,9 @@ export const scheduleTokenRefresh = () => {
 export { stopTokenRefresh };
 
 authenticatedApi.interceptors.request.use((config) => {
+  const method = String(config.method || "get").toLowerCase();
+  if (method !== "get") clearReadResponseCache();
+
   const token = localStorage.getItem("token");
 
   if (token) {

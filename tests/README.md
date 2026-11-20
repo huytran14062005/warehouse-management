@@ -30,7 +30,7 @@ Frontend test dùng Jest/DOM giả lập, không truy cập server thật.
 | Phân quyền | `test_06`: API từ chối vai trò sai, token hết hạn, khóa tài khoản và token có vai trò cũ | Chạy ma trận endpoint đầy đủ trên staging |
 | Giá và báo cáo | `test_07`, `test_08` và `test_pricing_requirements.py`: giá vốn nhập đã trừ VAT đầu vào khấu trừ, lương/tăng ca theo ngày phát sinh hoặc kế hoạch đã xác nhận, phân bổ theo doanh thu dự kiến, chi phí đơn/chuyến theo doanh thu hoặc trọng lượng, làm tròn giá và chỉ áp dụng khi quản lý bấm. Giá vốn đơn mới được chốt khi hoàn tất bán. | Giá đề xuất chưa VAT đầu ra; hóa đơn VAT đầu ra chưa có trong phạm vi tính giá. Đơn cũ chưa có giá vốn chốt được báo là ước tính. Báo cáo vẫn lọc doanh thu theo `sold_at` như nghiệp vụ hiện có; cần xác nhận kỳ ghi nhận nếu đơn bắc qua hai tháng. |
 | Quy đổi đơn vị | `test_04`, `test_05`, `test_10`: 1 bao = 1.200 cái, 1 cây = 6 mét, bán 0,5 mét qua đủ luồng đơn hàng, tồn theo đơn vị cơ sở. | Quy cách là riêng cho từng sản phẩm; sửa quy cách đã dùng bị chặn để bảo vệ lịch sử. |
-| Độ bền | `test_09`: hai access token đọc ngay sau ghi, thử hoàn thành lặp không ghi quỹ hai lần; `SalesInvoiceEditor.test.js`: ghi chú chưa lưu còn sau khi đóng/mở form, tách theo tài khoản và xóa bản tạm sau khi lưu | Chưa mô phỏng mất mạng, hai phiên refresh token và truy cập staging; cần kiểm tra refresh trình duyệt thực tế |
+| Độ bền | `test_09`: hai access token đọc ngay sau ghi, thử hoàn thành lặp không ghi quỹ hai lần | Chưa mô phỏng mất mạng, hai phiên refresh token và truy cập staging; cần kiểm tra refresh trình duyệt thực tế |
 
 ## Kiểm chứng còn cần trên MySQL local/staging
 

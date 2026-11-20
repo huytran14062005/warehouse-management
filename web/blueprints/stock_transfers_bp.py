@@ -31,24 +31,32 @@ stock_transfers_bp = Blueprint("stock_transfers", __name__)
 @verify_role(EmployeeRole.THU_KHO, EmployeeRole.QUAN_LY)
 @handle_api_errors
 def get_sales_employees():
-    warehouses = get_accessible_warehouses(request.employee_id)
-    central = get_central_warehouse()
-    default_warehouse = next(
-        (warehouse for warehouse in warehouses if warehouse.id == central.id),
-        warehouses[0] if warehouses else central,
-    )
-    return jsonify({
-        "employees": get_sales_employees_service(),
-        "warehouse": {
-            "id": default_warehouse.id,
-            "name": default_warehouse.name,
-            "address": default_warehouse.address,
-        },
-        "warehouses": [
-            {"id": warehouse.id, "name": warehouse.name, "address": warehouse.address}
-            for warehouse in warehouses
-        ],
-    }), 200
+    def load():
+        warehouses = get_accessible_warehouses(request.employee_id)
+        central = get_central_warehouse()
+        default_warehouse = next(
+            (warehouse for warehouse in warehouses if warehouse.id == central.id),
+            warehouses[0] if warehouses else central,
+        )
+        return {
+            "employees": get_sales_employees_service(),
+            "warehouse": {
+                "id": default_warehouse.id,
+                "name": default_warehouse.name,
+                "address": default_warehouse.address,
+            },
+            "warehouses": [
+                {"id": warehouse.id, "name": warehouse.name, "address": warehouse.address}
+                for warehouse in warehouses
+            ],
+        }
+
+    return jsonify(cached_query(
+        "sales-employees",
+        {"employee_id": request.employee_id},
+        60,
+        load,
+    )), 200
 
 
 @stock_transfers_bp.route("/api/warehouses", methods=["GET"])
@@ -61,19 +69,27 @@ def get_sales_employees():
 )
 @handle_api_errors
 def get_warehouses():
-    warehouses = get_accessible_warehouses(request.employee_id)
-    central = get_central_warehouse()
-    default_warehouse = next(
-        (warehouse for warehouse in warehouses if warehouse.id == central.id),
-        warehouses[0] if warehouses else central,
-    )
-    return jsonify({
-        "warehouses": [
-            {"id": warehouse.id, "name": warehouse.name, "address": warehouse.address}
-            for warehouse in warehouses
-        ],
-        "default_warehouse_id": default_warehouse.id,
-    }), 200
+    def load():
+        warehouses = get_accessible_warehouses(request.employee_id)
+        central = get_central_warehouse()
+        default_warehouse = next(
+            (warehouse for warehouse in warehouses if warehouse.id == central.id),
+            warehouses[0] if warehouses else central,
+        )
+        return {
+            "warehouses": [
+                {"id": warehouse.id, "name": warehouse.name, "address": warehouse.address}
+                for warehouse in warehouses
+            ],
+            "default_warehouse_id": default_warehouse.id,
+        }
+
+    return jsonify(cached_query(
+        "warehouses",
+        {"employee_id": request.employee_id},
+        60,
+        load,
+    )), 200
 
 
 @stock_transfers_bp.route("/api/employee-stock/me", methods=["GET"])

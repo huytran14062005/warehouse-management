@@ -23,10 +23,35 @@ class Config:
     DB_NAME = os.getenv("DB_NAME", "managewarehouse")
     DATABASE_URL = os.getenv("DATABASE_URL")
 
+    # Schema changes should be applied deliberately in production instead of
+    # making the first API request inspect every business table. Keep the
+    # automatic path enabled for local development and opt into it explicitly
+    # in production when a migration is actually required.
+    AUTO_SCHEMA_MIGRATION = os.getenv(
+        "AUTO_SCHEMA_MIGRATION",
+        "false" if IS_PRODUCTION else "true",
+    ).strip().lower() in {"1", "true", "yes", "on"}
+
     SQLALCHEMY_DATABASE_URI = DATABASE_URL or (
         f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}?charset=utf8mb4"
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    # Vercel may reuse a warm Python process, so keep a very small pool alive
+    # and validate idle connections before use. The limits are intentionally
+    # conservative for Aiven's 1-GB Hobbyist node and serverless concurrency.
+    _DB_DIALECT = SQLALCHEMY_DATABASE_URI.split(":", 1)[0].lower()
+    SQLALCHEMY_ENGINE_OPTIONS = (
+        {
+            "pool_pre_ping": True,
+            "pool_recycle": int(os.getenv("DB_POOL_RECYCLE_SECONDS", 1800)),
+            "pool_size": int(os.getenv("DB_POOL_SIZE", 2)),
+            "max_overflow": int(os.getenv("DB_MAX_OVERFLOW", 2)),
+            "pool_timeout": int(os.getenv("DB_POOL_TIMEOUT_SECONDS", 10)),
+        }
+        if _DB_DIALECT.startswith(("mysql", "postgresql"))
+        else {}
+    )
     # Local development can use an ephemeral secret, but production must provide
     # explicit high-entropy values (validated in web.__init__).
     SECRET_KEY = os.getenv("SECRET_KEY") or secrets.token_urlsafe(48)

@@ -87,24 +87,6 @@ function StockTransfers() {
   }, []);
 
   useEffect(() => {
-    if (!sourceWarehouse?.id) return undefined;
-    let cancelled = false;
-    authApis()
-      .get(endpoints.productsInventory, {
-        params: { warehouse_id: sourceWarehouse.id, page: 1, per_page: 1000 },
-      })
-      .then((response) => {
-        if (!cancelled) setProducts(response.data?.products || []);
-      })
-      .catch((requestError) => {
-        if (!cancelled) setError(getApiError(requestError));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [sourceWarehouse?.id]);
-
-  useEffect(() => {
     let cancelled = false;
     const loadTransfers = async () => {
       try {

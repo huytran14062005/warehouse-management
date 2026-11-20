@@ -20,7 +20,12 @@ pricing_bp = Blueprint("pricing", __name__, url_prefix="/api/pricing")
 @verify_role(EmployeeRole.QUAN_LY)
 @handle_api_errors
 def expense_categories():
-    return jsonify({"categories": list_expense_categories()}), 200
+    return jsonify({"categories": cached_query(
+        "pricing-expense-categories",
+        {},
+        300,
+        list_expense_categories,
+    )}), 200
 
 
 @pricing_bp.route("/expense-categories", methods=["POST"])

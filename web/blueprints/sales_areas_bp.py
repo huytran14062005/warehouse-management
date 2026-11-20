@@ -5,6 +5,7 @@ from web.middleware.auth_middleware import verify_role, verify_token
 from web.models import EmployeeRole
 from web.services.sales_area_service import create_sales_area_service, serialize_sales_area
 from web import dao
+from web.utils.query_cache import cached_query
 
 
 sales_areas_bp = Blueprint("sales_areas", __name__, url_prefix="/api/sales-areas")
@@ -15,8 +16,14 @@ sales_areas_bp = Blueprint("sales_areas", __name__, url_prefix="/api/sales-areas
 @verify_role(EmployeeRole.NHAN_VIEN_BAN_HANG, EmployeeRole.KE_TOAN, EmployeeRole.QUAN_LY)
 @handle_api_errors
 def get_sales_areas():
-    areas = dao.get_active_sales_areas()
-    return jsonify({"sales_areas": [serialize_sales_area(area) for area in areas], "total": len(areas)}), 200
+    def load():
+        areas = dao.get_active_sales_areas()
+        return {
+            "sales_areas": [serialize_sales_area(area) for area in areas],
+            "total": len(areas),
+        }
+
+    return jsonify(cached_query("sales-areas", {}, 300, load)), 200
 
 
 @sales_areas_bp.route("", methods=["POST"])

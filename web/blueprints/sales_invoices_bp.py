@@ -292,11 +292,14 @@ def update_invoice_status(invoice_id):
 @verify_role(EmployeeRole.THU_KHO, EmployeeRole.QUAN_LY)
 @handle_api_errors
 def get_delivery_staff():
-    staff = list_delivery_staff_service()
-    return jsonify({"employees": [
-        {"id": employee.id, "full_name": employee.full_name}
-        for employee in staff
-    ]}), 200
+    def load():
+        staff = list_delivery_staff_service()
+        return {"employees": [
+            {"id": employee.id, "full_name": employee.full_name}
+            for employee in staff
+        ]}
+
+    return jsonify(cached_query("delivery-staff", {}, 15, load)), 200
 
 
 @sales_invoices_bp.route("/<int:invoice_id>/prepare-delivery", methods=["PUT"])

@@ -57,7 +57,11 @@ _business_schema_ready = False
 def ensure_business_columns():
     """Bring existing databases up to the columns used by current business flows."""
     global _business_schema_ready
-    if _business_schema_ready or not request.path.startswith("/api/"):
+    if (
+        _business_schema_ready
+        or not request.path.startswith("/api/")
+        or not app.config.get("AUTO_SCHEMA_MIGRATION", False)
+    ):
         return
     from sqlalchemy import Numeric, inspect
     from web.models import EmployeeStock, ExpenseCategory, ImportInvoice, ImportInvoiceItem, OperatingExpense, PricingCycle, PricingPolicy, Product, SalesInvoice, SalesInvoiceItem, StockTransferItem, DamageReportItem
