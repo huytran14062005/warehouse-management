@@ -11,7 +11,7 @@
 .employee-accounts-toolbar button, .employee-account-action { min-height: 42px; padding: 10px 16px; color: #fff; border: 1px solid #0b3158; border-radius: 6px; background: #0b3158; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
 .employee-accounts-toolbar button:hover, .employee-account-action:hover { background: #072542; }
 .employee-account-action.unlock { color: #0b3158; background: #fff; }
-.employee-account-action.unlock:hover { color: #fff; }
+.employee-account-action.unlock:hover { color: #0b3158; background: #e8f0f7; }
 .employee-account-action:disabled { opacity: .55; cursor: wait; }
 .employee-accounts-alert, .employee-accounts-success { margin-bottom: 16px; }
 .employee-accounts-card { overflow: hidden; border: 1px solid #d9e2ec; border-radius: 6px; background: #fff; }
