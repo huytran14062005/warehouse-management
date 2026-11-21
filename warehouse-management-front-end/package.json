@@ -2,7 +2,6 @@
   "name": "warehouse-management-front-end",
   "version": "0.1.0",
   "private": true,
-  "homepage": "https://huytran14062005.github.io/warehouse-management",
   "dependencies": {
     "@testing-library/dom": "^10.4.2",
     "@testing-library/jest-dom": "^6.9.1",

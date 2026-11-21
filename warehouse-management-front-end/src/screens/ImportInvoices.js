@@ -616,7 +616,7 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = false }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [setError]);
 
   useEffect(() => {
     if (!supplierSearchTouchedRef.current) return undefined;
@@ -641,7 +641,7 @@ function ImportEditor({ invoice, onClose, onSaved, allowNewSupplier = false }) {
       if (supplierSearchTimerRef.current)
         clearTimeout(supplierSearchTimerRef.current);
     };
-  }, [supplierSearchInput]);
+  }, [setError, supplierSearchInput]);
 
   const updateItem = (index, field, value) =>
     setItems((current) =>
@@ -1564,7 +1564,7 @@ function ImportInvoices() {
     } finally {
       setLoading(false);
     }
-  }, [keyword, navigate, page]);
+  }, [keyword, navigate, page, setError]);
 
   useEffect(() => {
     fetchInvoices();

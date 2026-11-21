@@ -84,7 +84,7 @@ function StockTransfers() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [setError]);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,7 +107,7 @@ function StockTransfers() {
     return () => {
       cancelled = true;
     };
-  }, [transfersPage]);
+  }, [setError, transfersPage]);
 
   useEffect(() => {
     if (!detailTransfer?.id) return undefined;

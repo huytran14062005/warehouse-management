@@ -227,7 +227,7 @@ function Customers() {
     } finally {
       setLoading(false);
     }
-  }, [debtMax, debtMin, hasDebt, keyword, navigate, page]);
+  }, [debtMax, debtMin, hasDebt, keyword, navigate, page, setError]);
 
   useEffect(() => {
     fetchCustomers();
@@ -351,7 +351,7 @@ function Customers() {
     return () => {
       cancelled = true;
     };
-  }, [customerId, detailTab, orderPage, ordersCustomerId, ordersLoadedPage, showDetail]);
+  }, [customerId, detailTab, orderPage, ordersCustomerId, ordersLoadedPage, setOrdersError, showDetail]);
 
   useEffect(() => {
     if (!showDetail || detailTab !== "products" || !customerId) return undefined;
@@ -387,7 +387,7 @@ function Customers() {
     return () => {
       cancelled = true;
     };
-  }, [customerId, detailTab, productsCustomerId, productsLoadedPage, productsPage, showDetail]);
+  }, [customerId, detailTab, productsCustomerId, productsLoadedPage, productsPage, setProductsError, showDetail]);
 
   const handlePaymentPageChange = async (nextPage) => {
     if (!customerId || nextPage === paymentsPage) return;
@@ -435,7 +435,7 @@ function Customers() {
     setShowPaymentForm(false);
     setPaymentError("");
     setPaymentMethod("");
-  }, []);
+  }, [setDetailError, setPaymentError]);
 
   const handleOldDebtPayment = async (event) => {
     event.preventDefault();

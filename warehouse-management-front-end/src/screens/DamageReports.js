@@ -182,7 +182,7 @@ function DamageEditor({ onClose, onSaved, isFieldEmployee }) {
     return () => {
       cancelled = true;
     };
-  }, [isFieldEmployee]);
+  }, [isFieldEmployee, setError]);
   useEffect(() => {
     if (isFieldEmployee || !warehouseId) return undefined;
     let cancelled = false;
@@ -194,7 +194,7 @@ function DamageEditor({ onClose, onSaved, isFieldEmployee }) {
       if (!cancelled) setError(getApiError(requestError));
     });
     return () => { cancelled = true; };
-  }, [isFieldEmployee, warehouseId]);
+  }, [isFieldEmployee, setError, warehouseId]);
   const updateItem = (index, field, value) =>
     setItems((current) =>
       current.map((item, itemIndex) =>
@@ -422,7 +422,7 @@ function DamageReports() {
     } finally {
       setLoading(false);
     }
-  }, [navigate, page, status]);
+  }, [navigate, page, setError, status]);
   useEffect(() => {
     fetchReports();
   }, [fetchReports]);

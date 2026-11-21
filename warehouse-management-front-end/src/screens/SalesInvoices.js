@@ -1594,7 +1594,7 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
     return () => {
       cancelled = true;
     };
-  }, [isEditing, saleSource]);
+  }, [isEditing, saleSource, setFormError]);
 
   useEffect(() => {
     let active = true;
@@ -1637,7 +1637,7 @@ export function SalesInvoiceEditor({ invoice, onClose, onSaved }) {
       if (customerSearchTimerRef.current)
         clearTimeout(customerSearchTimerRef.current);
     };
-  }, [customerSearchInput]);
+  }, [customerSearchInput, setFormError]);
 
   useEffect(
     () => () => {
@@ -3121,6 +3121,7 @@ function SalesInvoices() {
       mineOnly,
       navigate,
       page,
+      setError,
       status,
       toDate,
     ],
@@ -3235,7 +3236,7 @@ function SalesInvoices() {
     return () => {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     };
-  }, [fromDate, fromDateInput, keyword, keywordInput, toDate, toDateInput]);
+  }, [fromDate, fromDateInput, keyword, keywordInput, setDateWarning, toDate, toDateInput]);
 
   const openDetail = async (invoiceId) => {
     try {

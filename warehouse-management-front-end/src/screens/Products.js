@@ -397,7 +397,7 @@ function Products() {
     } finally {
       setLoading(false);
     }
-  }, [keyword, maxPrice, minPrice, navigate, page, status]);
+  }, [keyword, maxPrice, minPrice, navigate, page, setError, status]);
 
   useEffect(() => {
     fetchProducts();
@@ -481,6 +481,7 @@ function Products() {
     minPriceInput,
     status,
     statusInput,
+    setValidationWarning,
   ]);
 
   const handleSearch = (event) => {
