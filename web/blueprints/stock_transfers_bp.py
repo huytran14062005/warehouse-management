@@ -94,7 +94,7 @@ def get_warehouses():
 
 @stock_transfers_bp.route("/api/employee-stock/me", methods=["GET"])
 @verify_token
-@verify_role(EmployeeRole.NHAN_VIEN_BAN_HANG, EmployeeRole.QUAN_LY)
+@verify_role(EmployeeRole.NHAN_VIEN_BAN_HANG)
 @handle_api_errors
 def get_my_employee_stock():
     return jsonify(cached_query(

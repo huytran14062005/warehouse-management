@@ -389,6 +389,17 @@ class PrelaunchChecklist(unittest.TestCase):
         self.assertEqual(client.post(route, headers=self.token("accountant")).status_code, 403)
         self.assertEqual(client.post(route, headers=self.token("courier")).status_code, 403)
         self.assertEqual(client.put(f"/api/sales-invoices/{invoice.id}/complete", headers=self.token("seller"), json={}).status_code, 403)
+
+        # Only sales employees can view the stock allocated to their own account.
+        self.assertEqual(
+            client.get("/api/employee-stock/me", headers=self.token("seller")).status_code,
+            200,
+        )
+        self.assertEqual(
+            client.get("/api/employee-stock/me", headers=self.token("manager")).status_code,
+            403,
+        )
+
         old_token = self.token("seller")
         db.session.get(Employee, self.people["seller"]).role = EmployeeRole.QUAN_LY
         db.session.commit()
